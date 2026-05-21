@@ -71,7 +71,7 @@ const CONFIG = {
 ---------------------------------------------------------------- */
 const ASSETS = {
   // PLAYER_SPRITE — replace null with loaded HTMLImageElement
-  PLAYER_SPRITE:      null,   // e.g. 32×48 px sprite sheet
+  PLAYER_SPRITE: (() => { const img = new Image(); img.src = '../assets/img/kairen.png'; return img; })(),   // e.g. 32×48 px sprite sheet
 
   // Obstacle sprites
   DOG_OBSTACLE:       null,   // street dog
@@ -85,7 +85,10 @@ const ASSETS = {
   COIN_ITEM:          null,   // regular score pickup
 
   // Background layers (far → near)
-  STREET_BG_FAR:      null,   // city skyline silhouette
+  STREET_BG_FAR: (() => { const img = new Image(); img.src = '../assets/img/background.png'; return img; })(),
+STREET_BG_MID:      null,
+STREET_BG_NEAR:     null,
+STREET_BG_DECO:     null,   // city skyline silhouette
   STREET_BG_MID:      null,   // building facades
   STREET_BG_NEAR:     null,   // foreground details (graffiti walls)
   STREET_BG_DECO:     null,   // street-level props
@@ -208,14 +211,28 @@ const Background = {
   },
 
   draw() {
-    // Sky gradient
-    const sky = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
-    sky.addColorStop(0,   '#05050a');
-    sky.addColorStop(0.7, '#070710');
-    sky.addColorStop(1,   '#0a0a0a');
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, W, GROUND_Y);
+    // ── STREET_BACKGROUND ──
+    if (ASSETS.STREET_BG_FAR && ASSETS.STREET_BG_FAR.complete) {
+      ctx.drawImage(ASSETS.STREET_BG_FAR, 0, 0, W, GROUND_Y);
+      ctx.fillStyle = '#0f0f0f';
+      ctx.fillRect(0, GROUND_Y, W, CONFIG.GROUND_HEIGHT);
+      ctx.strokeStyle = '#1e1e1e';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, GROUND_Y);
+      ctx.lineTo(W, GROUND_Y);
+      ctx.stroke();
+    }
 
+   // Sky gradient (only if no background image)
+    if (!ASSETS.STREET_BG_FAR || !ASSETS.STREET_BG_FAR.complete) {
+      const sky = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+      sky.addColorStop(0,   '#05050a');
+      sky.addColorStop(0.7, '#070710');
+      sky.addColorStop(1,   '#0a0a0a');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, GROUND_Y);
+    }
     // Parallax building layers (far → near)
     for (let l = 0; l < 4; l++) {
       ctx.fillStyle = this.colors[l];
@@ -335,37 +352,23 @@ const Player = {
     const ph = this.h;
 
     // ── PLAYER_SPRITE: replace block below with drawImage ──
-    if (ASSETS.PLAYER_SPRITE) {
-      // ctx.drawImage(ASSETS.PLAYER_SPRITE, px, py, pw, ph);
-    } else {
-      // Placeholder — minimal human silhouette
-      const blink = GS.invincible && Math.floor(Date.now() / 80) % 2 === 0;
-      if (blink) return;
+    // ── PLAYER_SPRITE ──
+    const blink = GS.invincible && Math.floor(Date.now() / 80) % 2 === 0;
+    if (blink) return;
 
+    if (ASSETS.PLAYER_SPRITE && ASSETS.PLAYER_SPRITE.complete) {
+      const ratio = ASSETS.PLAYER_SPRITE.naturalWidth / ASSETS.PLAYER_SPRITE.naturalHeight;
+const drawH = ph;
+const drawW = drawH * ratio;
+ctx.drawImage(ASSETS.PLAYER_SPRITE, px, py, drawW, drawH);
+    } else {
+      // Placeholder fallback while image loads
       ctx.save();
       ctx.fillStyle = '#c8ff00';
-
-      // head
       ctx.beginPath();
       ctx.arc(px + pw / 2, py + 8, 7, 0, Math.PI * 2);
       ctx.fill();
-
-      // body
       ctx.fillRect(px + pw/2 - 4, py + 15, 8, 18);
-
-      // legs (animated)
-      const legOff = [0, 6, 0, -6][this.animFrame] * (this.onGround ? 1 : 0);
-      // left leg
-      ctx.fillStyle = '#a8d800';
-      ctx.fillRect(px + pw/2 - 7, py + 33 + legOff, 5, 14);
-      // right leg
-      ctx.fillRect(px + pw/2 + 2, py + 33 - legOff, 5, 14);
-
-      // arms
-      ctx.fillStyle = '#c8ff00';
-      ctx.fillRect(px + pw/2 - 11, py + 17, 6, 3);
-      ctx.fillRect(px + pw/2 + 5,  py + 17, 6, 3);
-
       ctx.restore();
     }
   },
@@ -954,15 +957,21 @@ const Input = {
     });
 
     // Touch
-    const canvas = document.getElementById('gameCanvas');
-    window.addEventListener('touchstart', (e) => {
+    canvas.style.touchAction = 'none';
+    canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       this.action();
     }, { passive: false });
 
     // Buttons
-    document.getElementById('startBtn').addEventListener('click', () => startGame());
-    document.getElementById('restartBtn').addEventListener('click', () => startGame());
+    const startBtn   = document.getElementById('startBtn');
+    const restartBtn = document.getElementById('restartBtn');
+    function btnTouch(e) { e.preventDefault(); startGame(); }
+    startBtn.addEventListener('touchend',   btnTouch, { passive: false });
+    restartBtn.addEventListener('touchend', btnTouch, { passive: false });
+    startBtn.addEventListener('click',   () => startGame());
+    restartBtn.addEventListener('click', () => startGame());
   },
 
   action() {
