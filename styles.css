@@ -280,6 +280,13 @@ nav::after {
 }
 .nav-links a:hover { color: var(--red); }
 
+.nav-cta-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
 .nav-cta {
   font-size: var(--text-sm);
   letter-spacing: var(--tracking-wide);
@@ -291,14 +298,8 @@ nav::after {
   cursor: none;
   text-decoration: none;
   transition: background var(--duration-fast);
-  display: block;
-  text-align: center;
-}
-.nav-cta + .nav-cta {
-  margin-top: 6px;
 }
 .nav-cta:hover { background: var(--red-hover); }
-
 
 /* ================================================================
    6. BUTTON SYSTEM
