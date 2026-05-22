@@ -82,7 +82,7 @@ const ASSETS = {
 
   // Collectibles
   COUPON_ITEM:        null,   // rare redeemable coupon glyph
-  COIN_ITEM:          null,   // regular score pickup
+  COIN_ITEM: (() => { const img = new Image(); img.src = '../assets/sprites/mafia.webp'; return img; })(),
 
   // Background layers (far → near)
   STREET_BG_FAR:  (() => { const img = new Image(); img.src = '../assets/img/background.webp'; return img; })(),
@@ -610,7 +610,7 @@ const CollectiblePool = (() => {
 
   function _spawn() {
     const isCoupon = Math.random() < CONFIG.COUPON_SPAWN_CHANCE;
-    const h = 16;
+    const h = 32;
     const w = isCoupon ? 22 : 14;
     const yOff = rand(0, CONFIG.COLLECT_HEIGHT_RANGE);
     items.push({
@@ -662,19 +662,19 @@ const CollectiblePool = (() => {
         ctx.textBaseline = 'middle';
         ctx.fillText('★', px + it.w/2, py + it.h/2);
       } else {
-        // ── COIN_ITEM: swap below with ctx.drawImage(ASSETS.COIN_ITEM, px, py, it.w, it.h)
-        ctx.fillStyle  = 'rgba(200,255,0,0.15)';
-        ctx.strokeStyle= 'rgba(200,255,0,0.5)';
-        ctx.lineWidth  = 1;
-        ctx.beginPath();
-        ctx.arc(px + it.w/2, py + it.h/2, it.w/2, 0, Math.PI*2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(200,255,0,0.7)';
-        ctx.font = `${Math.round(it.h * 0.6)}px monospace`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('◆', px + it.w/2, py + it.h/2 + 1);
+        // ── COIN_ITEM (mafia.webp) ──
+        if (ASSETS.COIN_ITEM && ASSETS.COIN_ITEM.complete) {
+          const ratio = ASSETS.COIN_ITEM.naturalWidth / ASSETS.COIN_ITEM.naturalHeight;
+          const dh = it.h;
+          const dw = dh * ratio;
+          ctx.drawImage(ASSETS.COIN_ITEM, px, py, dw, dh);
+        } else {
+          ctx.fillStyle = 'rgba(200,255,0,0.7)';
+          ctx.font = `${Math.round(it.h * 0.6)}px monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('◆', px + it.w/2, py + it.h/2 + 1);
+        }
       }
       ctx.restore();
     }
