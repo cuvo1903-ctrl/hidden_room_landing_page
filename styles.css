@@ -172,6 +172,13 @@
 
 html { scroll-behavior: smooth; }
 
+/* Prevent images from overflowing their containers on any host/CDN */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
 body {
   background: var(--black);
   color: var(--white);
@@ -284,6 +291,11 @@ nav::after {
   cursor: none;
   text-decoration: none;
   transition: background var(--duration-fast);
+  display: block;
+  text-align: center;
+}
+.nav-cta + .nav-cta {
+  margin-top: 6px;
 }
 .nav-cta:hover { background: var(--red-hover); }
 
@@ -932,6 +944,7 @@ section { position: relative; }
 .img-logo {
   height: 44px;
   width: auto;
+  max-width: none;
   display: block;
 }
 
