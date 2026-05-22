@@ -48,7 +48,7 @@ const CONFIG = {
 
   // Speed
   BASE_SPEED:        5.0,
-  SPEED_INCREMENT:   0.0008,    // per frame
+  SPEED_INCREMENT:   0.003,     // per frame (aggressive ramp)
   MAX_SPEED:         18,
 
   // Background parallax layers (speeds are fractions of game speed)
@@ -85,7 +85,7 @@ const ASSETS = {
   COIN_ITEM:          null,   // regular score pickup
 
   // Background layers (far → near)
-  STREET_BG_FAR:  (() => { const img = new Image(); img.src = '../assets/img/background.png'; return img; })(),
+  STREET_BG_FAR:  (() => { const img = new Image(); img.src = '../assets/img/background.webp'; return img; })(),
   STREET_BG_MID:  null,
   STREET_BG_NEAR: null,
   STREET_BG_DECO: null,
@@ -102,6 +102,7 @@ const SOUNDS = {
   jump:      '../assets/sounds/touch_game.mp3',// jump
   xeso:      '../assets/sounds/xeso.mp3',      // hit patrulla
   hit:       '../assets/sounds/hit.mp3',       // hit any other obstacle
+  point:     '../assets/sounds/point.mp3',     // regular collectible picked up
 };
 
 const SoundSystem = {
@@ -726,6 +727,7 @@ const Collision = {
           CouponSystem.onEarned();
         } else {
           Score.add(5);
+          SoundSystem.play('point');
         }
       }
     }
