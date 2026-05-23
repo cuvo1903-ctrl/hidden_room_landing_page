@@ -5,9 +5,9 @@ const supabase = createClient(
   "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
 );
 
-  console.log("Supabase listo");
-  console.log(supabase);
-// 🔥 ESTO ES LO QUE TE FALTA
+console.log("Supabase listo");
+console.log(supabase);
+
 const form = document.getElementById("login-form");
 
 form.addEventListener("submit", async (e) => {
@@ -27,10 +27,18 @@ form.addEventListener("submit", async (e) => {
     return;
   }
 
-  localStorage.setItem("user", JSON.stringify(data[0]));
+  // Fix: write session in the format dashboard.js expects
+  localStorage.setItem("hr_session", JSON.stringify({
+    user: {
+      id:           data[0].id          ?? "usr_001",
+      display_name: data[0].username    ?? "Usuario",
+      email:        data[0].email       ?? "",
+      client_id:    data[0].client_id   ?? "",
+      whatsapp:     data[0].whatsapp    ?? "",
+      avatar_url:   data[0].avatar_url  ?? "",
+    },
+    roles: data[0].roles ?? ["client", "collaborator", "rrpp"],
+  }));
+
   window.location.href = "./dashboard.html";
-
-  console.log("Supabase listo");
-  console.log(supabase);
-
 });
