@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Hidden Room — Client Dashboard" />
+  <title>Hidden Room · Dashboard</title>
+
+  <!--
+    ============================================================
+    ARCHITECTURE NOTE — Style Inheritance
+    ============================================================
+    This file intentionally carries NO inline styles and NO
+    local <style> block. All visual tokens (colors, typography,
+    spacing, motion) are defined in the global system:
+
+      ../styles.css   → design tokens, layout primitives, components
+      ../site.js      → global helpers, event bus, utility fns
+
+    The dashboard-specific layer adds only structural classes
+    (prefixed `db-`) that the global system can target without
+    coupling to page internals.
+    ============================================================
+  -->
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="./dashboard.css" />
+</head>
+
+<body class="db-root" data-page="dashboard">
+
+  <!--
+    ============================================================
+    LAYOUT SHELL
+    ============================================================
+    Three-region CSS Grid:
+      [sidebar] [topbar + main]
+    The `db-shell` element is the single layout root.
+    JS never touches layout — only data-* attributes and
+    aria-* states to drive CSS state machines.
+    ============================================================
+  -->
+  <div class="db-shell" id="dashboardShell" aria-label="Dashboard application shell">
+
+    <!-- ======================================================
+         REGION 1 — SIDEBAR NAVIGATION
+         ======================================================
+         - Role: primary navigation + brand identity
+         - State: collapsed/expanded via data-collapsed="true/false"
+         - JS module: sidebar.js
+         - Supabase hook: user role → injected into data-role attr
+           which CSS uses to show/hide role-gated nav items
+         ====================================================== -->
+    <aside
+      class="db-sidebar"
+      id="sidebar"
+      role="navigation"
+      aria-label="Primary navigation"
+      data-collapsed="false"
+    >
+
+      <!-- Brand lockup -->
+      <div class="db-sidebar__brand" aria-label="Hidden Room">
+        <span class="db-sidebar__brand-mark" aria-hidden="true">[ ]</span>
+        <span class="db-sidebar__brand-name">Hidden Room</span>
+        <span class="db-sidebar__brand-sub">mysauth</span>
+      </div>
+
+      <!-- Collapse toggle (desktop) -->
+      <button
+        class="db-sidebar__collapse-btn"
+        id="sidebarCollapseBtn"
+        aria-label="Toggle sidebar"
+        aria-expanded="true"
+        aria-controls="sidebar"
+        type="button"
+      >
+        <span class="db-icon db-icon--collapse" aria-hidden="true"></span>
+      </button>
+
+      <!-- ── User identity block (Supabase injection target) ── -->
+      <!--
+        DYNAMIC ZONE: populated by auth.js after session check.
+        Attributes injected: data-user-id, data-role
+        Content injected: avatar src, display name, plan badge
+      -->
+      <div
+        class="db-sidebar__identity"
+        id="sidebarIdentity"
+        data-user-id=""
+        data-role=""
+        aria-live="polite"
+      >
+        <div class="db-avatar db-avatar--sm" id="sidebarAvatar" aria-hidden="true">
+          <!-- Avatar img injected by auth.js -->
+        </div>
+        <div class="db-sidebar__identity-meta">
+          <span class="db-sidebar__display-name" id="sidebarDisplayName">—</span>
+          <span class="db-badge db-badge--plan" id="sidebarPlanBadge">—</span>
+        </div>
+      </div>
+
+      <!-- ── Primary navigation ── -->
+      <nav class="db-sidebar__nav" aria-label="Dashboard sections">
+        <ul class="db-nav-list" role="list">
+
+          <!--
+            NAV ITEM PATTERN
+            ─────────────────
+            Each <li> follows the same anatomy:
+              - data-section: matches a JS-registered section key
+              - aria-current: set by router.js when section is active
+              - data-requires-role: optional, CSS hides if role mismatch
+            ─────────────────
+          -->
+
+          <li class="db-nav-item" data-section="overview">
+            <a
+              class="db-nav-link"
+              href="#overview"
+              aria-current="page"
+              data-section-target="overview"
+            >
+              <span class="db-icon db-icon--overview" aria-hidden="true"></span>
+              <span class="db-nav-link__label">Overview</span>
+            </a>
+          </li>
+
+          <li class="db-nav-item" data-section="projects">
+            <a
+              class="db-nav-link"
+              href="#projects"
+              data-section-target="projects"
+            >
+              <span class="db-icon db-icon--projects" aria-hidden="true"></span>
+              <span class="db-nav-link__label">Projects</span>
+              <!-- Dynamic badge: unread count injected by dashboard.js -->
+              <span class="db-nav-badge" id="navBadgeProjects" aria-label="projects count" hidden></span>
+            </a>
+          </li>
+
+          <li class="db-nav-item" data-section="clients">
+            <a
+              class="db-nav-link"
+              href="#clients"
+              data-section-target="clients"
+            >
+              <span class="db-icon db-icon--clients" aria-hidden="true"></span>
+              <span class="db-nav-link__label">Clients</span>
+            </a>
+          </li>
+
+          <li class="db-nav-item" data-section="activity">
+            <a
+              class="db-nav-link"
+              href="#activity"
+              data-section-target="activity"
+            >
+              <span class="db-icon db-icon--activity" aria-hidden="true"></span>
+              <span class="db-nav-link__label">Activity</span>
+            </a>
+          </li>
+
+          <li class="db-nav-item" data-section="analytics" data-requires-role="admin,pro">
+            <a
+              class="db-nav-link"
+              href="#analytics"
+              data-section-target="analytics"
+            >
+              <span class="db-icon db-icon--analytics" aria-hidden="true"></span>
+              <span class="db-nav-link__label">Analytics</span>
+              <span class="db-tag db-tag--locked" aria-label="Pro feature">Pro</span>
+            </a>
+          </li>
+
+          <li class="db-nav-item" data-section="settings">
+            <a
+              class="db-nav-link"
+              href="#settings"
+              data-section-target="settings"
+            >
+              <span class="db-icon db-icon--settings" aria-hidden="true"></span>
+              <span class="db-nav-link__label">Settings</span>
+            </a>
+          </li>
+
+        </ul>
+      </nav>
+
+      <!-- ── Sidebar footer: logout + version ── -->
+      <div class="db-sidebar__footer">
+        <!--
+          SUPABASE HOOK: logout.js calls supabase.auth.signOut()
+          then redirects to /login.
+          Button intentionally has no href — JS owns the action.
+        -->
+        <button
+          class="db-btn db-btn--ghost db-btn--danger"
+          id="logoutBtn"
+          type="button"
+          aria-label="Sign out of Hidden Room"
+        >
+          <span class="db-icon db-icon--logout" aria-hidden="true"></span>
+          <span>Sign out</span>
+        </button>
+
+        <span class="db-sidebar__version" id="appVersion" aria-label="Application version">
+          <!-- Injected by site.js: APP_VERSION constant -->
+        </span>
+      </div>
+
+    </aside>
+    <!-- /db-sidebar -->
+
+
+    <!-- ======================================================
+         REGION 2 — MAIN COLUMN (Topbar + Content)
+         ====================================================== -->
+    <div class="db-main-col">
+
+      <!-- ── TOPBAR / HEADER ── -->
+      <!--
+        JS module: topbar.js
+        Responsibilities:
+          - Mobile sidebar toggle
+          - Global search (future)
+          - Notification bell (Supabase realtime)
+          - Breadcrumb trail updated by router.js
+      -->
+      <header class="db-topbar" id="topbar" role="banner">
+
+        <!-- Mobile hamburger -->
+        <button
+          class="db-topbar__menu-btn"
+          id="mobileMenuBtn"
+          type="button"
+          aria-label="Open navigation menu"
+          aria-controls="sidebar"
+          aria-expanded="false"
+        >
+          <span class="db-icon db-icon--menu" aria-hidden="true"></span>
+        </button>
+
+        <!-- Breadcrumb / page context -->
+        <nav class="db-breadcrumb" aria-label="Page location">
+          <ol class="db-breadcrumb__list" id="breadcrumbList" role="list">
+            <!-- Injected by router.js on section change -->
+            <li class="db-breadcrumb__item">
+              <span class="db-breadcrumb__label">Dashboard</span>
+            </li>
+          </ol>
+        </nav>
+
+        <!-- Topbar utility cluster -->
+        <div class="db-topbar__utils" role="toolbar" aria-label="Toolbar">
+
+          <!-- Global search -->
+          <div class="db-search" role="search">
+            <label for="globalSearch" class="sr-only">Search</label>
+            <input
+              class="db-search__input"
+              id="globalSearch"
+              type="search"
+              placeholder="Search…"
+              autocomplete="off"
+              aria-label="Global search"
+            />
+            <span class="db-icon db-icon--search" aria-hidden="true"></span>
+          </div>
+
+          <!-- Notifications -->
+          <!--
+            SUPABASE HOOK: topbar.js subscribes to Supabase realtime
+            channel `notifications:user_id`. Badge count injected here.
+          -->
+          <button
+            class="db-topbar__icon-btn"
+            id="notificationsBtn"
+            type="button"
+            aria-label="Notifications"
+            aria-haspopup="true"
+            aria-expanded="false"
+          >
+            <span class="db-icon db-icon--bell" aria-hidden="true"></span>
+            <span class="db-notification-dot" id="notificationDot" hidden aria-hidden="true"></span>
+          </button>
+
+          <!-- Top-right user menu -->
+          <div class="db-user-menu" id="userMenu">
+            <button
+              class="db-user-menu__trigger"
+              type="button"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-controls="userMenuDropdown"
+              id="userMenuTrigger"
+            >
+              <div class="db-avatar db-avatar--xs" id="topbarAvatar" aria-hidden="true">
+                <!-- Avatar injected by auth.js -->
+              </div>
+              <span class="db-user-menu__name" id="topbarDisplayName">—</span>
+              <span class="db-icon db-icon--chevron-down" aria-hidden="true"></span>
+            </button>
+
+            <!-- Dropdown (hidden by default, toggled by JS) -->
+            <ul
+              class="db-dropdown"
+              id="userMenuDropdown"
+              role="menu"
+              aria-labelledby="userMenuTrigger"
+              hidden
+            >
+              <li role="menuitem"><a class="db-dropdown__item" href="#settings">Profile</a></li>
+              <li role="menuitem"><a class="db-dropdown__item" href="#settings">Preferences</a></li>
+              <li role="separator" class="db-dropdown__divider"></li>
+              <li role="menuitem">
+                <button class="db-dropdown__item db-dropdown__item--danger" type="button" id="userMenuLogout">
+                  Sign out
+                </button>
+              </li>
+            </ul>
+          </div>
+
+        </div>
+      </header>
+      <!-- /db-topbar -->
+
+
+      <!-- ======================================================
+           REGION 3 — MAIN CONTENT
+           ======================================================
+           Architecture:
+             - `db-content` is the scroll container
+             - Each `db-section` is a logical page registered
+               in router.js. Only one is visible at a time
+               (aria-hidden + CSS).
+             - `data-section` keys must match sidebar nav items.
+           ====================================================== -->
+      <main
+        class="db-content"
+        id="mainContent"
+        role="main"
+        aria-live="polite"
+        aria-label="Dashboard content"
+      >
+
+        <!-- ── PAGE LOADING STATE ── -->
+        <!--
+          Shown while Supabase data is in-flight.
+          Hidden via JS once data resolves.
+          Pattern: loader.show() / loader.hide()
+        -->
+        <div class="db-page-loader" id="pageLoader" aria-hidden="true" hidden>
+          <div class="db-spinner" role="status" aria-label="Loading"></div>
+        </div>
+
+
+        <!-- ════════════════════════════════════════════════
+             SECTION: OVERVIEW (default active section)
+             ════════════════════════════════════════════════ -->
+        <section
+          class="db-section db-section--overview"
+          id="section-overview"
+          data-section="overview"
+          aria-label="Overview"
+        >
+
+          <!-- Section header -->
+          <header class="db-section__header">
+            <div class="db-section__title-group">
+              <h1 class="db-section__title">
+                <!-- Dynamic greeting injected by dashboard.js -->
+                <span id="greetingText">Welcome back</span><span class="db-accent">,</span>
+                <span id="greetingName" class="db-text--accent">—</span>
+              </h1>
+              <p class="db-section__subtitle" id="greetingDate">
+                <!-- Current date injected by dashboard.js -->
+              </p>
+            </div>
+
+            <!-- Quick actions cluster (overview-level) -->
+            <div class="db-section__actions">
+              <button class="db-btn db-btn--primary" id="newProjectBtn" type="button">
+                <span class="db-icon db-icon--plus" aria-hidden="true"></span>
+                New Project
+              </button>
+            </div>
+          </header>
+
+
+          <!-- ── STATS CARDS GRID ──
+               DYNAMIC ZONE: Cards populated from Supabase aggregations.
+               Each card uses the same `db-stat-card` component pattern.
+               JS renders cards via renderStatCards(data) in dashboard.js.
+               Skeleton placeholders shown until data resolves.
+          -->
+          <div
+            class="db-stats-grid"
+            id="statsGrid"
+            role="list"
+            aria-label="Key metrics"
+          >
+            <!--
+              SKELETON PLACEHOLDERS (shown during loading)
+              These are static and removed by JS once data arrives.
+              The real cards are rendered dynamically.
+            -->
+            <article class="db-stat-card db-stat-card--skeleton" aria-hidden="true" role="listitem">
+              <div class="db-stat-card__icon-wrap"></div>
+              <div class="db-stat-card__body">
+                <span class="db-stat-card__label"></span>
+                <span class="db-stat-card__value"></span>
+                <span class="db-stat-card__delta"></span>
+              </div>
+            </article>
+            <article class="db-stat-card db-stat-card--skeleton" aria-hidden="true" role="listitem">
+              <div class="db-stat-card__icon-wrap"></div>
+              <div class="db-stat-card__body">
+                <span class="db-stat-card__label"></span>
+                <span class="db-stat-card__value"></span>
+                <span class="db-stat-card__delta"></span>
+              </div>
+            </article>
+            <article class="db-stat-card db-stat-card--skeleton" aria-hidden="true" role="listitem">
+              <div class="db-stat-card__icon-wrap"></div>
+              <div class="db-stat-card__body">
+                <span class="db-stat-card__label"></span>
+                <span class="db-stat-card__value"></span>
+                <span class="db-stat-card__delta"></span>
+              </div>
+            </article>
+            <article class="db-stat-card db-stat-card--skeleton" aria-hidden="true" role="listitem">
+              <div class="db-stat-card__icon-wrap"></div>
+              <div class="db-stat-card__body">
+                <span class="db-stat-card__label"></span>
+                <span class="db-stat-card__value"></span>
+                <span class="db-stat-card__delta"></span>
+              </div>
+            </article>
+
+            <!--
+              ╔══════════════════════════════════════════╗
+              ║  FUTURE DYNAMIC RENDER ZONE              ║
+              ║  dashboard.js → renderStatCards(data)    ║
+              ║                                          ║
+              ║  Each card injected as:                  ║
+              ║  <article class="db-stat-card"           ║
+              ║    data-metric="active_projects"         ║
+              ║    data-trend="up"                       ║
+              ║    role="listitem">                      ║
+              ║    ...                                   ║
+              ║  </article>                              ║
+              ╚══════════════════════════════════════════╝
+            -->
+          </div>
+          <!-- /db-stats-grid -->
+
+
+          <!-- ── OVERVIEW LOWER GRID: Activity + Quick Actions ── -->
+          <div class="db-overview-grid">
+
+            <!-- ── RECENT ACTIVITY FEED ──
+                 DYNAMIC ZONE: populated by activity.js
+                 Supabase: SELECT * FROM activity_log
+                   WHERE user_id = :uid ORDER BY created_at DESC LIMIT 20
+            -->
+            <section
+              class="db-panel db-panel--activity"
+              id="activityPanel"
+              aria-labelledby="activityPanelTitle"
+            >
+              <header class="db-panel__header">
+                <h2 class="db-panel__title" id="activityPanelTitle">Recent Activity</h2>
+                <a class="db-link db-link--subtle" href="#activity" data-section-target="activity">
+                  View all
+                </a>
+              </header>
+
+              <ol
+                class="db-activity-feed"
+                id="activityFeed"
+                role="list"
+                aria-label="Recent activity"
+                aria-live="polite"
+              >
+                <!--
+                  DYNAMIC ZONE — activity.js injects <li> elements:
+
+                  <li class="db-activity-item" data-event-type="project_created">
+                    <span class="db-activity-item__icon" aria-hidden="true"></span>
+                    <div class="db-activity-item__body">
+                      <p class="db-activity-item__desc">...</p>
+                      <time class="db-activity-item__time" datetime="ISO_DATE">...</time>
+                    </div>
+                  </li>
+                -->
+                <li class="db-activity-item db-activity-item--empty" id="activityEmpty">
+                  <span>No recent activity.</span>
+                </li>
+              </ol>
+            </section>
+            <!-- /activityPanel -->
+
+
+            <!-- ── QUICK ACTIONS ──
+                 Static structure — actions may be role-gated.
+                 JS attaches handlers via quickActions.init() in dashboard.js
+            -->
+            <section
+              class="db-panel db-panel--quick-actions"
+              id="quickActionsPanel"
+              aria-labelledby="quickActionsPanelTitle"
+            >
+              <header class="db-panel__header">
+                <h2 class="db-panel__title" id="quickActionsPanelTitle">Quick Actions</h2>
+              </header>
+
+              <ul class="db-quick-actions" role="list">
+                <li class="db-quick-action" role="listitem">
+                  <button
+                    class="db-quick-action__btn"
+                    type="button"
+                    data-action="new-project"
+                    aria-label="Create a new project"
+                  >
+                    <span class="db-icon db-icon--folder-plus" aria-hidden="true"></span>
+                    <span class="db-quick-action__label">New Project</span>
+                  </button>
+                </li>
+
+                <li class="db-quick-action" role="listitem">
+                  <button
+                    class="db-quick-action__btn"
+                    type="button"
+                    data-action="invite-client"
+                    aria-label="Invite a new client"
+                  >
+                    <span class="db-icon db-icon--user-plus" aria-hidden="true"></span>
+                    <span class="db-quick-action__label">Invite Client</span>
+                  </button>
+                </li>
+
+                <li class="db-quick-action" role="listitem">
+                  <button
+                    class="db-quick-action__btn"
+                    type="button"
+                    data-action="generate-report"
+                    data-requires-role="admin,pro"
+                    aria-label="Generate analytics report"
+                  >
+                    <span class="db-icon db-icon--chart" aria-hidden="true"></span>
+                    <span class="db-quick-action__label">Generate Report</span>
+                    <span class="db-tag db-tag--locked" aria-label="Pro feature">Pro</span>
+                  </button>
+                </li>
+
+                <li class="db-quick-action" role="listitem">
+                  <button
+                    class="db-quick-action__btn"
+                    type="button"
+                    data-action="export-data"
+                    aria-label="Export project data"
+                  >
+                    <span class="db-icon db-icon--download" aria-hidden="true"></span>
+                    <span class="db-quick-action__label">Export Data</span>
+                  </button>
+                </li>
+              </ul>
+            </section>
+            <!-- /quickActionsPanel -->
+
+          </div>
+          <!-- /db-overview-grid -->
+
+        </section>
+        <!-- /section-overview -->
+
+
+        <!-- ════════════════════════════════════════════════
+             SECTION: PROJECTS
+             ════════════════════════════════════════════════ -->
+        <section
+          class="db-section db-section--projects"
+          id="section-projects"
+          data-section="projects"
+          aria-label="Projects"
+          aria-hidden="true"
+          hidden
+        >
+          <header class="db-section__header">
+            <div class="db-section__title-group">
+              <h1 class="db-section__title">Projects</h1>
+              <p class="db-section__subtitle">
+                <span id="projectCount">—</span> active
+              </p>
+            </div>
+            <div class="db-section__actions">
+              <!-- Filter controls -->
+              <div class="db-filter-group" role="group" aria-label="Filter projects">
+                <select
+                  class="db-select"
+                  id="projectFilterStatus"
+                  aria-label="Filter by status"
+                >
+                  <option value="">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="paused">Paused</option>
+                  <option value="completed">Completed</option>
+                </select>
+                <select
+                  class="db-select"
+                  id="projectFilterSort"
+                  aria-label="Sort projects"
+                >
+                  <option value="updated_at">Last updated</option>
+                  <option value="created_at">Created</option>
+                  <option value="name">Name</option>
+                </select>
+              </div>
+              <button class="db-btn db-btn--primary" type="button" data-action="new-project">
+                <span class="db-icon db-icon--plus" aria-hidden="true"></span>
+                New Project
+              </button>
+            </div>
+          </header>
+
+          <!--
+            DYNAMIC ZONE — projects.js injects project cards.
+            Template (one card):
+
+            <article class="db-project-card" data-project-id="uuid" data-status="active">
+              <header class="db-project-card__header">
+                <span class="db-project-card__status-dot" aria-hidden="true"></span>
+                <h3 class="db-project-card__name">Project Name</h3>
+                <button class="db-project-card__menu-btn" type="button" aria-label="Project options">...</button>
+              </header>
+              <p class="db-project-card__desc">Short description.</p>
+              <footer class="db-project-card__meta">
+                <span class="db-project-card__client">Client Name</span>
+                <time class="db-project-card__date" datetime="ISO">Updated X days ago</time>
+              </footer>
+              <div class="db-project-card__progress">
+                <div class="db-progress-bar" style="--progress: 65%;" role="progressbar"
+                  aria-valuenow="65" aria-valuemin="0" aria-valuemax="100"></div>
+              </div>
+            </article>
+          -->
+          <div
+            class="db-project-grid"
+            id="projectGrid"
+            role="list"
+            aria-label="Projects list"
+            aria-live="polite"
+          >
+            <!-- Skeleton placeholders -->
+            <article class="db-project-card db-project-card--skeleton" aria-hidden="true" role="listitem"></article>
+            <article class="db-project-card db-project-card--skeleton" aria-hidden="true" role="listitem"></article>
+            <article class="db-project-card db-project-card--skeleton" aria-hidden="true" role="listitem"></article>
+          </div>
+
+          <!-- Empty state (shown when no projects) -->
+          <div class="db-empty-state" id="projectsEmptyState" hidden aria-live="polite">
+            <span class="db-icon db-icon--folder-x db-empty-state__icon" aria-hidden="true"></span>
+            <p class="db-empty-state__text">No projects yet.</p>
+            <button class="db-btn db-btn--primary" type="button" data-action="new-project">
+              Create your first project
+            </button>
+          </div>
+
+        </section>
+        <!-- /section-projects -->
+
+
+        <!-- ════════════════════════════════════════════════
+             SECTION: CLIENTS
+             ════════════════════════════════════════════════ -->
+        <section
+          class="db-section db-section--clients"
+          id="section-clients"
+          data-section="clients"
+          aria-label="Clients"
+          aria-hidden="true"
+          hidden
+        >
+          <header class="db-section__header">
+            <div class="db-section__title-group">
+              <h1 class="db-section__title">Clients</h1>
+            </div>
+            <div class="db-section__actions">
+              <button class="db-btn db-btn--primary" type="button" data-action="invite-client">
+                <span class="db-icon db-icon--user-plus" aria-hidden="true"></span>
+                Invite Client
+              </button>
+            </div>
+          </header>
+
+          <!--
+            DYNAMIC ZONE — clients.js renders client cards.
+            Supabase: SELECT * FROM clients WHERE workspace_id = :wid
+          -->
+          <div
+            class="db-client-grid"
+            id="clientGrid"
+            role="list"
+            aria-label="Clients list"
+            aria-live="polite"
+          >
+            <!-- Populated dynamically -->
+          </div>
+
+          <div class="db-empty-state" id="clientsEmptyState" hidden aria-live="polite">
+            <span class="db-icon db-icon--users-x db-empty-state__icon" aria-hidden="true"></span>
+            <p class="db-empty-state__text">No clients yet. Invite one to get started.</p>
+          </div>
+
+        </section>
+        <!-- /section-clients -->
+
+
+        <!-- ════════════════════════════════════════════════
+             SECTION: ACTIVITY LOG
+             ════════════════════════════════════════════════ -->
+        <section
+          class="db-section db-section--activity"
+          id="section-activity"
+          data-section="activity"
+          aria-label="Activity log"
+          aria-hidden="true"
+          hidden
+        >
+          <header class="db-section__header">
+            <div class="db-section__title-group">
+              <h1 class="db-section__title">Activity Log</h1>
+            </div>
+            <div class="db-section__actions">
+              <select class="db-select" id="activityFilterType" aria-label="Filter by event type">
+                <option value="">All events</option>
+                <option value="project">Projects</option>
+                <option value="client">Clients</option>
+                <option value="auth">Auth</option>
+                <option value="export">Exports</option>
+              </select>
+            </div>
+          </header>
+
+          <ol
+            class="db-activity-log"
+            id="activityLog"
+            role="list"
+            aria-label="Full activity log"
+            aria-live="polite"
+          >
+            <!-- Populated dynamically by activity.js -->
+          </ol>
+
+          <!-- Pagination / infinite scroll sentinel -->
+          <div
+            class="db-pagination-sentinel"
+            id="activityPaginationSentinel"
+            aria-hidden="true"
+          ></div>
+        </section>
+        <!-- /section-activity -->
+
+
+        <!-- ════════════════════════════════════════════════
+             SECTION: ANALYTICS (role-gated: admin, pro)
+             ════════════════════════════════════════════════ -->
+        <section
+          class="db-section db-section--analytics"
+          id="section-analytics"
+          data-section="analytics"
+          data-requires-role="admin,pro"
+          aria-label="Analytics"
+          aria-hidden="true"
+          hidden
+        >
+          <header class="db-section__header">
+            <div class="db-section__title-group">
+              <h1 class="db-section__title">Analytics</h1>
+              <span class="db-badge db-badge--pro">Pro</span>
+            </div>
+          </header>
+
+          <!-- Gate overlay — shown if role insufficient -->
+          <div class="db-gate-overlay" id="analyticsGate" hidden aria-live="assertive">
+            <p class="db-gate-overlay__msg">Upgrade to Pro to unlock Analytics.</p>
+            <a class="db-btn db-btn--primary" href="/upgrade">Upgrade</a>
+          </div>
+
+          <!--
+            DYNAMIC ZONE — analytics.js populates charts.
+            Chart containers are data-chart targets; the charting
+            library (Chart.js / D3 / native canvas) is loaded
+            lazily by analytics.js only when this section is active.
+          -->
+          <div class="db-analytics-grid" id="analyticsGrid">
+            <div class="db-chart-wrap" id="chartProjectsOverTime" data-chart="projects-over-time" aria-label="Projects over time chart"></div>
+            <div class="db-chart-wrap" id="chartActivityByType" data-chart="activity-by-type" aria-label="Activity by type chart"></div>
+            <div class="db-chart-wrap db-chart-wrap--wide" id="chartRevenueTimeline" data-chart="revenue-timeline" aria-label="Revenue timeline chart"></div>
+          </div>
+        </section>
+        <!-- /section-analytics -->
+
+
+        <!-- ════════════════════════════════════════════════
+             SECTION: SETTINGS
+             ════════════════════════════════════════════════ -->
+        <section
+          class="db-section db-section--settings"
+          id="section-settings"
+          data-section="settings"
+          aria-label="Settings"
+          aria-hidden="true"
+          hidden
+        >
+          <header class="db-section__header">
+            <div class="db-section__title-group">
+              <h1 class="db-section__title">Settings</h1>
+            </div>
+          </header>
+
+          <div class="db-settings-layout">
+
+            <!-- Profile settings -->
+            <div class="db-panel db-panel--settings-group" id="settingsProfile" aria-labelledby="settingsProfileTitle">
+              <h2 class="db-panel__title" id="settingsProfileTitle">Profile</h2>
+              <div class="db-form-group">
+                <label class="db-label" for="settingsDisplayName">Display name</label>
+                <input
+                  class="db-input"
+                  type="text"
+                  id="settingsDisplayName"
+                  name="display_name"
+                  autocomplete="name"
+                  placeholder="Your name"
+                />
+              </div>
+              <div class="db-form-group">
+                <label class="db-label" for="settingsEmail">Email</label>
+                <input
+                  class="db-input"
+                  type="email"
+                  id="settingsEmail"
+                  name="email"
+                  autocomplete="email"
+                  placeholder="you@example.com"
+                  readonly
+                  aria-describedby="settingsEmailNote"
+                />
+                <p class="db-form-hint" id="settingsEmailNote">Email is managed through your auth provider.</p>
+              </div>
+              <button class="db-btn db-btn--primary" type="button" id="saveProfileBtn">Save Profile</button>
+            </div>
+
+            <!-- Danger zone -->
+            <div class="db-panel db-panel--danger" id="settingsDanger" aria-labelledby="settingsDangerTitle">
+              <h2 class="db-panel__title db-panel__title--danger" id="settingsDangerTitle">Danger Zone</h2>
+              <p class="db-panel__desc">Irreversible actions. Proceed with caution.</p>
+              <button
+                class="db-btn db-btn--destructive"
+                type="button"
+                id="deleteAccountBtn"
+                aria-label="Permanently delete your account"
+              >
+                Delete Account
+              </button>
+            </div>
+
+          </div>
+        </section>
+        <!-- /section-settings -->
+
+      </main>
+      <!-- /db-content -->
+
+    </div>
+    <!-- /db-main-col -->
+
+
+    <!-- ======================================================
+         GLOBAL OVERLAYS & PORTALS
+         ======================================================
+         All modals, toasts, and drawers mount here so they
+         sit above the layout grid in the stacking context.
+         JS appends dynamically; never hardcode modals inside
+         section markup.
+         ====================================================== -->
+
+    <!-- Toast notification container -->
+    <div
+      class="db-toast-region"
+      id="toastRegion"
+      role="status"
+      aria-live="polite"
+      aria-atomic="false"
+      aria-label="Notifications"
+    ></div>
+
+    <!-- Modal portal (empty; filled by modal.js) -->
+    <div
+      class="db-modal-portal"
+      id="modalPortal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modalTitle"
+      hidden
+    >
+      <div class="db-modal" id="modal">
+        <button class="db-modal__close" type="button" id="modalCloseBtn" aria-label="Close modal">
+          <span class="db-icon db-icon--close" aria-hidden="true"></span>
+        </button>
+        <h2 class="db-modal__title" id="modalTitle"></h2>
+        <div class="db-modal__body" id="modalBody">
+          <!-- Injected by modal.js -->
+        </div>
+      </div>
+      <div class="db-modal__backdrop" id="modalBackdrop" aria-hidden="true"></div>
+    </div>
+
+    <!-- Drawer portal (mobile detail panel) -->
+    <div
+      class="db-drawer"
+      id="drawer"
+      role="complementary"
+      aria-label="Detail panel"
+      aria-hidden="true"
+      hidden
+    >
+      <div class="db-drawer__inner" id="drawerInner">
+        <!-- Injected by drawer.js -->
+      </div>
+      <div class="db-drawer__backdrop" id="drawerBackdrop" aria-hidden="true"></div>
+    </div>
+
+  </div>
+  <!-- /db-shell -->
+
+
+  <!--
+    ============================================================
+    SCRIPT LOADING ORDER
+    ============================================================
+    1. Global system (loaded once, site-wide)
+    2. Dashboard core modules (feature-scoped, lazy where safe)
+    
+    All scripts use `type="module"` for clean scoping.
+    No global pollution. Module communication via EventBus.
+    ============================================================
+  -->
+
+  <!-- 1. Global site system -->
+  <script src="../site.js" type="module"></script>
+
+  <!-- 2. Dashboard entry point (orchestrates all modules) -->
+  <script src="./js/dashboard.js" type="module"></script>
+
+</body>
+</html>
