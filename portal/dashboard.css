@@ -678,24 +678,29 @@
    JS toggles the [hidden] attribute; CSS handles the transition.
 ================================================================ */
 .db-notifications {
-  /* Sit in the flex row alongside sidebar and main */
-  width: 0;
-  flex-shrink: 0;
-  overflow: hidden;
   background: var(--near-black);
-  border-left: none;            /* no border when collapsed */
+  border-left: var(--border-subtle);
   display: flex;
   flex-direction: column;
+  width: 360px;
+  flex-shrink: 0;
+  overflow: hidden;
   transition:
-    width    var(--duration-base) var(--ease-standard),
-    border   var(--duration-base) var(--ease-standard);
-  /* NOT position:absolute — it lives in the flow */
+    transform var(--duration-base) var(--ease-standard),
+    opacity var(--duration-base) var(--ease-standard);
+
+  opacity: 1;
+  transform: translateX(0);
 }
 
-/* When JS removes [hidden] we expand the panel */
+/* Hidden state */
+.db-notifications[hidden] {
+  display: none !important;
+}
+
+/* Visible state */
 .db-notifications:not([hidden]) {
-  width: 360px;
-  border-left: var(--border-subtle);
+  display: flex;
 }
 
 @keyframes slideInRight {
