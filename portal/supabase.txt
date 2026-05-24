@@ -5,26 +5,32 @@ const supabase = createClient(
   "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
 );
 
+  console.log("Supabase listo");
+  console.log(supabase);
+// 🔥 ESTO ES LO QUE TE FALTA
 const form = document.getElementById("login-form");
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const email = document.getElementById("usuario").value;
+  const username = document.getElementById("usuario").value;
   const password = document.getElementById("password").value;
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+  const { data, error } = await supabase
+    .from("login")
+    .select("*")
+    .eq("username", username)
+    .eq("pswd", password);
 
-  if (error) {
+  if (error || !data || data.length === 0) {
     alert("Login incorrecto");
     return;
   }
 
-  // guardar sesión simple (opcional)
-  localStorage.setItem("session", JSON.stringify(data.session));
-
+  localStorage.setItem("user", JSON.stringify(data[0]));
   window.location.href = "./dashboard.html";
+
+  console.log("Supabase listo");
+  console.log(supabase);
+
 });

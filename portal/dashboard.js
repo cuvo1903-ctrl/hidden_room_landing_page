@@ -7,7 +7,7 @@
  *  No framework. No build step. Vanilla ES modules.
  *
  *  Responsibilities:
- *    1. Session bootstrap (localStorage placeholder → Supabase later)
+ *    1. Session bootstrap (Supabase auth)
  *    2. Role-composable sidebar gating
  *    3. Client-side section router (hash-free, state-driven)
  *    4. Per-module render functions (one per section)
@@ -24,12 +24,17 @@
 
 /* ════════════════════════════════════════════════════════════════
    §1  GLOBAL STATE
-   ─────────────────────────────────────────────────────────────
-   Single mutable object. Never mutate directly outside setState().
-   Components read from state; they do not maintain local copies.
 ════════════════════════════════════════════════════════════════ */
+
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+const supabase = createClient(
+  "https://rpcunbkstadgngqrjafp.supabase.co",
+  "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
+);
+
 const state = {
-  /** @type {User|null} */
+  /** @type {Object|null} */
   user: null,
 
   /** @type {string[]}  e.g. ['client','collaborator','rrpp'] */
@@ -61,12 +66,10 @@ function setState(patch) {
    §2  SECTION REGISTRY
    ─────────────────────────────────────────────────────────────
    Maps section key → { label, roleRequired, render }
-   roleRequired: null means always visible.
+   render() is always treated as async — may return a string or
+   a Promise<string>. renderSection() awaits it either way.
 ════════════════════════════════════════════════════════════════ */
 
-/** @typedef {{ label:string, roleRequired:string|null, render:()=>string }} SectionDef */
-
-/** @type {Record<string, SectionDef>} */
 const SECTIONS = {
 
   /* ── CORE ──────────────────────────────────────────── */
@@ -180,45 +183,32 @@ const SECTIONS = {
 
 /* ════════════════════════════════════════════════════════════════
    §3  SESSION BOOTSTRAP
-   ─────────────────────────────────────────────────────────────
-   [SUPABASE] Replace localStorage stub with:
-     const { data: { session } } = await supabase.auth.getSession()
-     const { data: profile }     = await supabase
-       .from('users')
-       .select('*, user_roles(role_key)')
-       .eq('id', session.user.id)
-       .single()
 ════════════════════════════════════════════════════════════════ */
 
 /**
- * @typedef {Object} User
- * @property {string} id
- * @property {string} display_name
- * @property {string} email
- * @property {string} client_id
- * @property {string} whatsapp
- * @property {string} avatar_url
- */
-
-/**
- * Loads session from localStorage (placeholder).
+ * Loads session from Supabase auth.
  * Returns user object or null if not authenticated.
- * @returns {Promise<{user:User, roles:string[]}|null>}
+ * @returns {Promise<{user:Object, roles:string[]}|null>}
  */
 async function bootstrapSession() {
   try {
-    const raw = localStorage.getItem('hr_session');
-    if (!raw) return null;
+    const { data: { user } } = await supabase.auth.getUser();
 
-    const session = JSON.parse(raw);
+    if (!user) return null;
 
-    // [SUPABASE] — validate token freshness via supabase.auth.getUser()
+    const { data: profile } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
 
     return {
-      user: session.user,
-      roles: session.roles ?? [],
+      user: profile ?? user,
+      roles: ['client'],
     };
-  } catch {
+
+  } catch (err) {
+    console.error(err);
     return null;
   }
 }
@@ -226,7 +216,6 @@ async function bootstrapSession() {
 /**
  * Writes a session stub to localStorage.
  * Used for development only.
- * [SUPABASE] Remove — auth is handled by supabase.auth
  */
 export function devSeedSession() {
   const stub = {
@@ -246,10 +235,6 @@ export function devSeedSession() {
 
 /* ════════════════════════════════════════════════════════════════
    §4  ROLE ENGINE
-   ─────────────────────────────────────────────────────────────
-   A user's `roles` is a plain string[].
-   hasRole(), hasAnyRole(), hasAllRoles() are the permission API.
-   Never inline role checks — always use these helpers.
 ════════════════════════════════════════════════════════════════ */
 
 /** @param {string} role */
@@ -263,14 +248,12 @@ const hasAllRoles = (roles) => roles.every(hasRole);
 
 /**
  * Shows sidebar nav groups that match the user's roles.
- * All groups with data-role-gate are hidden by default in HTML.
  */
 function applyRoleGates() {
   const groups = document.querySelectorAll('[data-role-gate]');
   groups.forEach((group) => {
     const requiredRole = group.dataset.roleGate;
-    const allowed = hasRole(requiredRole);
-    group.hidden = !allowed;
+    group.hidden = !hasRole(requiredRole);
   });
 }
 
@@ -278,13 +261,12 @@ function applyRoleGates() {
 /* ════════════════════════════════════════════════════════════════
    §5  ROUTER
    ─────────────────────────────────────────────────────────────
-   Hash-free. State-driven. No page reload.
-   navigate(sectionKey) is the only entry point.
+   navigate() is sync: updates state + sidebar immediately, then
+   calls renderSection() which is async and awaits render().
 ════════════════════════════════════════════════════════════════ */
 
 /**
  * Navigate to a section by key.
- * Guards against unauthorized access.
  * @param {string} sectionKey
  */
 function navigate(sectionKey) {
@@ -302,39 +284,39 @@ function navigate(sectionKey) {
   }
 
   setState({ activeSection: sectionKey });
-  renderSection(sectionKey);
   updateSidebarActiveState(sectionKey);
   updateTopbarTitle(section.label);
+
+  // Fire-and-forget: renderSection is async but navigate stays sync
+  renderSection(sectionKey);
 }
 
 /**
  * Injects the section's HTML into the main content area.
- * Applies entry animation class.
+ * Supports both sync and async render functions uniformly.
  * @param {string} sectionKey
+ * @returns {Promise<void>}
  */
-function renderSection(sectionKey) {
-  const wrap = document.getElementById('js-section-wrap');
+async function renderSection(sectionKey) {
+  const wrap     = document.getElementById('js-section-wrap');
   const skeleton = document.getElementById('js-skeleton');
 
   if (!wrap) return;
 
   const section = SECTIONS[sectionKey];
 
-  // Hide skeleton
   if (skeleton) skeleton.hidden = true;
 
-  // Fade out current content
   wrap.classList.remove('db-section-wrap--visible');
 
+  // Await the render — works whether the function is sync or async
+  const html = await section.render();
+
+  wrap.innerHTML = html;
+
+  // Trigger reveal after paint
   requestAnimationFrame(() => {
-    const html = section.render();
-
-    wrap.innerHTML = html;
-
-    // Trigger reveal after paint
-    requestAnimationFrame(() => {
-      wrap.classList.add('db-section-wrap--visible');
-    });
+    wrap.classList.add('db-section-wrap--visible');
   });
 }
 
@@ -344,7 +326,7 @@ function renderSection(sectionKey) {
 ════════════════════════════════════════════════════════════════ */
 
 function hydrateTopbar() {
-  const nameEl  = document.getElementById('js-user-display-name');
+  const nameEl   = document.getElementById('js-user-display-name');
   const avatarEl = document.getElementById('js-user-avatar');
 
   if (!state.user) return;
@@ -395,24 +377,16 @@ function attachSidebarListeners() {
 ════════════════════════════════════════════════════════════════ */
 
 /**
- * @typedef {Object} Notification
- * @property {string} id
- * @property {string} message
- * @property {string} type  'info'|'success'|'warning'|'error'
- * @property {number} ts    Unix timestamp
- * @property {boolean} read
- */
-
-/**
  * Load notifications.
  * [SUPABASE] Replace with:
- *   supabase.from('notifications').select('*').eq('user_id', state.user.id).order('created_at', {ascending:false})
- * @returns {Promise<Notification[]>}
+ *   supabase.from('notifications').select('*')
+ *     .eq('user_id', state.user.id)
+ *     .order('created_at', { ascending: false })
+ * @returns {Promise<Array>}
  */
 async function fetchNotifications() {
-  // Placeholder data
   return [
-    { id: 'n1', message: 'Tu sesión del Viernes fue confirmada.', type: 'success', ts: Date.now() - 3600_000, read: false },
+    { id: 'n1', message: 'Tu sesión del Viernes fue confirmada.', type: 'success', ts: Date.now() - 3600_000,  read: false },
     { id: 'n2', message: 'Nuevo contrato disponible para firma.',  type: 'info',    ts: Date.now() - 86400_000, read: false },
   ];
 }
@@ -421,7 +395,6 @@ async function loadAndRenderNotifications() {
   const notifications = await fetchNotifications();
   setState({ notifications });
 
-  // Badge count
   const unread = notifications.filter((n) => !n.read).length;
   const badge  = document.getElementById('js-notif-count');
   if (badge) {
@@ -429,7 +402,6 @@ async function loadAndRenderNotifications() {
     badge.hidden = unread === 0;
   }
 
-  // Panel list
   const list = document.getElementById('js-notif-list');
   if (!list) return;
 
@@ -454,7 +426,7 @@ function attachNotificationListeners() {
 
   toggle?.addEventListener('click', () => {
     const open = panel?.hidden;
-    panel && (panel.hidden = !open);
+    if (panel) panel.hidden = !open;
     toggle.setAttribute('aria-expanded', String(open));
   });
 
@@ -470,7 +442,6 @@ function attachNotificationListeners() {
 ════════════════════════════════════════════════════════════════ */
 
 /**
- * Show a toast message.
  * @param {string} message
  * @param {'info'|'success'|'warning'|'error'} type
  * @param {number} duration ms
@@ -486,7 +457,6 @@ function showToast(message, type = 'info', duration = 4000) {
 
   region.appendChild(toast);
 
-  // Animate in
   requestAnimationFrame(() => toast.classList.add('db-toast--visible'));
 
   setTimeout(() => {
@@ -495,7 +465,6 @@ function showToast(message, type = 'info', duration = 4000) {
   }, duration);
 }
 
-// Expose globally for modules
 window.showToast = showToast;
 
 
@@ -514,7 +483,6 @@ function attachUserMenuListeners() {
     toggle.setAttribute('aria-expanded', String(open));
   });
 
-  // Delegate action buttons
   menu?.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
@@ -529,7 +497,6 @@ function attachUserMenuListeners() {
     toggle?.setAttribute('aria-expanded', 'false');
   });
 
-  // Close on outside click
   document.addEventListener('click', () => {
     if (menu && !menu.hidden) {
       menu.hidden = true;
@@ -539,19 +506,18 @@ function attachUserMenuListeners() {
 }
 
 function handleLogout() {
-  // [SUPABASE] supabase.auth.signOut()
-  localStorage.removeItem('hr_session');
-  window.location.href = './index.html';
+  supabase.auth.signOut().finally(() => {
+    window.location.href = './index.html';
+  });
 }
 
 
 /* ════════════════════════════════════════════════════════════════
    §11  SECTION RENDERERS
    ─────────────────────────────────────────────────────────────
-   Each returns an HTML string injected into #js-section-wrap.
-   All data fetching is async; renderers may show skeletons first
-   and patch the DOM once data resolves.
-   [SUPABASE] marks every data placeholder.
+   Sync renderers return a plain string.
+   Async renderers return a Promise<string>.
+   renderSection() handles both via await.
 ════════════════════════════════════════════════════════════════ */
 
 /* ── OVERVIEW ─────────────────────────────────────────────── */
@@ -572,7 +538,6 @@ function renderOverview() {
         <h1 class="db-section__title" id="section-overview-title">Overview</h1>
       </header>
 
-      <!-- Profile card -->
       <div class="db-grid db-grid--2col">
 
         <article class="db-card db-card--profile" aria-label="Perfil de usuario">
@@ -603,7 +568,6 @@ function renderOverview() {
           </div>
         </article>
 
-        <!-- Quick actions -->
         <article class="db-card" aria-label="Acciones rápidas">
           <header class="db-card__header">
             <span class="section-label">Acciones rápidas</span>
@@ -617,16 +581,12 @@ function renderOverview() {
 
       </div>
 
-      <!-- Stats row — [SUPABASE] fetch real aggregate counts -->
       <div class="db-stats-row" id="js-overview-stats" aria-label="Estadísticas">
         ${renderStatsSkeleton()}
       </div>
 
     </section>
   `;
-
-  // Async patch: fetch real stats after paint
-  // fetchOverviewStats().then(patchOverviewStats);
 }
 
 /** @param {string[]} roles */
@@ -634,17 +594,17 @@ function buildQuickActions(roles) {
   const actions = [];
 
   if (roles.includes('client')) {
-    actions.push({ label: 'Ver Sesiones',       section: 'client-sessions'     });
-    actions.push({ label: 'Mis Transacciones',   section: 'client-transactions' });
+    actions.push({ label: 'Ver Sesiones',      section: 'client-sessions'     });
+    actions.push({ label: 'Mis Transacciones', section: 'client-transactions' });
   }
   if (roles.includes('collaborator')) {
-    actions.push({ label: 'Ver Tareas',          section: 'collab-tasks'   });
+    actions.push({ label: 'Ver Tareas',        section: 'collab-tasks'        });
   }
   if (roles.includes('rrpp')) {
-    actions.push({ label: 'Guest List',          section: 'rrpp-guestlist' });
+    actions.push({ label: 'Guest List',        section: 'rrpp-guestlist'      });
   }
   if (roles.includes('media')) {
-    actions.push({ label: 'Gestionar Posts',     section: 'media-posts'    });
+    actions.push({ label: 'Gestionar Posts',   section: 'media-posts'         });
   }
 
   if (actions.length === 0) {
@@ -730,8 +690,45 @@ function renderClientSessions() {
 }
 
 /* ── CLIENT: TRANSACTIONS ─────────────────────────────────── */
-function renderClientTransactions() {
-  // [SUPABASE] SELECT * FROM transactions WHERE user_id = state.user.id ORDER BY date DESC
+async function renderClientTransactions() {
+  // [SUPABASE] live query
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error(error);
+    return `
+      <section class="db-section" aria-labelledby="title-txn">
+        <header class="db-section__header">
+          <p class="section-label">Cliente</p>
+          <h1 class="db-section__title" id="title-txn">Transacciones</h1>
+        </header>
+        <p class="db-empty db-empty--error">Error al cargar transacciones. Intenta de nuevo.</p>
+      </section>
+    `;
+  }
+
+  let rows = '';
+
+  if (!data || data.length === 0) {
+    rows = `
+      <tr class="db-table__empty-row">
+        <td colspan="4" class="db-empty">Sin transacciones registradas.</td>
+      </tr>
+    `;
+  } else {
+    rows = data.map((tx) => `
+      <tr>
+        <td>${escapeHTML(tx.concept ?? '—')}</td>
+        <td>$${escapeHTML(String(tx.amount ?? 0))}</td>
+        <td>${new Date(tx.created_at).toLocaleDateString()}</td>
+        <td>${escapeHTML(tx.status ?? '—')}</td>
+      </tr>
+    `).join('');
+  }
+
   return `
     <section class="db-section" aria-labelledby="title-txn">
       <header class="db-section__header">
@@ -749,9 +746,7 @@ function renderClientTransactions() {
             </tr>
           </thead>
           <tbody id="js-txn-body">
-            <tr class="db-table__empty-row">
-              <td colspan="4" class="db-empty">Sin transacciones registradas.</td>
-            </tr>
+            ${rows}
           </tbody>
         </table>
       </div>
@@ -832,9 +827,7 @@ function renderClientRewards() {
         <p class="section-label">Cliente</p>
         <h1 class="db-section__title" id="title-rewards">Rewards</h1>
       </header>
-
       <div class="db-grid db-grid--3col">
-
         <article class="db-card" aria-label="Puntuaciones">
           <header class="db-card__header">
             <span class="section-label">Puntuaciones</span>
@@ -843,7 +836,6 @@ function renderClientRewards() {
             <p class="db-empty">Sin partidas registradas.</p>
           </div>
         </article>
-
         <article class="db-card" aria-label="Cupones">
           <header class="db-card__header">
             <span class="section-label">Cupones Desbloqueados</span>
@@ -852,7 +844,6 @@ function renderClientRewards() {
             <li class="db-empty">Sin cupones.</li>
           </ul>
         </article>
-
         <article class="db-card" aria-label="Inventario de recompensas">
           <header class="db-card__header">
             <span class="section-label">Inventario</span>
@@ -861,7 +852,6 @@ function renderClientRewards() {
             <li class="db-empty">Sin recompensas.</li>
           </ul>
         </article>
-
       </div>
     </section>
   `;
@@ -885,9 +875,8 @@ function renderCollabDocs() {
 
 function renderCollabTasks() {
   // [SUPABASE] SELECT * FROM tasks WHERE assignee_id = state.user.id OR project_id IN (user's projects)
-  // Columns: todo | in_progress | review | done
   const columns = ['Todo', 'En Progreso', 'Revisión', 'Hecho'];
-  const colHTML  = columns.map((col) => `
+  const colHTML = columns.map((col) => `
     <div class="db-scrum-col" data-status="${col.toLowerCase().replace(' ', '_')}">
       <header class="db-scrum-col__header">
         <span class="db-scrum-col__title">${col}</span>
@@ -1059,33 +1048,25 @@ function escapeHTML(str) {
 /** Human-readable relative time */
 function relativeTime(ts) {
   const diff = Date.now() - ts;
-  if (diff < 60_000)     return 'ahora';
-  if (diff < 3600_000)   return `${Math.floor(diff / 60_000)} min`;
-  if (diff < 86400_000)  return `${Math.floor(diff / 3600_000)} h`;
+  if (diff < 60_000)    return 'ahora';
+  if (diff < 3600_000)  return `${Math.floor(diff / 60_000)} min`;
+  if (diff < 86400_000) return `${Math.floor(diff / 3600_000)} h`;
   return `${Math.floor(diff / 86400_000)} d`;
 }
 
 
 /* ════════════════════════════════════════════════════════════════
    §13  EVENT DELEGATION — MAIN AREA
-   ─────────────────────────────────────────────────────────────
-   All inner-section interactions bubble up here.
-   Keeps each render() function pure (returns HTML string only).
 ════════════════════════════════════════════════════════════════ */
 
 function attachMainDelegation() {
   const main = document.getElementById('js-main');
 
   main?.addEventListener('click', (e) => {
-
-    // Quick-action buttons inside Overview
     const qa = e.target.closest('.db-quick-action[data-section]');
     if (qa) {
       navigate(qa.dataset.section);
-      return;
     }
-
-    // Future: table row actions, form submits, etc.
   });
 }
 
@@ -1095,11 +1076,9 @@ function attachMainDelegation() {
 ════════════════════════════════════════════════════════════════ */
 
 async function init() {
-  // 1. Authenticate
   const session = await bootstrapSession();
 
   if (!session) {
-    // Not logged in → redirect to login
     window.location.href = './index.html';
     return;
   }
@@ -1109,24 +1088,19 @@ async function init() {
     roles: session.roles,
   });
 
-  // 2. Hydrate chrome
   hydrateTopbar();
   applyRoleGates();
 
-  // 3. Attach listeners
   attachSidebarListeners();
   attachNotificationListeners();
   attachUserMenuListeners();
   attachMainDelegation();
 
-  // 4. Load notifications
   await loadAndRenderNotifications();
 
-  // 5. Render initial section
   navigate('overview');
 }
 
-// Bootstrap on DOM ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {
@@ -1136,8 +1110,6 @@ if (document.readyState === 'loading') {
 
 /* ════════════════════════════════════════════════════════════════
    §15  PUBLIC API
-   ─────────────────────────────────────────────────────────────
-   Exposed for future module imports and debug console.
 ════════════════════════════════════════════════════════════════ */
 export {
   navigate,

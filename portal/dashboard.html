@@ -21,8 +21,8 @@
   <!-- ═══════════════════════════════════════════════════
        CUSTOM CURSOR  (inherited from global site.js)
   ═══════════════════════════════════════════════════ -->
-  <div class="cursor"       aria-hidden="true"></div>
-  <div class="cursor-ring"  aria-hidden="true"></div>
+  <div id="cursor"     class="cursor"      aria-hidden="true"></div>
+  <div id="cursorRing" class="cursor-ring" aria-hidden="true"></div>
 
   <!-- ═══════════════════════════════════════════════════
        TOPBAR
@@ -32,7 +32,7 @@
 
     <div class="db-topbar__brand">
       <a href="../index.html" class="db-topbar__logo" aria-label="Hidden Room — Home">
-        <img src="../assets/logo.svg" alt="Hidden Room" width="120" height="28" />
+        <img src="../assets/img/white_logo.webp" alt="Hidden Room" class="db-logo-img" />
       </a>
       <span class="db-topbar__divider" aria-hidden="true"></span>
       <span class="db-topbar__context">PORTAL</span>
@@ -253,7 +253,7 @@
 
       <!-- Sidebar footer: version stamp -->
       <footer class="db-sidebar__footer" aria-label="Meta del sistema">
-        <span class="db-sidebar__version" id="js-build-stamp">HR · v0.1.0</span>
+        <span class="db-sidebar__version" id="js-build-stamp">BETA - desde Mysauth OS - Sitio en construcción V. 0.2.5</span>
       </footer>
 
     </aside>
@@ -265,22 +265,6 @@
          Only one section is visible at a time.
     ──────────────────────────────────────────────── -->
     <main class="db-main" id="js-main" aria-live="polite" aria-label="Contenido del módulo activo">
-
-      <!-- ── NOTIFICATIONS PANEL (overlay, not in flow) -->
-      <aside
-        class="db-notifications"
-        id="js-notifications-panel"
-        aria-label="Notificaciones"
-        hidden
-      >
-        <header class="db-notifications__header">
-          <span class="section-label">Notificaciones</span>
-          <button class="db-icon-btn" id="js-notif-close" aria-label="Cerrar panel">✕</button>
-        </header>
-        <ul class="db-notifications__list" id="js-notif-list" role="list">
-          <!-- Injected by JS -->
-        </ul>
-      </aside>
 
       <!-- ── SECTION CONTAINER ──
            Each section panel is rendered here.
@@ -298,6 +282,25 @@
       </div>
 
     </main>
+
+    <!-- ── NOTIFICATIONS PANEL ──
+         Flex sibling of main inside .db-layout.
+         Width animates open/closed via CSS; JS toggles [hidden].
+    -->
+    <aside
+      class="db-notifications"
+      id="js-notifications-panel"
+      aria-label="Notificaciones"
+      hidden
+    >
+      <header class="db-notifications__header">
+        <span class="section-label">Notificaciones</span>
+        <button class="db-icon-btn" id="js-notif-close" aria-label="Cerrar panel">✕</button>
+      </header>
+      <ul class="db-notifications__list" id="js-notif-list" role="list">
+        <!-- Injected by JS -->
+      </ul>
+    </aside>
 
   </div><!-- /.db-layout -->
 
@@ -317,5 +320,32 @@
 
   <!-- Dashboard controller / router -->
   <script src="dashboard.js" type="module"></script>
+
+  <!--
+    Cursor hover patch — site.js binds mouseenter/mouseleave with querySelectorAll
+    which only catches elements present at load time. The dashboard is a SPA so
+    sections are replaced via innerHTML. This delegation re-implements the hover
+    effect on document so it survives every re-render.
+  -->
+  <script defer>
+    (function () {
+      const ring = document.getElementById('cursorRing');
+      if (!ring) return;
+
+      document.addEventListener('mouseenter', (e) => {
+        if (e.target.closest('a, button, [role="button"], .event-row')) {
+          ring.style.scale       = '1.5';
+          ring.style.borderColor = 'rgba(219,1,0,0.8)';
+        }
+      }, true);
+
+      document.addEventListener('mouseleave', (e) => {
+        if (e.target.closest('a, button, [role="button"], .event-row')) {
+          ring.style.scale       = '1';
+          ring.style.borderColor = 'rgba(219,1,0,0.5)';
+        }
+      }, true);
+    })();
+  </script>
 </body>
 </html>

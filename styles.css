@@ -884,6 +884,7 @@ section { position: relative; }
   padding: var(--space-sm) var(--space-lg);
   border: var(--border-faint);
   transition: var(--transition-color);
+  text-decoration: none;
 }
 .member-tag:hover {
   color: var(--magenta);
