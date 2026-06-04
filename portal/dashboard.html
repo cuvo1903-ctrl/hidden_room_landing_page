@@ -184,7 +184,7 @@
         </ul>
 
         <!-- ── ROLE: media ────────────────────────── -->
-        <ul class="db-sidebar__group" role="list" data-role-gate="media" hidden>
+        <ul class="db-sidebar__group" role="list" data-permission-gate="media.posts" hidden>
           <li class="db-sidebar__label" aria-hidden="true">Media</li>
 
           <li>
@@ -196,7 +196,7 @@
         </ul>
 
         <!-- ── ROLE: rrpp ─────────────────────────── -->
-        <ul class="db-sidebar__group" role="list" data-role-gate="rrpp" hidden>
+        <ul class="db-sidebar__group" role="list" data-role-gate="pr" hidden>
           <li class="db-sidebar__label" aria-hidden="true">Relaciones Públicas</li>
 
           <li>
@@ -245,6 +245,12 @@
             <button class="db-sidebar__item" data-section="erp-ops">
               <span class="db-icon db-icon--settings" aria-hidden="true"></span>
               <span class="db-sidebar__item-text">Operaciones</span>
+            </button>
+          </li>
+          <li>
+            <button class="db-sidebar__item" data-section="erp-permissions">
+              <span class="db-icon db-icon--users" aria-hidden="true"></span>
+              <span class="db-sidebar__item-text">Permisos</span>
             </button>
           </li>
         </ul>

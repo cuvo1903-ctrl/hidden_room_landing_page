@@ -670,6 +670,204 @@
   text-transform: uppercase;
 }
 
+.db-section--wide {
+  max-width: 1500px;
+}
+
+.db-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-lg);
+  margin-bottom: var(--space-xl);
+}
+
+.db-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.db-form__row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.db-form__actions,
+.db-task-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: center;
+}
+
+.db-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-width: 0;
+  position: relative;
+}
+
+.db-field > span,
+.db-field > label {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+  color: var(--white-faint);
+}
+
+.db-field input,
+.db-field textarea,
+.db-field select,
+.db-task-card__actions select {
+  width: 100%;
+  min-height: 38px;
+  background: var(--near-black);
+  border: var(--border-subtle);
+  color: var(--white-dim);
+  font: inherit;
+  letter-spacing: var(--tracking-normal);
+  padding: var(--space-sm) var(--space-md);
+}
+
+.db-field textarea {
+  resize: vertical;
+}
+
+.db-field input:focus,
+.db-field textarea:focus,
+.db-field select:focus,
+.db-task-card__actions select:focus {
+  outline: none;
+  border-color: var(--red-dim);
+  color: var(--white);
+}
+
+.db-btn-secondary,
+.db-btn-danger {
+  min-height: 36px;
+  border: var(--border-subtle);
+  background: transparent;
+  color: var(--white-dim);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+}
+
+.db-btn-secondary:hover {
+  color: var(--white);
+  border-color: var(--white-faint);
+}
+
+.db-btn-danger:hover {
+  color: var(--red);
+  border-color: var(--red-dim);
+  background: var(--red-ghost);
+}
+
+.db-task-card__desc {
+  color: var(--white-faint);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  margin-bottom: var(--space-sm);
+}
+
+.db-task-card__actions {
+  margin-top: var(--space-md);
+}
+
+.db-task-card__actions select {
+  max-width: 160px;
+}
+
+.db-user-picker__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: var(--z-overlay);
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--near-black);
+  border: var(--border-subtle);
+  padding: var(--space-xs);
+}
+
+.db-user-picker__menu[hidden] {
+  display: none !important;
+}
+
+.db-user-option {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: transparent;
+  border: none;
+  color: var(--white-dim);
+  text-align: left;
+  padding: var(--space-sm);
+  cursor: pointer;
+}
+
+.db-user-option:hover {
+  background: var(--white-ghost);
+  color: var(--white);
+}
+
+.db-user-option small {
+  color: var(--white-faint);
+}
+
+.db-table--permissions select,
+.db-inline-form select {
+  min-height: 36px;
+  background: var(--near-black);
+  border: var(--border-subtle);
+  color: var(--white-dim);
+  font: inherit;
+  padding: var(--space-sm);
+}
+
+.db-inline-form {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+  min-width: 220px;
+}
+
+.db-permission-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  min-width: 240px;
+}
+
+.db-permission-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  border: var(--border-subtle);
+  color: var(--white-dim);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-normal);
+  padding: 4px 8px;
+}
+
+.db-permission-chip button {
+  background: transparent;
+  border: none;
+  color: var(--red);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  padding: 0;
+}
+
 
 /* ================================================================
    13. NOTIFICATIONS PANEL
@@ -1090,6 +1288,7 @@
 
   .db-grid--2col  { grid-template-columns: 1fr; }
   .db-grid--3col  { grid-template-columns: 1fr; }
+  .db-form__row   { grid-template-columns: 1fr; }
 
   .db-card--profile .db-card__inner {
     flex-direction: column;
