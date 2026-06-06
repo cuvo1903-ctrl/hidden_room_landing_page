@@ -49,6 +49,12 @@
   display: block;
 }
 
+/* Disable public-site analog effects inside the portal only. */
+.db-body::before,
+.db-body #scanlines {
+  display: none !important;
+}
+
 /* mix-blend-mode:difference (from styles.css) makes the red dot
    invisible on dark surfaces — neutralize it inside the portal */
 .db-body .cursor {

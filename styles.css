@@ -187,6 +187,17 @@ body {
   cursor: none;
 }
 
+html.home-page-root,
+body.home-page {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body.home-page {
+  position: relative;
+}
+
 
 /* ================================================================
    3. GRAIN OVERLAY
