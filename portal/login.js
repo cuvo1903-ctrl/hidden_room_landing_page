@@ -64,8 +64,10 @@ function syncRegisterMode() {
 
   const emailLabel = document.querySelector('label[for="usuario"]');
   const emailInput = document.getElementById("usuario");
+  const title = document.querySelector(".login-title");
   if (emailLabel) emailLabel.textContent = registerMode ? "Email" : "Usuario";
   if (emailInput) emailInput.placeholder = registerMode ? "correo" : "correo";
+  if (title) title.innerHTML = registerMode ? "Registrarse" : "Inicia<br>Sesion";
 
   submitButton.textContent = registerMode ? "Registrarse" : "Entrar";
   registerLink.textContent = registerMode ? "Iniciar sesion" : "Registrarse";

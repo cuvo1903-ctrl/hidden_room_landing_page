@@ -1292,13 +1292,14 @@ footer {
 
 /* — Page shell — */
 .login-page {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--space-lg);
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* Subtle red radial glow behind the card — mirrors hero-bg::before */
@@ -1516,7 +1517,13 @@ footer {
 
 /* — Responsive — */
 @media (max-width: 480px) {
+  .login-page {
+    align-items: flex-start;
+    padding: var(--space-lg) var(--space-md);
+  }
+
   .login-card {
     padding: var(--space-xl) var(--space-lg) var(--space-lg);
+    margin: 0 0 var(--space-lg);
   }
 }

@@ -1614,8 +1614,13 @@ async function renderCollabDocs() {
 
 async function renderCollabFinance() {
   await ensureUsersLoaded();
-  const filters = getFinanceFilters();
-  const { data, error } = await fetchTransactions(filters, state.user?.user_id);
+  const filters = getEventFinanceFilters();
+  const events = await ensureCollabFinanceEventsLoaded();
+  if (state.data.collabFinanceEventId && !events.some((event) => normalizeEventKey(event.event_key) === normalizeEventKey(state.data.collabFinanceEventId))) {
+    state.data.collabFinanceEventId = '';
+  }
+  const eventId = state.data.collabFinanceEventId ?? '';
+  const { data, error } = await fetchCollabFinanceTransactions(filters, eventId, events);
 
   if (error) {
     console.error('[HR] renderCollabFinance:', error);
@@ -1625,10 +1630,37 @@ async function renderCollabFinance() {
   }
 
   return sectionShell('Colaborador', 'Financiero', 'title-collab-finance', `
+    ${renderCollabFinanceEventFilter(events, eventId)}
     ${renderFinanceFilters(filters)}
-    ${renderFinanceMetrics(data ?? [])}
-    ${renderTransactionsTable(data ?? [])}
+    ${renderFinanceMetrics(data ?? [], eventFinanceAmount, { balanceFromAmountWhenNoIncomeExpense: true })}
+    ${renderEventFinanceTransactionsTable(data ?? [])}
   `);
+}
+
+async function ensureCollabFinanceEventsLoaded() {
+  if (hasEventKeyCache(state.data.collabFinanceEvents)) return state.data.collabFinanceEvents;
+
+  state.data.collabFinanceEvents = await fetchEventFinanceOptions('collab finance');
+  return state.data.collabFinanceEvents;
+}
+
+async function fetchCollabFinanceTransactions(filters, eventId, events = []) {
+  return fetchHrEventFinanceTransactions(filters, eventId, events);
+}
+
+function renderCollabFinanceEventFilter(events = [], selectedEventId = '') {
+  const keyedEvents = events.filter((event) => event.event_key);
+  return `
+    <div class="db-toolbar">
+      <label class="db-field db-field--compact">
+        <span>Eventos</span>
+        <select data-action="collab-finance-event" aria-label="Filtrar financiero por evento">
+          ${optionHTML('', keyedEvents.length ? 'Todos los eventos' : 'Sin eventos disponibles', selectedEventId)}
+          ${keyedEvents.map((event) => optionHTML(event.event_key, event.name, selectedEventId)).join('')}
+        </select>
+      </label>
+    </div>
+  `;
 }
 
 async function renderCollabTasks() {
@@ -1646,7 +1678,7 @@ async function renderCollabTasks() {
       .order('display_name', { ascending: true }),
     supabase
       .from('events')
-      .select('id, name, title, event_date, date')
+      .select('id, name, event_date, date')
       .order('event_date', { ascending: false }),
   ]);
 
@@ -1928,11 +1960,12 @@ function renderRrppBenefits() {
 /* -- ERP ---------------------------------------------------- */
 async function renderErpFinance() {
   await ensureUsersLoaded();
-  const filters = getFinanceFilters();
+  const baseFilters = getFinanceFilters();
+  const filters = baseFilters.scope === 'events' ? getEventFinanceFilters(baseFilters) : baseFilters;
   const events = await ensureFinanceEventsLoaded();
-  if (filters.scope === 'events' && !filters.eventId && events.length) {
-    filters.eventId = String(events[0].id);
-    state.data.financeEventId = filters.eventId;
+  if (filters.scope === 'events' && filters.eventId && !events.some((event) => normalizeEventKey(event.event_key) === normalizeEventKey(filters.eventId))) {
+    filters.eventId = '';
+    state.data.financeEventId = '';
   }
   const { data, error } = await fetchFinanceTransactions(filters, events);
 
@@ -1949,8 +1982,10 @@ async function renderErpFinance() {
   return sectionShell('ERP', 'Finanzas', 'title-erp-finance', `
     ${renderFinanceScopeFilters(filters, events)}
     ${renderFinanceFilters(filters)}
-    ${renderFinanceMetrics(data ?? [])}
-    ${renderTransactionsTable(data ?? [])}
+    ${renderFinanceMetrics(data ?? [], filters.scope === 'events' ? eventFinanceAmount : transactionAmount, {
+      balanceFromAmountWhenNoIncomeExpense: filters.scope === 'events',
+    })}
+    ${filters.scope === 'events' ? renderEventFinanceTransactionsTable(data ?? []) : renderTransactionsTable(data ?? [])}
   `);
 }
 
@@ -2106,6 +2141,14 @@ function getFinanceFilters() {
   };
 }
 
+function getEventFinanceFilters(filters = getFinanceFilters()) {
+  return {
+    ...filters,
+    month: state.data.financeMonth ?? '',
+    year: state.data.financeYear ?? '',
+  };
+}
+
 async function fetchTransactions(filters, userId = null) {
   let query = supabase
     .from('transactions')
@@ -2122,49 +2165,21 @@ async function fetchTransactions(filters, userId = null) {
 }
 
 async function ensureFinanceEventsLoaded() {
-  if (Array.isArray(state.data.financeEvents)) return state.data.financeEvents;
+  if (hasEventKeyCache(state.data.financeEvents)) return state.data.financeEvents;
 
-  try {
-    const { data, error } = await supabase
-      .from('events')
-      .select('id, name, title, event_date, date')
-      .order('event_date', { ascending: false });
-
-    if (error) {
-      console.info('[HR] finance events unavailable:', error.message);
-      state.data.financeEvents = [];
-      return [];
-    }
-
-    state.data.financeEvents = data ?? [];
-    return state.data.financeEvents;
-  } catch (err) {
-    console.info('[HR] finance events skipped:', err?.message ?? err);
-    state.data.financeEvents = [];
-    return [];
-  }
+  state.data.financeEvents = await fetchEventFinanceOptions('erp finance');
+  return state.data.financeEvents;
 }
 
 async function fetchFinanceTransactions(filters, events = []) {
-  const base = () => buildFinanceTransactionQuery('transactions', filters);
-
-  if (filters.scope === 'studio') return base().eq('studio', filters.studio);
-  if (!filters.eventId) return base();
-
-  const selectedEvent = events.find((event) => String(event.id) === String(filters.eventId));
-  const candidates = [
-    ['event_id', filters.eventId],
-    ['event_uuid', filters.eventId],
-    ['event', filters.eventId],
-    ['event_name', selectedEvent?.name ?? selectedEvent?.title],
-  ].filter(([, value]) => value !== null && value !== undefined && value !== '');
-
-  for (const [field, value] of candidates) {
-    const result = await base().eq(field, value);
-    if (!result.error) return result;
+  if (filters.scope === 'studio') {
+    return buildFinanceTransactionQuery('transactions', filters).eq('studio', filters.studio);
   }
 
-  return base();
+  const base = () => buildFinanceTransactionQuery('hr_transactions', filters);
+  if (!filters.eventId) return base();
+
+  return fetchHrEventFinanceTransactions(filters, filters.eventId, events);
 }
 
 function buildFinanceTransactionQuery(tableName, filters) {
@@ -2179,6 +2194,24 @@ function buildFinanceTransactionQuery(tableName, filters) {
   if (filters.type === 'egresos') query = query.in('type', ['EGRESO', 'expense', 'egresos']);
 
   return query;
+}
+
+async function fetchHrEventFinanceTransactions(filters, eventId, events = []) {
+  const eventKey = normalizeEventKey(eventId);
+  const selectedEvent = events.find((event) => normalizeEventKey(event.event_key) === eventKey);
+  const selectedEventKey = normalizeEventKey(selectedEvent?.event_key ?? eventId);
+  const result = await buildFinanceTransactionQuery('hr_transactions', filters);
+
+  if (result.error || !selectedEventKey) return result;
+
+  return {
+    ...result,
+    data: (result.data ?? []).filter((tx) => normalizeEventKey(tx.event_key) === selectedEventKey),
+  };
+}
+
+function normalizeEventKey(value) {
+  return String(value ?? '').trim().toUpperCase();
 }
 
 function applyFinanceDateRange(query, filters) {
@@ -2203,9 +2236,10 @@ function financePeriodLabel(filters) {
 }
 
 function renderFinanceScopeFilters(filters, events = []) {
+  const keyedEvents = events.filter((event) => event.event_key);
   const secondaryOptions = filters.scope === 'events'
-    ? (events.length
-      ? events.map((event) => [String(event.id), eventLabel(event)])
+    ? (keyedEvents.length
+      ? [['', 'Todos los eventos'], ...keyedEvents.map((event) => [event.event_key, event.name])]
       : [['', 'Sin eventos disponibles']])
     : FINANCE_STUDIO_SOURCES.map((item) => [item.value, item.label]);
 
@@ -2249,17 +2283,17 @@ function renderFinanceFilters(filters) {
   `;
 }
 
-function renderFinanceMetrics(transactions) {
-  const ingresos = sumTransactions(transactions, 'INGRESO');
-  const egresos = sumTransactions(transactions, 'EGRESO');
-  const balance = ingresos - egresos;
-  const max = Math.max(ingresos, egresos, 1);
-  const clients = topClients(transactions);
+function renderFinanceMetrics(transactions, amountGetter = transactionAmount, options = {}) {
+  const totals = financeTotals(transactions, amountGetter, options);
+  const { ingresos, egresos, balance, hasExplicitIncomeExpense } = totals;
+  const showIncomeExpenseAsNE = options.balanceFromAmountWhenNoIncomeExpense && !hasExplicitIncomeExpense;
+  const max = Math.max(Math.abs(ingresos), Math.abs(egresos), Math.abs(balance), 1);
+  const clients = topClients(transactions, amountGetter);
 
   return `
     <div class="db-grid db-grid--3col db-finance-summary">
-      ${renderStatCard('Total ingresos', money(ingresos))}
-      ${renderStatCard('Total egresos', money(egresos))}
+      ${renderStatCard('Total ingresos', showIncomeExpenseAsNE ? 'NE' : money(ingresos))}
+      ${renderStatCard('Total egresos', showIncomeExpenseAsNE ? 'NE' : money(egresos))}
       ${renderStatCard('Balance', money(balance))}
     </div>
     <div class="db-grid db-grid--2col db-finance-dashboard">
@@ -2267,8 +2301,8 @@ function renderFinanceMetrics(transactions) {
         <header class="db-card__header"><span class="section-label">Ingresos vs egresos</span></header>
         <div class="db-card__inner">
           <div class="db-bar-chart">
-            <div><span>Ingresos</span><i style="--bar:${Math.round((ingresos / max) * 100)}%"></i><strong>${money(ingresos)}</strong></div>
-            <div><span>Egresos</span><i style="--bar:${Math.round((egresos / max) * 100)}%"></i><strong>${money(egresos)}</strong></div>
+            <div><span>Ingresos</span><i style="--bar:${showIncomeExpenseAsNE ? 0 : Math.round((ingresos / max) * 100)}%"></i><strong>${showIncomeExpenseAsNE ? 'NE' : money(ingresos)}</strong></div>
+            <div><span>Egresos</span><i style="--bar:${showIncomeExpenseAsNE ? 0 : Math.round((egresos / max) * 100)}%"></i><strong>${showIncomeExpenseAsNE ? 'NE' : money(egresos)}</strong></div>
           </div>
         </div>
       </article>
@@ -2310,6 +2344,43 @@ function renderTransactionsTable(transactions) {
   return `
     <div class="db-table-wrap">
       <table class="db-table" aria-label="Desglose de transacciones">
+        <thead><tr>
+          ${headers.map(([field, label]) => renderSortableHeader(tableId, field, label, activeSort)).join('')}
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderEventFinanceTransactionsTable(transactions) {
+  const tableId = `event-transactions-${state.activeSection}`;
+  const activeSort = getTableSort(tableId, 'date', 'desc');
+  const sortedTransactions = sortRowsByColumn(transactions, activeSort.field, activeSort.direction);
+  const headers = [
+    ['concept', 'Concepto'],
+    ['type', 'Tipo'],
+    ['date', 'Fecha'],
+    ['via', 'Via'],
+    ['notes', 'Notas'],
+    ['M.A.I.', 'M.A.I.'],
+  ];
+  const rows = sortedTransactions.length
+    ? sortedTransactions.map((tx) => `
+      <tr>
+        <td>${escapeHTML(tx.concept ?? '-')}</td>
+        <td>${escapeHTML(tx.type ?? '-')}</td>
+        <td>${escapeHTML(formatDateOnly(tx.date))}</td>
+        <td>${escapeHTML(tx.via ?? '-')}</td>
+        <td>${escapeHTML(tx.notes ?? '-')}</td>
+        <td>${money(eventFinanceAmount(tx))}</td>
+      </tr>
+    `).join('')
+    : '<tr class="db-table__empty-row"><td colspan="6" class="db-empty">Sin transacciones en el periodo.</td></tr>';
+
+  return `
+    <div class="db-table-wrap">
+      <table class="db-table" aria-label="Desglose financiero de eventos">
         <thead><tr>
           ${headers.map(([field, label]) => renderSortableHeader(tableId, field, label, activeSort)).join('')}
         </tr></thead>
@@ -2648,19 +2719,46 @@ function normalizeTransactionType(value) {
   return raw;
 }
 
-function sumTransactions(transactions, type) {
-  return transactions
-    .filter((tx) => normalizeTransactionType(tx.type) === type)
-    .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+function transactionAmount(tx) {
+  return Number(tx?.amount || 0);
 }
 
-function topClients(transactions) {
+function eventFinanceAmount(tx) {
+  return Number(tx?.['M.A.I.'] ?? tx?.['M.A.I'] ?? tx?.MAI ?? tx?.mai ?? 0);
+}
+
+function financeTotals(transactions, amountGetter = transactionAmount, options = {}) {
+  const ingresos = sumTransactions(transactions, 'INGRESO', amountGetter);
+  const egresos = sumTransactions(transactions, 'EGRESO', amountGetter);
+  const hasExplicitIncomeExpense = transactions.some((tx) => {
+    const type = normalizeTransactionType(tx.type);
+    return type === 'INGRESO' || type === 'EGRESO';
+  });
+  const fallbackBalance = options.balanceFromAmountWhenNoIncomeExpense && !hasExplicitIncomeExpense
+    ? transactions.reduce((sum, tx) => sum + amountGetter(tx), 0)
+    : null;
+
+  return {
+    ingresos,
+    egresos,
+    hasExplicitIncomeExpense,
+    balance: fallbackBalance ?? ingresos - egresos,
+  };
+}
+
+function sumTransactions(transactions, type, amountGetter = transactionAmount) {
+  return transactions
+    .filter((tx) => normalizeTransactionType(tx.type) === type)
+    .reduce((sum, tx) => sum + amountGetter(tx), 0);
+}
+
+function topClients(transactions, amountGetter = transactionAmount) {
   const totals = new Map();
   transactions
     .filter((tx) => normalizeTransactionType(tx.type) === 'INGRESO')
     .forEach((tx) => {
       const key = tx.username || tx.user_id || 'Sin cliente';
-      totals.set(key, (totals.get(key) || 0) + Number(tx.amount || 0));
+      totals.set(key, (totals.get(key) || 0) + amountGetter(tx));
     });
 
   return [...totals.entries()]
@@ -2681,9 +2779,71 @@ function renderStatCard(label, value) {
 }
 
 function eventLabel(event) {
-  const name = event.name ?? event.title ?? `Evento ${event.id}`;
+  const name = event.name ?? `Evento ${event.id}`;
   const date = event.event_date ?? event.date;
   return date ? `${name} · ${formatDateOnly(date)}` : name;
+}
+
+async function fetchEventFinanceOptions(context = 'finance') {
+  let eventRows = [];
+
+  try {
+    const { data, error } = await supabase
+      .from('events')
+      .select('name, event_key')
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.info(`[HR] ${context} events unavailable:`, error.message);
+    } else {
+      eventRows = data ?? [];
+    }
+  } catch (err) {
+    console.info(`[HR] ${context} events skipped:`, err?.message ?? err);
+  }
+
+  const { data: transactionEvents, error: transactionEventsError } = await supabase
+    .from('hr_transactions')
+    .select('event_key')
+    .not('event_key', 'is', null)
+    .order('event_key', { ascending: true });
+
+  if (transactionEventsError) {
+    console.info(`[HR] ${context} hr transaction events unavailable:`, transactionEventsError.message);
+    return normalizeEventFinanceOptions(eventRows);
+  }
+
+  const transactionKeys = [...new Set(
+    (transactionEvents ?? [])
+      .map((row) => String(row.event_key ?? '').trim())
+      .filter(Boolean)
+  )];
+  const transactionKeySet = new Set(transactionKeys.map(normalizeEventKey));
+  const eventOptions = normalizeEventFinanceOptions(eventRows);
+  const matchedEvents = eventOptions.filter((event) => transactionKeySet.has(normalizeEventKey(event.event_key)));
+  const matchedKeySet = new Set(matchedEvents.map((event) => normalizeEventKey(event.event_key)));
+  const transactionOnlyEvents = transactionKeys
+    .filter((eventKey) => !matchedKeySet.has(normalizeEventKey(eventKey)))
+    .map((eventKey) => ({ name: eventKey, event_key: eventKey }));
+
+  return normalizeEventFinanceOptions([...matchedEvents, ...transactionOnlyEvents]);
+}
+
+function normalizeEventFinanceOptions(events = []) {
+  const seen = new Set();
+  return (events ?? [])
+    .map((event) => ({
+      name: String(event?.name ?? event?.event_key ?? '').trim(),
+      event_key: String(event?.event_key ?? '').trim(),
+    }))
+    .filter((event) => event.event_key && !seen.has(event.event_key) && seen.add(event.event_key))
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+}
+
+function hasEventKeyCache(events) {
+  return Array.isArray(events)
+    && events.length > 0
+    && events.every((event) => Object.prototype.hasOwnProperty.call(event, 'event_key'));
 }
 
 async function fetchPartnerContractsForCurrentUser() {
@@ -3560,7 +3720,7 @@ async function handleFinancePdfExport() {
   const rows = state.data.erpFinanceRows ?? [];
   const filters = state.data.erpFinanceFilters ?? getFinanceFilters();
   const scopeLabel = filters.scope === 'events'
-    ? eventLabel((state.data.financeEvents ?? []).find((event) => String(event.id) === String(filters.eventId)) ?? { id: filters.eventId })
+    ? (((state.data.financeEvents ?? []).find((event) => event.event_key === filters.eventId)?.name ?? filters.eventId) || 'Todos los eventos')
     : FINANCE_STUDIO_SOURCES.find((item) => item.value === filters.studio)?.label ?? filters.studio;
 
   if (!rows.length) {
@@ -3573,8 +3733,12 @@ async function handleFinancePdfExport() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
     const generatedAt = new Date().toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
-    const ingresos = sumTransactions(rows, 'INGRESO');
-    const egresos = sumTransactions(rows, 'EGRESO');
+    const isEventFinance = filters.scope === 'events';
+    const amountGetter = isEventFinance ? eventFinanceAmount : transactionAmount;
+    const { ingresos, egresos, balance, hasExplicitIncomeExpense } = financeTotals(rows, amountGetter, {
+      balanceFromAmountWhenNoIncomeExpense: isEventFinance,
+    });
+    const showIncomeExpenseAsNE = isEventFinance && !hasExplicitIncomeExpense;
 
     doc.setFontSize(16);
     doc.text('Hidden Room - Finanzas', 40, 40);
@@ -3582,18 +3746,30 @@ async function handleFinancePdfExport() {
     doc.text(`Generado: ${generatedAt}`, 40, 58);
     doc.text(`Origen: ${filters.scope === 'events' ? 'Eventos' : 'Estudio'} / ${scopeLabel}`, 40, 74);
     doc.text(`Periodo: ${financePeriodLabel(filters)} - Tipo: ${filters.type}`, 40, 90);
-    doc.text(`Ingresos: ${money(ingresos)}   Egresos: ${money(egresos)}   Balance: ${money(ingresos - egresos)}`, 40, 106);
+    doc.text(`Ingresos: ${showIncomeExpenseAsNE ? 'NE' : money(ingresos)}   Egresos: ${showIncomeExpenseAsNE ? 'NE' : money(egresos)}   Balance: ${money(balance)}`, 40, 106);
 
     doc.autoTable({
-      head: [['Concepto', 'Tipo', 'Monto', 'Fecha', 'Status', 'Cliente']],
-      body: rows.map((tx) => [
-        tx.concept ?? '-',
-        tx.type ?? '-',
-        money(Number(tx.amount ?? 0)),
-        formatDateOnly(tx.date),
-        tx.status ?? '-',
-        tx.username ?? tx.user_id ?? '-',
-      ]),
+      head: [isEventFinance
+        ? ['Concepto', 'Tipo', 'Monto', 'Fecha', 'Via', 'Notas', 'Cliente']
+        : ['Concepto', 'Tipo', 'Monto', 'Fecha', 'Status', 'Cliente']],
+      body: rows.map((tx) => isEventFinance
+        ? [
+          tx.concept ?? '-',
+          tx.type ?? '-',
+          money(eventFinanceAmount(tx)),
+          formatDateOnly(tx.date),
+          tx.via ?? '-',
+          tx.notes ?? '-',
+          tx.username ?? tx.user_id ?? '-',
+        ]
+        : [
+          tx.concept ?? '-',
+          tx.type ?? '-',
+          money(Number(tx.amount ?? 0)),
+          formatDateOnly(tx.date),
+          tx.status ?? '-',
+          tx.username ?? tx.user_id ?? '-',
+        ]),
       startY: 124,
       styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak' },
       headStyles: { fillColor: [32, 32, 32] },
@@ -3832,11 +4008,15 @@ function attachMainDelegation() {
         if (financeFilter.value === 'studio' && !state.data.financeStudio) {
           state.data.financeStudio = 'IXT';
         }
-        if (financeFilter.value === 'events' && !state.data.financeEventId && (state.data.financeEvents ?? []).length) {
-          state.data.financeEventId = String(state.data.financeEvents[0].id);
-        }
       }
       navigate(state.activeSection);
+      return;
+    }
+
+    const collabFinanceEvent = e.target.closest('select[data-action="collab-finance-event"]');
+    if (collabFinanceEvent) {
+      state.data.collabFinanceEventId = collabFinanceEvent.value;
+      navigate('collab-finance');
       return;
     }
 

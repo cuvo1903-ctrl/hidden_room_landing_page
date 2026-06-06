@@ -20,33 +20,8 @@ function hydrateCanonicalMeta() {
   });
 }
 
-function hydrateAdaptiveFavicon() {
-  const lightIcon = '/assets/img/black_logo.webp';
-  const darkIcon = '/assets/img/white_logo.webp';
-  const prefersLight = window.matchMedia('(prefers-color-scheme: light)');
-
-  const setIcon = () => {
-    const href = prefersLight.matches ? lightIcon : darkIcon;
-    let icon = document.querySelector('link[data-dynamic-favicon]');
-
-    if (!icon) {
-      icon = document.createElement('link');
-      icon.rel = 'icon';
-      icon.type = 'image/webp';
-      icon.dataset.dynamicFavicon = 'true';
-      document.head.appendChild(icon);
-    }
-
-    icon.href = href;
-  };
-
-  setIcon();
-  prefersLight.addEventListener?.('change', setIcon);
-}
-
 cleanIndexURL();
 hydrateCanonicalMeta();
-hydrateAdaptiveFavicon();
 
 document.querySelectorAll(".site-status").forEach(el => {
   el.textContent = SITE_STATUS;
