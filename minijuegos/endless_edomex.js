@@ -35,6 +35,7 @@ const GAME_ID = 'flappy-nero';
 const SCORE_TYPE = 'record';
 const LOCAL_BEST_KEY = 'dem00nz_best';
 const LOGIN_RETURN_KEY = 'hr_return_after_login';
+const LOCAL_BEST_SYNCED_KEY = `${LOCAL_BEST_KEY}_synced`;
 
 const CONFIG = {
   // Physics
@@ -361,6 +362,7 @@ async function saveBestToSupabase(amount = GS.best) {
 
   GS.scoreRowId = data?.id ?? GS.scoreRowId;
   GS.remoteBest = Number(data?.amount ?? amount);
+  localStorage.setItem(LOCAL_BEST_SYNCED_KEY, String(GS.remoteBest));
   return true;
 }
 

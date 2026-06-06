@@ -1048,7 +1048,8 @@ footer {
 ================================================================ */
 #wrapper {
   position: relative;
-  width: 100vw;
+  width: 100%;
+  max-width: 100vw;
   height: 100dvh;
   overflow: hidden;
   background: var(--black);
@@ -1425,6 +1426,18 @@ footer {
   margin-top: calc(-1 * var(--space-xs));
 }
 .login-forgot:hover { color: var(--red); }
+
+.login-important {
+  color: var(--white-dim);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  letter-spacing: var(--tracking-normal);
+}
+
+.login-important a {
+  color: var(--red);
+  text-transform: uppercase;
+}
 
 /* — Submit button — full width variant of btn-primary — */
 .login-submit {

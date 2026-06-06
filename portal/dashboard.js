@@ -30,6 +30,23 @@ const supabase = createClient(
   "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
 );
 
+const PROFILE_UPDATE_WHATSAPP = '5210000000000';
+const SHARE_LOGIN_WHATSAPP_FALLBACK = '5210000000000';
+const LOCAL_SCORE_SYNC_KEYS = ['dem00nz_best'];
+const ERP_TYPE_OPTIONS = ['INGRESO', 'EGRESO'];
+const ERP_STATUS_OPTIONS = ['sin apartado', 'apartado', 'saldado'];
+const FINANCE_STUDIO_SOURCES = [
+  { value: 'IXT', label: 'Ixtapaluca' },
+  { value: 'VC', label: 'Venustiano Carranza' },
+  { value: '003', label: 'Los $antos' },
+];
+const SESSION_TYPE_OPTIONS = [
+  { value: 'GRABACION (1 HR) $650', label: 'GRABACION (1 HR) $650', minutes: 60, cost: 650 },
+  { value: 'SESION DE PRODUCCION BASICA 1:30 $1,700', label: 'SESION DE PRODUCCION BASICA 1:30 $1,700', minutes: 90, cost: 1700 },
+  { value: 'SESION DE PRODUCCION PREMIUM 2:30 HRS $3,700', label: 'SESION DE PRODUCCION PREMIUM 2:30 HRS $3,700', minutes: 150, cost: 3700 },
+  { value: 'MEMBRESIA 2 HRS $500', label: 'MEMBRESIA 2 HRS $500', minutes: 120, cost: 500 },
+];
+
 
 /* ================================================================
    Section 2  GLOBAL STATE
@@ -251,9 +268,14 @@ const SECTIONS = {
 
   /* -- COLLABORATOR ------------------------------------- */
   'collab-docs': {
-    label: 'Documentos',
+    label: 'Documentos/Contratos',
     roleRequired: 'collaborator',
     render: renderCollabDocs,
+  },
+  'collab-finance': {
+    label: 'Financiero',
+    roleRequired: 'collaborator',
+    render: renderCollabFinance,
   },
   'collab-tasks': {
     label: 'SCRUM / Tareas',
@@ -267,17 +289,9 @@ const SECTIONS = {
     render: renderCollabLog,
   },
 
-  /* -- MEDIA -------------------------------------------- */
-  'media-posts': {
-    label: 'Posts / Vlog',
-    roleRequired: null,
-    permissionRequired: 'media.posts',
-    render: renderMediaPosts,
-  },
-
   /* -- RRPP (pr role) ----------------------------------- */
   'rrpp-contacts': {
-    label: 'Contactos',
+    label: 'Boletos vendidos',
     roleRequired: 'pr',
     render: renderRrppContacts,
   },
@@ -340,7 +354,6 @@ const SUGGESTED_PERMISSIONS = [
   'scrum.edit',
   'erp.finance.input',
   'erp.ops.input',
-  'media.posts',
   'rrpp.manage',
 ];
 
@@ -353,6 +366,7 @@ const TABLE_EDITOR_CONFIG = {
     select: 'id, user_id, display_name, email, whatsapp, avatar_url, username, roles',
     lockedFields: ['id', 'user_id', 'roles'],
     editableFields: ['display_name', 'email', 'whatsapp', 'avatar_url', 'username'],
+    hiddenColumns: ['id'],
   },
   transactions: {
     label: 'Transacciones',
@@ -360,13 +374,15 @@ const TABLE_EDITOR_CONFIG = {
     select: 'id, user_id, type, concept, date, amount, via, username, id_trans, notes',
     lockedFields: ['id'],
     editableFields: ['user_id', 'type', 'concept', 'date', 'amount', 'via', 'username', 'id_trans', 'notes'],
+    hiddenColumns: ['id'],
   },
   sessions: {
     label: 'Sesiones',
     primaryKey: 'id',
-    select: 'id, session_date, concept, user_id, status, type, notes, username, assistance, hour, start, end, cost, promo',
+    select: 'id, session_date, concept, user_id, status, type, notes, username, hour, sc_end, cost, promo',
     lockedFields: ['id'],
-    editableFields: ['session_date', 'concept', 'user_id', 'status', 'type', 'notes', 'username', 'assistance', 'hour', 'start', 'end', 'cost', 'promo'],
+    editableFields: ['session_date', 'concept', 'user_id', 'status', 'type', 'notes', 'username', 'hour', 'sc_end', 'cost', 'promo'],
+    hiddenColumns: ['id'],
   },
   scores: {
     label: 'Scores',
@@ -374,14 +390,16 @@ const TABLE_EDITOR_CONFIG = {
     select: 'id, game_id, user_id, type, amount',
     lockedFields: ['id'],
     editableFields: ['game_id', 'user_id', 'type', 'amount'],
+    hidden: true,
   },
   downloads: {
     label: 'Descargas',
     primaryKey: null,
-    select: 'user_id, name, storage_path, notes, type',
-    lockedFields: [],
+    select: 'id, user_id, name, storage_path, notes, type',
+    lockedFields: ['id'],
     editableFields: ['user_id', 'name', 'storage_path', 'notes', 'type'],
     matchFields: ['user_id', 'name', 'storage_path'],
+    hiddenColumns: ['id'],
   },
   rewards: {
     label: 'Recompensas',
@@ -389,6 +407,7 @@ const TABLE_EDITOR_CONFIG = {
     select: 'id, user_id, concept',
     lockedFields: ['id'],
     editableFields: ['user_id', 'concept'],
+    hiddenColumns: ['id'],
   },
 };
 
@@ -435,6 +454,71 @@ function sortTableEditorRows(rows, field, direction = 'asc') {
   });
 }
 
+function getTableSort(tableId, fallbackField = '', fallbackDirection = 'asc') {
+  const sorts = state.data.tableSorts ?? {};
+  return sorts[tableId] ?? { field: fallbackField, direction: fallbackDirection };
+}
+
+function setTableSort(tableId, field) {
+  const current = getTableSort(tableId);
+  const direction = current.field === field && current.direction === 'asc' ? 'desc' : 'asc';
+  state.data.tableSorts = {
+    ...(state.data.tableSorts ?? {}),
+    [tableId]: { field, direction },
+  };
+}
+
+function sortRowsByColumn(rows, field, direction = 'asc') {
+  if (!field) return rows ?? [];
+  return sortTableEditorRows(rows ?? [], field, direction);
+}
+
+function adminTableSearchFor(tableName) {
+  return state.data.adminTableSearches?.[tableName] ?? state.data.adminTableLastSearch ?? '';
+}
+
+function setAdminTableSearch(tableName, query) {
+  state.data.adminTableLastSearch = query;
+  state.data.adminTableSearches = {
+    ...(state.data.adminTableSearches ?? {}),
+    [tableName]: query,
+  };
+}
+
+function rowMatchesSearch(row, columns, query) {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) return true;
+
+  const searchable = columns
+    .map((field) => row?.[field])
+    .filter((value) => value !== null && value !== undefined)
+    .join(' ');
+
+  return normalizeSearchText(searchable).includes(normalizedQuery);
+}
+
+function renderSortableHeader(tableId, field, label, activeSort) {
+  const isActive = activeSort?.field === field;
+  const nextDirection = isActive && activeSort.direction === 'asc' ? 'desc' : 'asc';
+  const glyph = isActive ? (activeSort.direction === 'asc' ? '↑' : '↓') : '↕';
+
+  return `
+    <th scope="col">
+      <button
+        class="db-table-sort"
+        type="button"
+        data-action="table-sort"
+        data-table-id="${escapeAttr(tableId)}"
+        data-sort-field="${escapeAttr(field)}"
+        aria-label="Ordenar ${escapeAttr(label)} ${nextDirection === 'asc' ? 'ascendente' : 'descendente'}"
+      >
+        <span>${escapeHTML(label)}</span>
+        <span aria-hidden="true">${glyph}</span>
+      </button>
+    </th>
+  `;
+}
+
 function normalizeTableSortValue(value) {
   if (value === null || value === undefined || value === '') {
     return { empty: true, type: 'string', value: '' };
@@ -454,13 +538,87 @@ function normalizeTableSortValue(value) {
   return { empty: false, type: 'string', value: raw };
 }
 
+function uniqueUsers(users) {
+  const seen = new Set();
+  return (users ?? []).filter((user) => {
+    const key = String(user?.user_id ?? user?.id ?? '').trim();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function normalizeSearchText(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
 const userLabel = (userId) => {
   const user = (state.data.users ?? []).find((u) => String(u.user_id) === String(userId));
-  if (!user) return userId ? `ID ${userId}` : 'Sin asignar';
-  return user.display_name || user.username || user.email || user.user_id;
+  if (!user) return userId ? 'Usuario seleccionado' : 'Sin asignar';
+  return user.display_name || user.username || user.email || 'Usuario sin nombre';
 };
 
 const usernameLabel = (user) => user?.username ? `@${user.username}` : '@sin_username';
+
+async function syncLocalStorageRecords() {
+  if (!state.user?.user_id) return;
+
+  for (const key of LOCAL_SCORE_SYNC_KEYS) {
+    try {
+      const raw = localStorage.getItem(key);
+      const amount = Number(raw || 0);
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+
+      const gameId = key === 'dem00nz_best' ? 'flappy-nero' : key.replace(/_best$/, '');
+
+      const { data: existing, error: fetchError } = await supabase
+        .from('scores')
+        .select('id, amount')
+        .eq('user_id', state.user.user_id)
+        .eq('game_id', gameId)
+        .eq('type', 'record')
+        .order('amount', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (fetchError) {
+        console.info('[HR] local score sync fetch skipped:', fetchError.message);
+        continue;
+      }
+
+      const remoteAmount = Number(existing?.amount || 0);
+      if (remoteAmount >= amount) {
+        localStorage.setItem(`${key}_synced`, raw);
+        continue;
+      }
+
+      const payload = {
+        user_id: state.user.user_id,
+        game_id: gameId,
+        type: 'record',
+        amount,
+      };
+
+      const { error: saveError } = existing?.id
+        ? await supabase.from('scores').update({ amount }).eq('id', existing.id)
+        : await supabase.from('scores').insert(payload);
+
+      if (saveError) {
+        console.info('[HR] local score sync save skipped:', saveError.message);
+        continue;
+      }
+
+      localStorage.setItem(`${key}_synced`, raw);
+    } catch (err) {
+      console.info('[HR] local score sync skipped:', err?.message ?? err);
+      continue;
+    }
+  }
+}
 
 
 /* ================================================================
@@ -625,7 +783,23 @@ function hydrateTopbar() {
   if (!state.user) return;
 
   if (nameEl)   nameEl.textContent  = state.user.display_name ?? state.user.email ?? '-';
-  if (avatarEl) avatarEl.textContent = (state.user.display_name ?? state.user.email ?? '?')[0].toUpperCase();
+  if (avatarEl) {
+    const avatarUrl = String(state.user.avatar_url ?? '').trim();
+    avatarEl.textContent = '';
+    avatarEl.style.backgroundImage = '';
+    avatarEl.style.backgroundSize = '';
+    avatarEl.style.backgroundPosition = '';
+
+    if (/^https?:\/\//i.test(avatarUrl)) {
+      avatarEl.style.backgroundImage = `url("${avatarUrl.replace(/"/g, '%22')}")`;
+      avatarEl.style.backgroundSize = 'cover';
+      avatarEl.style.backgroundPosition = 'center';
+      avatarEl.setAttribute('aria-label', 'Foto de perfil');
+    } else {
+      avatarEl.textContent = (state.user.display_name ?? state.user.email ?? '?')[0].toUpperCase();
+      avatarEl.removeAttribute('aria-label');
+    }
+  }
 }
 
 /** @param {string} label */
@@ -930,6 +1104,9 @@ function renderAccountSettings() {
             </label>
             <button class="btn-primary" type="submit">Guardar cuenta</button>
           </form>
+          <a class="db-profile-action db-profile-action--link" href="${escapeAttr(buildWhatsAppLink(PROFILE_UPDATE_WHATSAPP, 'Hola, quiero solicitar actualización de mis datos de perfil en Hidden Room / Mysauth.'))}" target="_blank" rel="noopener noreferrer">
+            Solicitar actualización de datos
+          </a>
         </div>
       </article>
     </div>
@@ -949,9 +1126,7 @@ function buildQuickActions(roles) {
   }
   if (roles.includes('collaborator')) {
     actions.push({ label: 'Ver Tareas',        section: 'collab-tasks'        });
-  }
-  if (hasPermission('media.posts')) {
-    actions.push({ label: 'Gestionar Posts',   section: 'media-posts'         });
+    actions.push({ label: 'Financiero',        section: 'collab-finance'      });
   }
 
   if (actions.length === 0) {
@@ -1408,18 +1583,52 @@ async function renderClientRewards() {
 
 
 /* -- COLLABORATOR ------------------------------------------- */
-function renderCollabDocs() {
-  return `
-    <section class="db-section" aria-labelledby="title-collab-docs">
-      <header class="db-section__header">
-        <p class="section-label">Colaborador</p>
-        <h1 class="db-section__title" id="title-collab-docs">Documentos</h1>
-      </header>
-      <ul class="db-card-list" id="js-collab-docs-list" role="list">
-        <li class="db-empty">Sin documentos compartidos.</li>
-      </ul>
-    </section>
-  `;
+async function renderCollabDocs() {
+  const { data, error } = await fetchPartnerContractsForCurrentUser();
+
+  if (error) {
+    console.error('[HR] renderCollabDocs:', error);
+    return sectionShell('Colaborador', 'Documentos/Contratos', 'title-collab-docs', `
+      <p class="db-empty db-empty--error">Error al cargar documentos/contratos.</p>
+    `);
+  }
+
+  const rows = (data ?? []).length
+    ? data.map((item) => {
+      const title = item.title ?? item.name ?? item.contract_name ?? `Contrato #${item.id ?? '-'}`;
+      const href = item.file_url ?? item.contract_url ?? item.storage_path ?? item.contract ?? '';
+      return `
+        <li class="db-card-list__item">
+          <span class="db-card-list__label">${escapeHTML(title)}</span>
+          <span class="db-card-list__value">${escapeHTML(item.status ?? item.type ?? 'documento')}</span>
+          ${href ? `<a class="btn-primary" href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer">Ver</a>` : '<span class="db-empty">Sin archivo adjunto.</span>'}
+        </li>
+      `;
+    }).join('')
+    : '<li class="db-empty">Sin documentos/contratos compartidos.</li>';
+
+  return sectionShell('Colaborador', 'Documentos/Contratos', 'title-collab-docs', `
+    <ul class="db-card-list" id="js-collab-docs-list" role="list">${rows}</ul>
+  `);
+}
+
+async function renderCollabFinance() {
+  await ensureUsersLoaded();
+  const filters = getFinanceFilters();
+  const { data, error } = await fetchTransactions(filters, state.user?.user_id);
+
+  if (error) {
+    console.error('[HR] renderCollabFinance:', error);
+    return sectionShell('Colaborador', 'Financiero', 'title-collab-finance', `
+      <p class="db-empty db-empty--error">Error al cargar transacciones relacionadas.</p>
+    `);
+  }
+
+  return sectionShell('Colaborador', 'Financiero', 'title-collab-finance', `
+    ${renderFinanceFilters(filters)}
+    ${renderFinanceMetrics(data ?? [])}
+    ${renderTransactionsTable(data ?? [])}
+  `);
 }
 
 async function renderCollabTasks() {
@@ -1430,25 +1639,43 @@ async function renderCollabTasks() {
   }
 
   const editable = canEditScrum();
-  const [{ data: users, error: usersError }, { data: tasks, error: tasksError }] = await Promise.all([
+  const [{ data: users, error: usersError }, { data: events, error: eventsError }] = await Promise.all([
     supabase
       .from('users')
       .select('user_id, display_name, username, email')
       .order('display_name', { ascending: true }),
     supabase
-      .from('tasks')
-      .select('*')
-      .order('created_at', { ascending: false }),
+      .from('events')
+      .select('id, name, title, event_date, date')
+      .order('event_date', { ascending: false }),
   ]);
 
-  if (usersError || tasksError) {
-    console.error('[HR] renderCollabTasks:', usersError || tasksError);
+  if (usersError || eventsError) {
+    console.error('[HR] renderCollabTasks:', usersError || eventsError);
     return sectionShell('Colaborador', 'SCRUM / Tareas', 'title-tasks', `
       <p class="db-empty db-empty--error">Error al cargar tareas. Intenta de nuevo.</p>
     `);
   }
 
-  state.data.users = users ?? [];
+  state.data.users = uniqueUsers(users);
+  state.data.events = events ?? [];
+  if (!state.data.scrumEventId && (events ?? []).length) state.data.scrumEventId = String(events[0].id);
+
+  let taskQuery = supabase
+    .from('tasks')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (state.data.scrumEventId) taskQuery = taskQuery.eq('event_id', state.data.scrumEventId);
+
+  const { data: tasks, error: tasksError } = await taskQuery;
+  if (tasksError) {
+    console.error('[HR] renderCollabTasks:', tasksError);
+    return sectionShell('Colaborador', 'SCRUM / Tareas', 'title-tasks', `
+      <p class="db-empty db-empty--error">Error al cargar tareas para el evento seleccionado.</p>
+    `);
+  }
+
   state.data.tasks = tasks ?? [];
 
   const formHTML = editable ? renderTaskForm() : `
@@ -1480,6 +1707,14 @@ async function renderCollabTasks() {
         <p class="section-label">Colaborador</p>
         <h1 class="db-section__title" id="title-tasks">SCRUM / Tareas</h1>
       </header>
+      <div class="db-toolbar">
+        <label class="db-field db-field--compact">
+          <span>Evento</span>
+          <select data-action="scrum-event-change" aria-label="Cambiar evento SCRUM">
+            ${(events ?? []).map((event) => optionHTML(String(event.id), eventLabel(event), state.data.scrumEventId ?? '')).join('')}
+          </select>
+        </label>
+      </div>
       <div class="db-admin-grid">
         <article class="db-card">
           <header class="db-card__header">
@@ -1543,6 +1778,7 @@ function renderTaskForm(task = null) {
           <input type="date" name="due_date" value="${escapeAttr(task?.due_date ?? '')}" />
         </label>
       </div>
+      <input type="hidden" name="event_id" value="${escapeAttr(task?.event_id ?? state.data.scrumEventId ?? '')}" />
       <div class="db-form__actions">
         <button class="btn-primary" type="submit">${isEdit ? 'Guardar cambios' : 'Crear tarea'}</button>
         ${isEdit ? '<button class="db-btn-secondary" type="button" data-action="task-cancel">Cancelar</button>' : ''}
@@ -1576,10 +1812,11 @@ function renderTaskCard(task, editable) {
 }
 
 function renderUserPicker(name, label, value = '') {
-  const selected = (state.data.users ?? []).find((u) => String(u.user_id) === String(value));
+  const users = uniqueUsers(state.data.users);
+  const selected = users.find((u) => String(u.user_id) === String(value));
   const displayValue = selected ? userLabel(selected.user_id) : '';
   const inputId = `user-picker-${escapeAttr(name)}-${Math.random().toString(36).slice(2, 8)}`;
-  const options = (state.data.users ?? []).map((user) => {
+  const options = users.map((user) => {
     const searchText = [
       user.display_name,
       user.email,
@@ -1588,11 +1825,13 @@ function renderUserPicker(name, label, value = '') {
     ]
       .filter((item) => item !== null && item !== undefined)
       .join(' ')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase();
 
     return `
     <button class="db-user-option" type="button" data-user-id="${escapeHTML(String(user.user_id))}" data-search-text="${escapeAttr(searchText)}">
-      <span>${escapeHTML(user.display_name || user.email || user.user_id)}</span>
+      <span>${escapeHTML(user.display_name || user.email || 'Usuario sin nombre')}</span>
       <small>${escapeHTML(usernameLabel(user))}</small>
     </button>
   `;
@@ -1616,56 +1855,45 @@ function renderErpUserPicker(name, label) {
   return renderUserPicker(name, label, '');
 }
 
+function renderUserAutofillFields() {
+  return `
+    <div class="db-form__row">
+      <label class="db-field"><span>User ID</span><input data-user-autofill="user_id" readonly placeholder="Se llena al seleccionar usuario" /></label>
+      <label class="db-field"><span>Username</span><input name="username" data-user-autofill="username" readonly placeholder="Se llena al seleccionar usuario" /></label>
+    </div>
+  `;
+}
+
+function renderHalfHourOptions(selectedValue = '') {
+  const options = ['<option value="">Seleccionar hora</option>'];
+  for (let hour = 0; hour < 24; hour += 1) {
+    ['00', '30'].forEach((minute) => {
+      const value = `${String(hour).padStart(2, '0')}:${minute}`;
+      options.push(optionHTML(value, value, selectedValue));
+    });
+  }
+  return options.join('');
+}
+
 function optionHTML(value, label, selectedValue) {
   return `<option value="${escapeHTML(value)}"${String(value) === String(selectedValue) ? ' selected' : ''}>${escapeHTML(label)}</option>`;
 }
 
 
 /* -- MEDIA -------------------------------------------------- */
-function renderMediaPosts() {
-  return `
-    <section class="db-section" aria-labelledby="title-media">
-      <header class="db-section__header">
-        <p class="section-label">Media</p>
-        <h1 class="db-section__title" id="title-media">Posts / Vlog</h1>
-        <button class="btn-primary db-section__cta" id="js-media-new">+ Nuevo Post</button>
-      </header>
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="Gestión de posts">
-          <thead>
-            <tr>
-              <th scope="col">Título</th>
-              <th scope="col">Tipo</th>
-              <th scope="col">Estado</th>
-              <th scope="col">Fecha</th>
-              <th scope="col">Acciones</th>
-            </tr>
-          </thead>
-          <tbody id="js-media-body">
-            <tr class="db-table__empty-row">
-              <td colspan="5" class="db-empty">Sin posts publicados.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-  `;
-}
-
-
 /* -- RRPP --------------------------------------------------- */
 function renderRrppContacts() {
-  return sectionShell('Embajador', 'Contactos', 'title-rrpp-contacts', `
+  return sectionShell('Embajador', 'Boletos vendidos', 'title-rrpp-contacts', `
     <div class="db-table-wrap">
-      <table class="db-table" aria-label="Directorio de contactos">
+      <table class="db-table" aria-label="Boletos vendidos">
         <thead><tr>
-          <th scope="col">Nombre</th>
+          <th scope="col">Cliente</th>
           <th scope="col">Canal</th>
           <th scope="col">Evento</th>
-          <th scope="col">Estado</th>
+          <th scope="col">Boletos</th>
         </tr></thead>
         <tbody><tr class="db-table__empty-row">
-          <td colspan="4" class="db-empty">Sin contactos registrados.</td>
+          <td colspan="4" class="db-empty">Sin boletos vendidos registrados.</td>
         </tr></tbody>
       </table>
     </div>
@@ -1700,103 +1928,395 @@ function renderRrppBenefits() {
 /* -- ERP ---------------------------------------------------- */
 async function renderErpFinance() {
   await ensureUsersLoaded();
+  const filters = getFinanceFilters();
+  const events = await ensureFinanceEventsLoaded();
+  if (filters.scope === 'events' && !filters.eventId && events.length) {
+    filters.eventId = String(events[0].id);
+    state.data.financeEventId = filters.eventId;
+  }
+  const { data, error } = await fetchFinanceTransactions(filters, events);
+
+  if (error) {
+    console.error('[HR] renderErpFinance:', error);
+    return sectionShell('ERP', 'Finanzas', 'title-erp-finance', `
+      <p class="db-empty db-empty--error">No se pudo cargar el dashboard financiero.</p>
+    `);
+  }
+
+  state.data.erpFinanceRows = data ?? [];
+  state.data.erpFinanceFilters = filters;
+
   return sectionShell('ERP', 'Finanzas', 'title-erp-finance', `
-    <div class="db-admin-grid">
-      <article class="db-card">
-        <header class="db-card__header"><span class="section-label">Transaccion</span></header>
-        <div class="db-card__inner">
-          <form class="db-form" data-form="transaction-create">
-            ${renderErpUserPicker('user_id', 'Usuario')}
-            <div class="db-form__row">
-              <label class="db-field"><span>Tipo</span><input name="type" required placeholder="income / expense" /></label>
-              <label class="db-field"><span>Monto</span><input name="amount" type="number" step="0.01" required /></label>
-            </div>
-            <label class="db-field"><span>Concepto</span><input name="concept" required /></label>
-            <div class="db-form__row">
-              <label class="db-field"><span>Fecha</span><input name="date" type="date" required /></label>
-              <label class="db-field"><span>Via</span><input name="via" placeholder="cash / transfer / card" /></label>
-            </div>
-            <label class="db-field"><span>ID transaccion</span><input name="id_trans" /></label>
-            <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
-            <button class="btn-primary" type="submit">Crear transaccion</button>
-          </form>
-        </div>
-      </article>
-      <article class="db-card">
-        <header class="db-card__header"><span class="section-label">Score</span></header>
-        <div class="db-card__inner">
-          <form class="db-form" data-form="score-create">
-            ${renderErpUserPicker('user_id', 'Usuario')}
-            <label class="db-field"><span>Juego</span><input name="game_id" required /></label>
-            <div class="db-form__row">
-              <label class="db-field"><span>Tipo</span><input name="type" required placeholder="points / reward" /></label>
-              <label class="db-field"><span>Cantidad</span><input name="amount" type="number" required /></label>
-            </div>
-            <button class="btn-primary" type="submit">Crear score</button>
-          </form>
-        </div>
-      </article>
-    </div>
+    ${renderFinanceScopeFilters(filters, events)}
+    ${renderFinanceFilters(filters)}
+    ${renderFinanceMetrics(data ?? [])}
+    ${renderTransactionsTable(data ?? [])}
   `);
 }
 
 async function renderErpOps() {
   await ensureUsersLoaded();
-  return sectionShell('ERP', 'Operaciones', 'title-erp-ops', `
-    <div class="db-admin-grid">
-      <article class="db-card">
-        <header class="db-card__header"><span class="section-label">Sesion</span></header>
-        <div class="db-card__inner">
-          <form class="db-form" data-form="session-create">
-            ${renderErpUserPicker('user_id', 'Usuario')}
-            <div class="db-form__row">
-              <label class="db-field"><span>Fecha</span><input name="session_date" type="date" required /></label>
-              <label class="db-field"><span>Hora</span><input name="hour" type="time" /></label>
-            </div>
-            <label class="db-field"><span>Concepto</span><input name="concept" required /></label>
-            <div class="db-form__row">
-              <label class="db-field"><span>Status</span><input name="status" placeholder="scheduled" /></label>
-              <label class="db-field"><span>Tipo</span><input name="type" /></label>
-            </div>
-            <div class="db-form__row">
-              <label class="db-field"><span>Inicio</span><input name="start" type="time" /></label>
-              <label class="db-field"><span>Fin</span><input name="end" type="time" /></label>
-            </div>
-            <div class="db-form__row">
-              <label class="db-field"><span>Costo</span><input name="cost" type="number" step="0.01" /></label>
-              <label class="db-field"><span>Promo</span><input name="promo" /></label>
-            </div>
-            <label class="db-field"><span>Asistencia</span><input name="assistance" /></label>
-            <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
+  const activeForm = state.data.erpOpsForm || 'transaction';
+  const opsForms = {
+    transaction: {
+      label: 'Finanzas',
+      html: renderTransactionForm('transaction-create'),
+    },
+    session: {
+      label: 'Sesion',
+      html: `
+        <form class="db-form" data-form="session-create">
+          ${renderErpUserPicker('user_id', 'Usuario')}
+          ${renderUserAutofillFields()}
+          <div class="db-form__row">
+            <label class="db-field"><span>Fecha</span><input name="session_date" type="date" required /></label>
+          </div>
+          <label class="db-field"><span>Concepto</span><input name="concept" required /></label>
+          <div class="db-form__row">
+            <label class="db-field"><span>Status</span><select name="status">${ERP_STATUS_OPTIONS.map((status) => optionHTML(status, status, 'sin apartado')).join('')}</select></label>
+            <label class="db-field"><span>Tipo</span><select name="type" data-session-type required>${SESSION_TYPE_OPTIONS.map((item) => optionHTML(item.value, item.label, '')).join('')}</select></label>
+          </div>
+          <div class="db-form__row">
+            <label class="db-field"><span>Hora de inicio</span><select name="hour" data-session-start required>${renderHalfHourOptions()}</select></label>
+            <label class="db-field"><span>Hora de final</span><input name="sc_end" data-session-end type="time" readonly /></label>
+          </div>
+          <div class="db-form__row">
+            <label class="db-field"><span>Costo</span><input name="cost" data-session-cost type="number" step="0.01" value="${SESSION_TYPE_OPTIONS[0].cost}" readonly /></label>
+            <label class="db-field"><span>Promo</span><input name="promo" /></label>
+          </div>
+          <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
+          <div class="db-form__actions">
             <button class="btn-primary" type="submit">Crear sesion</button>
-          </form>
-        </div>
-      </article>
-      <article class="db-card">
-        <header class="db-card__header"><span class="section-label">Descarga</span></header>
-        <div class="db-card__inner">
-          <form class="db-form" data-form="download-create">
-            ${renderErpUserPicker('user_id', 'Usuario')}
-            <label class="db-field"><span>Nombre</span><input name="name" required /></label>
-            <label class="db-field"><span>Ruta storage</span><input name="storage_path" required /></label>
-            <label class="db-field"><span>Tipo</span><input name="type" /></label>
-            <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
+            <button class="db-btn-secondary" type="button" data-action="operation-receipt">Compartir o descargar comprobante</button>
+          </div>
+        </form>
+      `,
+    },
+    download: {
+      label: 'Descarga',
+      html: `
+        <form class="db-form" data-form="download-create">
+          ${renderErpUserPicker('user_id', 'Usuario')}
+          ${renderUserAutofillFields()}
+          <label class="db-field"><span>Nombre</span><input name="name" required /></label>
+          <label class="db-field"><span>Ruta storage</span><input name="storage_path" required /></label>
+          <label class="db-field"><span>Tipo</span><select name="type">${ERP_TYPE_OPTIONS.map((type) => optionHTML(type, type, '')).join('')}</select></label>
+          <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
+          <div class="db-form__actions">
             <button class="btn-primary" type="submit">Crear descarga</button>
-          </form>
-        </div>
-      </article>
-      <article class="db-card">
-        <header class="db-card__header"><span class="section-label">Contrato</span></header>
-        <div class="db-card__inner">
-          <form class="db-form" data-form="contract-create">
-            ${renderErpUserPicker('user_id', 'Usuario')}
-            <label class="db-field"><span>Contrato</span><input name="contract" required placeholder="URL o ruta" /></label>
+            <button class="db-btn-secondary" type="button" data-action="operation-receipt">Compartir o descargar comprobante</button>
+          </div>
+        </form>
+      `,
+    },
+    contract: {
+      label: 'Contrato',
+      html: `
+        <form class="db-form" data-form="contract-create">
+          ${renderErpUserPicker('user_id', 'Usuario')}
+          ${renderUserAutofillFields()}
+          <label class="db-field"><span>Contrato</span><input name="contract" required placeholder="URL o ruta" /></label>
+          <div class="db-form__actions">
             <button class="btn-primary" type="submit">Crear contrato</button>
-          </form>
-        </div>
+            <button class="db-btn-secondary" type="button" data-action="operation-receipt">Compartir o descargar comprobante</button>
+          </div>
+        </form>
+      `,
+    },
+    user: {
+      label: 'Usuario',
+      html: `
+        <form class="db-form" data-form="user-create">
+          <div class="db-form__row">
+            <label class="db-field"><span>Nombre</span><input name="display_name" required /></label>
+            <label class="db-field"><span>Username</span><input name="username" /></label>
+          </div>
+          <label class="db-field"><span>Email</span><input type="email" name="email" required /></label>
+          <div class="db-form__row">
+            <label class="db-field"><span>WhatsApp</span><input name="whatsapp" /></label>
+            <label class="db-field"><span>Rol</span><select name="roles">${AVAILABLE_ROLES.map((role) => optionHTML(role, role, 'client')).join('')}</select></label>
+          </div>
+          <button class="btn-primary" type="submit">Crear usuario</button>
+          <div class="db-field__hint" data-admin-create-user-result hidden></div>
+        </form>
+      `,
+    },
+  };
+
+  const selectedForm = opsForms[activeForm] ?? opsForms.session;
+
+  return sectionShell('ERP', 'Operaciones', 'title-erp-ops', `
+    <div class="db-toolbar">
+      <label class="db-field db-field--compact">
+        <span>Formulario</span>
+        <select data-action="erp-ops-form" aria-label="Seleccionar formulario operativo">
+          ${[
+            ['transaction', 'Finanzas'],
+            ['session', 'Sesion'],
+            ['download', 'Descarga'],
+            ['contract', 'Contrato'],
+            ['user', 'Usuario'],
+          ].map(([value, label]) => optionHTML(value, label, activeForm)).join('')}
+        </select>
+      </label>
+    </div>
+    <div class="db-admin-grid db-admin-grid--single">
+      <article class="db-card">
+        <header class="db-card__header"><span class="section-label">${escapeHTML(selectedForm.label)}</span></header>
+        <div class="db-card__inner">${selectedForm.html}</div>
       </article>
     </div>
   `);
+}
+
+function renderTransactionForm(formName) {
+  const today = todayDateInputValue();
+  return `
+    <form class="db-form" data-form="${escapeAttr(formName)}">
+      ${renderErpUserPicker('user_id', 'Usuario')}
+      ${renderUserAutofillFields()}
+      <div class="db-form__row">
+        <label class="db-field"><span>Tipo</span><select name="type" required>${ERP_TYPE_OPTIONS.map((type) => optionHTML(type, type, '')).join('')}</select></label>
+        <label class="db-field"><span>Monto</span><input name="amount" type="number" step="0.01" required /></label>
+      </div>
+      <label class="db-field"><span>Concepto</span><input name="concept" required /></label>
+      <label class="db-field"><span>Fecha</span><input name="date" type="date" value="${escapeAttr(today)}" required /></label>
+      <div class="db-form__row">
+        <label class="db-field"><span>Via</span><select name="via">${['NU', 'NU CRED', 'EFECTIVO'].map((via) => optionHTML(via, via, '')).join('')}</select></label>
+        <label class="db-field"><span>ID transaccion</span><input name="id_trans" /></label>
+      </div>
+      <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
+      <div class="db-form__actions">
+        <button class="btn-primary" type="submit">Crear transaccion</button>
+        <button class="db-btn-secondary" type="button" data-action="operation-receipt">Compartir o descargar comprobante</button>
+      </div>
+    </form>
+  `;
+}
+
+function getFinanceFilters() {
+  const now = new Date();
+  return {
+    month: state.data.financeMonth ?? '',
+    year: state.data.financeYear ?? String(now.getFullYear()),
+    type: state.data.financeType ?? 'ambos',
+    scope: state.data.financeScope ?? 'studio',
+    studio: state.data.financeStudio ?? 'IXT',
+    eventId: state.data.financeEventId ?? '',
+  };
+}
+
+async function fetchTransactions(filters, userId = null) {
+  let query = supabase
+    .from('transactions')
+    .select('*')
+    .order('date', { ascending: false });
+
+  query = applyFinanceDateRange(query, filters);
+
+  if (filters.type === 'ingresos') query = query.in('type', ['INGRESO', 'income', 'ingresos']);
+  if (filters.type === 'egresos') query = query.in('type', ['EGRESO', 'expense', 'egresos']);
+  if (userId) query = query.eq('user_id', userId);
+
+  return query;
+}
+
+async function ensureFinanceEventsLoaded() {
+  if (Array.isArray(state.data.financeEvents)) return state.data.financeEvents;
+
+  try {
+    const { data, error } = await supabase
+      .from('events')
+      .select('id, name, title, event_date, date')
+      .order('event_date', { ascending: false });
+
+    if (error) {
+      console.info('[HR] finance events unavailable:', error.message);
+      state.data.financeEvents = [];
+      return [];
+    }
+
+    state.data.financeEvents = data ?? [];
+    return state.data.financeEvents;
+  } catch (err) {
+    console.info('[HR] finance events skipped:', err?.message ?? err);
+    state.data.financeEvents = [];
+    return [];
+  }
+}
+
+async function fetchFinanceTransactions(filters, events = []) {
+  const base = () => buildFinanceTransactionQuery('transactions', filters);
+
+  if (filters.scope === 'studio') return base().eq('studio', filters.studio);
+  if (!filters.eventId) return base();
+
+  const selectedEvent = events.find((event) => String(event.id) === String(filters.eventId));
+  const candidates = [
+    ['event_id', filters.eventId],
+    ['event_uuid', filters.eventId],
+    ['event', filters.eventId],
+    ['event_name', selectedEvent?.name ?? selectedEvent?.title],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== '');
+
+  for (const [field, value] of candidates) {
+    const result = await base().eq(field, value);
+    if (!result.error) return result;
+  }
+
+  return base();
+}
+
+function buildFinanceTransactionQuery(tableName, filters) {
+  let query = supabase
+    .from(tableName)
+    .select('*')
+    .order('date', { ascending: false });
+
+  query = applyFinanceDateRange(query, filters);
+
+  if (filters.type === 'ingresos') query = query.in('type', ['INGRESO', 'income', 'ingresos']);
+  if (filters.type === 'egresos') query = query.in('type', ['EGRESO', 'expense', 'egresos']);
+
+  return query;
+}
+
+function applyFinanceDateRange(query, filters) {
+  if (filters.year && filters.month) {
+    const start = `${filters.year}-${filters.month}-01`;
+    const endDate = new Date(Number(filters.year), Number(filters.month), 1);
+    const end = endDate.toISOString().slice(0, 10);
+    return query.gte('date', start).lt('date', end);
+  }
+
+  if (filters.year) {
+    return query.gte('date', `${filters.year}-01-01`).lt('date', `${Number(filters.year) + 1}-01-01`);
+  }
+
+  return query;
+}
+
+function financePeriodLabel(filters) {
+  if (filters.year && filters.month) return `${filters.month}/${filters.year}`;
+  if (filters.year) return `Todos los meses de ${filters.year}`;
+  return 'Historico completo';
+}
+
+function renderFinanceScopeFilters(filters, events = []) {
+  const secondaryOptions = filters.scope === 'events'
+    ? (events.length
+      ? events.map((event) => [String(event.id), eventLabel(event)])
+      : [['', 'Sin eventos disponibles']])
+    : FINANCE_STUDIO_SOURCES.map((item) => [item.value, item.label]);
+
+  const secondaryKey = filters.scope === 'events' ? 'financeEventId' : 'financeStudio';
+  const secondaryValue = filters.scope === 'events' ? filters.eventId : filters.studio;
+  const secondaryLabel = filters.scope === 'events' ? 'Evento' : 'Estudio';
+
+  return `
+    <div class="db-toolbar">
+      <label class="db-field db-field--compact">
+        <span>Origen</span>
+        <select data-action="finance-filter" data-filter-key="financeScope">
+          ${optionHTML('studio', 'Estudio', filters.scope)}
+          ${optionHTML('events', 'Eventos', filters.scope)}
+        </select>
+      </label>
+      <label class="db-field db-field--compact">
+        <span>${escapeHTML(secondaryLabel)}</span>
+        <select data-action="finance-filter" data-filter-key="${escapeAttr(secondaryKey)}">
+          ${secondaryOptions.map(([value, label]) => optionHTML(value, label, secondaryValue)).join('')}
+        </select>
+      </label>
+      <button class="db-btn-secondary" type="button" data-action="export-finance-pdf">Exportar PDF</button>
+    </div>
+  `;
+}
+
+function renderFinanceFilters(filters) {
+  const years = Array.from({ length: 6 }, (_, i) => String(new Date().getFullYear() - i));
+  const months = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
+  return `
+    <div class="db-toolbar">
+      <label class="db-field db-field--compact"><span>Mes</span><select data-action="finance-filter" data-filter-key="financeMonth">${optionHTML('', 'Todos los meses', filters.month)}${months.map((month) => optionHTML(month, month, filters.month)).join('')}</select></label>
+      <label class="db-field db-field--compact"><span>Año</span><select data-action="finance-filter" data-filter-key="financeYear">${optionHTML('', 'Todos los años', filters.year)}${years.map((year) => optionHTML(year, year, filters.year)).join('')}</select></label>
+      <label class="db-field db-field--compact"><span>Tipo</span><select data-action="finance-filter" data-filter-key="financeType">${[
+        ['ambos', 'Ingresos y egresos'],
+        ['ingresos', 'Ingresos'],
+        ['egresos', 'Egresos'],
+      ].map(([value, label]) => optionHTML(value, label, filters.type)).join('')}</select></label>
+    </div>
+  `;
+}
+
+function renderFinanceMetrics(transactions) {
+  const ingresos = sumTransactions(transactions, 'INGRESO');
+  const egresos = sumTransactions(transactions, 'EGRESO');
+  const balance = ingresos - egresos;
+  const max = Math.max(ingresos, egresos, 1);
+  const clients = topClients(transactions);
+
+  return `
+    <div class="db-grid db-grid--3col db-finance-summary">
+      ${renderStatCard('Total ingresos', money(ingresos))}
+      ${renderStatCard('Total egresos', money(egresos))}
+      ${renderStatCard('Balance', money(balance))}
+    </div>
+    <div class="db-grid db-grid--2col db-finance-dashboard">
+      <article class="db-card">
+        <header class="db-card__header"><span class="section-label">Ingresos vs egresos</span></header>
+        <div class="db-card__inner">
+          <div class="db-bar-chart">
+            <div><span>Ingresos</span><i style="--bar:${Math.round((ingresos / max) * 100)}%"></i><strong>${money(ingresos)}</strong></div>
+            <div><span>Egresos</span><i style="--bar:${Math.round((egresos / max) * 100)}%"></i><strong>${money(egresos)}</strong></div>
+          </div>
+        </div>
+      </article>
+      <article class="db-card">
+        <header class="db-card__header"><span class="section-label">Top clientes</span></header>
+        <ul class="db-card-list" role="list">
+          ${clients.length ? clients.map((client) => `<li class="db-card-list__item"><span class="db-card-list__label">${escapeHTML(client.label)}</span><span class="db-card-list__value">${money(client.total)}</span></li>`).join('') : '<li class="db-empty">Sin clientes en el periodo.</li>'}
+        </ul>
+      </article>
+    </div>
+  `;
+}
+
+function renderTransactionsTable(transactions) {
+  const tableId = `transactions-${state.activeSection}`;
+  const activeSort = getTableSort(tableId, 'date', 'desc');
+  const sortedTransactions = sortRowsByColumn(transactions, activeSort.field, activeSort.direction);
+  const headers = [
+    ['concept', 'Concepto'],
+    ['type', 'Tipo'],
+    ['amount', 'Monto'],
+    ['date', 'Fecha'],
+    ['status', 'Status'],
+    ['username', 'Cliente'],
+  ];
+  const rows = sortedTransactions.length
+    ? sortedTransactions.map((tx) => `
+      <tr>
+        <td>${escapeHTML(tx.concept ?? '-')}</td>
+        <td>${escapeHTML(tx.type ?? '-')}</td>
+        <td>${money(Number(tx.amount ?? 0))}</td>
+        <td>${escapeHTML(formatDateOnly(tx.date))}</td>
+        <td>${escapeHTML(tx.status ?? '-')}</td>
+        <td>${escapeHTML(tx.username ?? tx.user_id ?? '-')}</td>
+      </tr>
+    `).join('')
+    : '<tr class="db-table__empty-row"><td colspan="6" class="db-empty">Sin transacciones en el periodo.</td></tr>';
+
+  return `
+    <div class="db-table-wrap">
+      <table class="db-table" aria-label="Desglose de transacciones">
+        <thead><tr>
+          ${headers.map(([field, label]) => renderSortableHeader(tableId, field, label, activeSort)).join('')}
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 async function renderErpPermissions() {
@@ -1930,12 +2450,16 @@ async function renderAdminTableEditor() {
 
   const columns = [...config.lockedFields, ...config.editableFields]
     .filter((field, index, arr) => arr.indexOf(field) === index);
-  const sortField = columns.includes(state.data.adminTableSortField) ? state.data.adminTableSortField : '';
-  const sortDirection = state.data.adminTableSortDirection === 'desc' ? 'desc' : 'asc';
-  const sortedData = sortField ? sortTableEditorRows(data ?? [], sortField, sortDirection) : (data ?? []);
+  const visibleColumns = columns.filter((field) => !(config.hiddenColumns ?? []).includes(field));
+  const tableId = `admin-${tableName}`;
+  const activeSort = getTableSort(tableId);
+  const sortField = visibleColumns.includes(activeSort.field) ? activeSort.field : '';
+  const sortedData = sortRowsByColumn(data ?? [], sortField, activeSort.direction);
+  const searchQuery = adminTableSearchFor(tableName);
+  const visibleData = sortedData.filter((row) => rowMatchesSearch(row, columns, searchQuery));
 
-  const rows = sortedData.length
-    ? sortedData.map((row, index) => renderAdminTableEditorRow(tableName, config, row, index)).join('')
+  const rows = visibleData.length
+    ? visibleData.map((row, index) => renderAdminTableEditorRow(tableName, config, row, index)).join('')
     : `<tr class="db-table__empty-row"><td colspan="99" class="db-empty">Sin filas disponibles.</td></tr>`;
 
   return sectionShell('ERP', 'BB.DD', 'title-admin-table-editor', `
@@ -1943,35 +2467,22 @@ async function renderAdminTableEditor() {
       <label class="db-field db-field--compact">
         <span>Tabla</span>
         <select data-action="table-editor-table" aria-label="Seleccionar tabla">
-          ${Object.entries(TABLE_EDITOR_CONFIG).map(([key, item]) => optionHTML(key, item.label, tableName)).join('')}
-        </select>
-      </label>
-      <label class="db-field db-field--compact">
-        <span>Ordenar por</span>
-        <select data-action="table-editor-sort-field" aria-label="Ordenar tabla por columna">
-          <option value="">Sin ordenar</option>
-          ${columns.map((field) => optionHTML(field, field, sortField)).join('')}
-        </select>
-      </label>
-      <label class="db-field db-field--compact">
-        <span>Dirección</span>
-        <select data-action="table-editor-sort-direction" aria-label="Direccion de ordenamiento">
-          ${optionHTML('asc', 'Ascendente / A-Z / viejo-nuevo', sortDirection)}
-          ${optionHTML('desc', 'Descendente / Z-A / nuevo-viejo', sortDirection)}
+          ${Object.entries(TABLE_EDITOR_CONFIG).filter(([, item]) => !item.hidden).map(([key, item]) => optionHTML(key, item.label, tableName)).join('')}
         </select>
       </label>
       <label class="db-field db-field--compact db-field--search">
         <span>Buscar</span>
-        <input data-table-search data-table-target="js-admin-table-body" data-table-count="js-admin-table-count" placeholder="Buscar por nombre, email, user_id..." />
-        <small id="js-admin-table-count" class="db-field__hint">${(data ?? []).length} filas cargadas</small>
+        <input data-table-search data-admin-table-name="${escapeAttr(tableName)}" data-table-target="js-admin-table-body" data-table-count="js-admin-table-count" placeholder="Buscar por nombre, email, user_id..." value="${escapeAttr(searchQuery)}" />
+        <small id="js-admin-table-count" class="db-field__hint">${searchQuery ? `${visibleData.length} resultado${visibleData.length === 1 ? '' : 's'}` : `${visibleData.length} filas visibles`}</small>
       </label>
+      <button class="db-btn-secondary" type="button" data-action="export-admin-pdf" data-table-label="${escapeAttr(config.label)}">Exportar PDF</button>
     </div>
     ${tableName === 'users' ? '<p class="db-empty">El campo email se guarda a través de Auth (Edge Function). El cambio se aplica al confirmar el correo.</p>' : ''}
     <div class="db-table-wrap">
       <table class="db-table db-table--editor" aria-label="Editor de ${escapeAttr(config.label)}">
         <thead>
           <tr>
-            ${columns.map((field) => `<th scope="col">${escapeHTML(field)}</th>`).join('')}
+            ${visibleColumns.map((field) => renderSortableHeader(tableId, field, field, activeSort)).join('')}
             <th scope="col">Acciones</th>
           </tr>
         </thead>
@@ -1984,6 +2495,7 @@ async function renderAdminTableEditor() {
 function renderAdminTableEditorRow(tableName, config, row, index) {
   const columns = [...config.lockedFields, ...config.editableFields]
     .filter((field, fieldIndex, arr) => arr.indexOf(field) === fieldIndex);
+  const visibleColumns = columns.filter((field) => !(config.hiddenColumns ?? []).includes(field));
 
   const original = encodeURIComponent(JSON.stringify(row));
   const searchText = columns
@@ -1994,10 +2506,10 @@ function renderAdminTableEditorRow(tableName, config, row, index) {
 
   return `
     <tr data-search-row data-search-text="${escapeAttr(searchText)}">
-      ${columns.map((field) => {
+      ${visibleColumns.map((field) => {
         const value = row[field] ?? '';
         if (config.lockedFields.includes(field)) {
-          return `<td><code>${escapeHTML(String(value))}</code></td>`;
+          return `<td><code class="${field === 'temp_password' ? 'db-readonly-secret' : ''}">${escapeHTML(String(value))}</code></td>`;
         }
 
         return `
@@ -2017,6 +2529,8 @@ function renderAdminTableEditorRow(tableName, config, row, index) {
           <input type="hidden" name="original" value="${escapeAttr(original)}" />
           <button class="db-btn-secondary" type="submit">Guardar</button>
         </form>
+        <button class="db-btn-danger" type="button" data-action="admin-table-delete" data-table-name="${escapeAttr(tableName)}" data-row-original="${escapeAttr(original)}">Eliminar</button>
+        ${tableName === 'users' && row.temp_password ? `<button class="db-btn-secondary" type="button" data-action="share-login" data-user-row="${escapeAttr(original)}">Compartir</button>` : ''}
       </td>
     </tr>
   `;
@@ -2058,7 +2572,7 @@ async function ensureUsersLoaded() {
     return [];
   }
 
-  state.data.users = data ?? [];
+  state.data.users = uniqueUsers(data);
   return state.data.users;
 }
 
@@ -2078,6 +2592,117 @@ function withTargetUsername(payload) {
   };
 }
 
+function buildWhatsAppLink(phone, message) {
+  const cleanPhone = String(phone || '').replace(/\D/g, '');
+  return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+}
+
+function money(value) {
+  return new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
+}
+
+function todayDateInputValue() {
+  const now = new Date();
+  const offsetMs = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10);
+}
+
+function sessionTypeConfig(value) {
+  return SESSION_TYPE_OPTIONS.find((item) => item.value === value) ?? SESSION_TYPE_OPTIONS[0];
+}
+
+function addMinutesToTime(time, minutes) {
+  if (!time || !Number.isFinite(minutes)) return '';
+  const [hours, mins] = String(time).split(':').map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(mins)) return '';
+  const total = ((hours * 60 + mins + minutes) % 1440 + 1440) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function updateSessionDerivedFields(form) {
+  if (!form || form.dataset.form !== 'session-create') return;
+
+  const typeSelect = form.querySelector('[data-session-type]');
+  const startInput = form.querySelector('[data-session-start]');
+  const endInput = form.querySelector('[data-session-end]');
+  const costInput = form.querySelector('[data-session-cost]');
+  const config = sessionTypeConfig(typeSelect?.value);
+
+  if (costInput) costInput.value = config?.cost ?? '';
+  if (endInput) endInput.value = addMinutesToTime(startInput?.value, config?.minutes);
+}
+
+function formatDateOnly(value) {
+  if (!value) return '-';
+  return String(value).slice(0, 10);
+}
+
+function normalizeTransactionType(value) {
+  const raw = String(value ?? '').trim().toUpperCase();
+  if (['INCOME', 'INGRESO', 'INGRESOS'].includes(raw)) return 'INGRESO';
+  if (['EXPENSE', 'EGRESO', 'EGRESOS'].includes(raw)) return 'EGRESO';
+  return raw;
+}
+
+function sumTransactions(transactions, type) {
+  return transactions
+    .filter((tx) => normalizeTransactionType(tx.type) === type)
+    .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+}
+
+function topClients(transactions) {
+  const totals = new Map();
+  transactions
+    .filter((tx) => normalizeTransactionType(tx.type) === 'INGRESO')
+    .forEach((tx) => {
+      const key = tx.username || tx.user_id || 'Sin cliente';
+      totals.set(key, (totals.get(key) || 0) + Number(tx.amount || 0));
+    });
+
+  return [...totals.entries()]
+    .map(([label, total]) => ({ label, total }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
+}
+
+function renderStatCard(label, value) {
+  return `
+    <article class="db-card db-stat-card">
+      <div class="db-card__inner">
+        <span class="section-label">${escapeHTML(label)}</span>
+        <strong>${escapeHTML(value)}</strong>
+      </div>
+    </article>
+  `;
+}
+
+function eventLabel(event) {
+  const name = event.name ?? event.title ?? `Evento ${event.id}`;
+  const date = event.event_date ?? event.date;
+  return date ? `${name} · ${formatDateOnly(date)}` : name;
+}
+
+async function fetchPartnerContractsForCurrentUser() {
+  const userId = state.user?.user_id;
+  const first = await supabase
+    .from('partner_contracts')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (!first.error) return first;
+
+  return supabase
+    .from('partner_contracts')
+    .select('*')
+    .eq('collaborator_id', userId)
+    .order('created_at', { ascending: false });
+}
+
 async function insertRow(table, payload, successMessage) {
   const { error } = await supabase.from(table).insert(payload);
   if (error) {
@@ -2094,6 +2719,7 @@ async function handleTaskCreate(form) {
   if (!canEditScrum()) return showToast('No tienes permiso para editar SCRUM.', 'error');
   const payload = formValues(form);
   payload.created_by = state.user?.user_id ?? null;
+  if (payload.due_date) payload.due_date = formatDateOnly(payload.due_date);
 
   const ok = await insertRow('tasks', payload, 'Tarea creada.');
   if (ok) {
@@ -2106,6 +2732,7 @@ async function handleTaskUpdate(form) {
   if (!canEditScrum()) return showToast('No tienes permiso para editar SCRUM.', 'error');
   const { id, ...payload } = formValues(form);
   payload.updated_at = new Date().toISOString();
+  if (payload.due_date) payload.due_date = formatDateOnly(payload.due_date);
 
   const { error } = await supabase.from('tasks').update(payload).eq('id', id);
   if (error) {
@@ -2163,19 +2790,231 @@ async function handleErpForm(form) {
     if (values[key] != null) values[key] = Number(values[key]);
   });
 
+  ['date', 'session_date', 'due_date'].forEach((key) => {
+    if (values[key]) values[key] = formatDateOnly(values[key]);
+  });
+
+  if (values.type) values.type = normalizeTransactionType(values.type);
+  if (type === 'session-create' && !values.status) values.status = 'sin apartado';
+
+  if (type === 'user-create') {
+    const ok = await handleAdminUserCreate(values);
+    if (ok) form.reset();
+    return;
+  }
+
+  const operationPayload = { ...values };
+  if (type === 'download-create' || type === 'contract-create') {
+    delete operationPayload.username;
+  }
+
   const map = {
-    'transaction-create': ['transactions', withTargetUsername(values), 'Transaccion creada.'],
-    'score-create': ['scores', values, 'Score creado.'],
-    'session-create': ['sessions', withTargetUsername(values), 'Sesion creada.'],
-    'download-create': ['downloads', values, 'Descarga creada.'],
-    'contract-create': ['contracts', values, 'Contrato creado.'],
+    'transaction-create': ['transactions', withTargetUsername(operationPayload), 'Transaccion creada.'],
+    'session-create': ['sessions', withTargetUsername(operationPayload), 'Sesion creada.'],
+    'download-create': ['downloads', operationPayload, 'Descarga creada.'],
+    'contract-create': ['contracts', operationPayload, 'Contrato creado.'],
   };
 
   const config = map[type];
   if (!config) return;
 
   const ok = await insertRow(config[0], config[1], config[2]);
-  if (ok) form.reset();
+  if (ok) {
+    await handleOperationReceipt(form, { silent: true });
+    form.reset();
+  }
+}
+
+function operationReceiptTitle(formType) {
+  const labels = {
+    'transaction-create': 'Comprobante de transaccion',
+    'session-create': 'Comprobante de sesion',
+    'download-create': 'Comprobante de descarga',
+    'contract-create': 'Comprobante de contrato',
+  };
+  return labels[formType] ?? 'Comprobante de operacion';
+}
+
+function operationReceiptRows(form) {
+  const values = formValues(form);
+  const user = (state.data.users ?? []).find((item) => String(item.user_id) === String(values.user_id));
+  const sessionConfig = sessionTypeConfig(values.type);
+  const rows = [
+    ['Cliente', userLabel(values.user_id)],
+    ['Username', values.username || user?.username || '-'],
+    ['User ID', values.user_id || '-'],
+  ];
+
+  if (form.dataset.form === 'transaction-create') {
+    rows.push(
+      ['Fecha', values.date ? formatDateOnly(values.date) : formatDateOnly(new Date().toISOString())],
+      ['Tipo', values.type || '-'],
+      ['Concepto', values.concept || '-'],
+      ['Monto', money(values.amount || 0)],
+      ['Via', values.via || '-'],
+      ['ID transaccion', values.id_trans || '-']
+    );
+  }
+
+  if (form.dataset.form === 'session-create') {
+    const status = values.status || 'sin apartado';
+    rows.push(
+      ['Fecha', values.session_date ? formatDateOnly(values.session_date) : '-'],
+      ['Servicio', sessionConfig?.label || values.type || '-'],
+      ['Status', status],
+      ['Concepto', values.concept || '-'],
+      ['Hora de inicio', values.hour || '-'],
+      ['Hora de final', values.sc_end || '-'],
+      ['Costo', money(values.cost || sessionConfig?.cost || 0)],
+      ['Promo', values.promo || '-']
+    );
+  }
+
+  if (form.dataset.form === 'download-create') {
+    rows.push(
+      ['Nombre', values.name || '-'],
+      ['Ruta storage', values.storage_path || '-'],
+      ['Tipo', values.type || '-']
+    );
+  }
+
+  if (form.dataset.form === 'contract-create') {
+    rows.push(['Contrato', values.contract || '-']);
+  }
+
+  if (values.notes) rows.push(['Notas', values.notes]);
+  rows.push(['Terminos y condiciones', 'Al agendar aceptas que leiste los terminos y condiciones del servicio adquirido, disponibles en hiddenroom.mx/docs']);
+  return rows;
+}
+
+async function handleOperationReceipt(form, options = {}) {
+  try {
+    await ensurePdfLibraries();
+    const { jsPDF } = window.jspdf;
+    const title = operationReceiptTitle(form.dataset.form);
+    const generatedAt = new Date().toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const rows = operationReceiptRows(form);
+
+    doc.setFontSize(16);
+    doc.text(`Hidden Room - ${title}`, 40, 48);
+    doc.setFontSize(10);
+    doc.text(`Generado: ${generatedAt}`, 40, 66);
+    doc.autoTable({
+      head: [['Campo', 'Detalle']],
+      body: rows,
+      startY: 88,
+      styles: { fontSize: 9, cellPadding: 6, overflow: 'linebreak' },
+      headStyles: { fillColor: [32, 32, 32] },
+      columnStyles: { 0: { cellWidth: 150 } },
+      margin: { left: 40, right: 40 },
+    });
+
+    const fileName = `hidden-room-${title.toLowerCase().replace(/[^a-z0-9]+/gi, '-')}-${new Date().toISOString().slice(0, 10)}.pdf`;
+    const blob = doc.output('blob');
+    const file = new File([blob], fileName, { type: 'application/pdf' });
+
+    if (!options.silent && navigator.canShare?.({ files: [file] }) && navigator.share) {
+      await navigator.share({ title: `Hidden Room - ${title}`, files: [file] });
+      if (!options.silent) showToast('Comprobante compartido.', 'success');
+      return;
+    }
+
+    doc.save(fileName);
+    if (!options.silent) showToast('Comprobante PDF descargado.', 'success');
+  } catch (err) {
+    console.error('[HR] operation receipt:', err);
+    showToast('No se pudo generar el comprobante PDF.', 'error');
+  }
+}
+
+async function handleAdminUserCreate(values) {
+  if (!requireAdminMutation()) return false;
+
+  const email = values.email?.trim();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showToast('Email invalido.', 'error');
+    return false;
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke('admin-create-user', {
+      body: {
+        email,
+        profile: {
+          display_name: values.display_name ?? null,
+          username: values.username ?? null,
+          whatsapp: values.whatsapp ?? null,
+          roles: values.roles ?? 'client',
+        },
+      },
+    });
+
+    if (error) {
+      console.error('[HR] admin-create-user function:', error);
+      showToast(error.message || 'No se pudo crear el usuario.', 'error');
+      return false;
+    }
+
+    showAdminCreatedUserResult(values, data);
+    showToast('Usuario creado en Auth/public.users.', 'success');
+    state.data.users = null;
+    return true;
+  } catch (err) {
+    console.error('[HR] admin-create-user invoke:', err);
+    showToast('Error al contactar la función de creación de usuario.', 'error');
+    return false;
+  }
+}
+
+function showAdminCreatedUserResult(values, result) {
+  const holder = document.querySelector('[data-admin-create-user-result]');
+  const tempPassword = result?.temp_password;
+  if (!holder || !tempPassword) return;
+
+  const email = result?.user?.email ?? values.email ?? '';
+  holder.hidden = false;
+  holder.innerHTML = `
+    <strong>Usuario creado.</strong>
+    <span style="display:block;margin-top:6px;">Email: ${escapeHTML(email)}</span>
+    <span style="display:block;margin-top:6px;">Contraseña temporal: <code>${escapeHTML(tempPassword)}</code></span>
+    <button class="db-btn-secondary" type="button" data-action="copy-temp-password" data-temp-password="${escapeAttr(tempPassword)}">Copiar contraseña temporal</button>
+  `;
+}
+
+async function handleShareLogin(encodedRow) {
+  if (!requireAdminMutation()) return;
+
+  let user;
+  try {
+    user = JSON.parse(decodeURIComponent(encodedRow));
+  } catch (err) {
+    console.error('[HR] share login parse:', err);
+    showToast('No se pudo preparar el mensaje.', 'error');
+    return;
+  }
+
+  if (!user.email || !user.temp_password) {
+    showToast('El usuario no tiene email o contraseña temporal visible.', 'error');
+    return;
+  }
+
+  const message = [
+    'Hola, estos son tus datos de acceso a Hidden Room / Mysauth:',
+    `Correo: ${user.email}`,
+    `Contraseña temporal: ${user.temp_password}`,
+    'Al iniciar sesión se te pedirá actualizarla.',
+  ].join('\n');
+
+  try {
+    await navigator.clipboard?.writeText(message);
+  } catch (err) {
+    console.info('[HR] clipboard unavailable:', err);
+  }
+
+  const phone = user.whatsapp || SHARE_LOGIN_WHATSAPP_FALLBACK;
+  window.open(buildWhatsAppLink(phone, message), '_blank', 'noopener,noreferrer');
+  showToast('Mensaje de login preparado.', 'success');
 }
 
 async function handleAccountUpdate(form) {
@@ -2579,16 +3418,211 @@ async function handleAdminTableUpdate(form) {
   navigate('admin-table-editor');
 }
 
+async function handleAdminTableDelete(tableName, encodedRow) {
+  if (!requireAdminMutation()) return;
+
+  const config = TABLE_EDITOR_CONFIG[tableName];
+  if (!config) {
+    showToast('Tabla no permitida.', 'error');
+    return;
+  }
+
+  let original;
+  try {
+    original = JSON.parse(decodeURIComponent(encodedRow));
+  } catch (err) {
+    console.error('[HR] table editor delete parse:', err);
+    showToast('No se pudo leer la fila a eliminar.', 'error');
+    return;
+  }
+
+  const label = config.label || tableName;
+  const readable = original.display_name || original.username || original.concept || original.name || original.id || original.user_id || 'esta fila';
+  const confirmed = window.confirm(
+    `Advertencia: vas a eliminar permanentemente ${readable} de ${label}.\n\nEsta acción no se puede deshacer. ¿Confirmas la eliminación?`
+  );
+
+  if (!confirmed) return;
+
+  let query = supabase.from(tableName).delete();
+  if (config.primaryKey) {
+    query = query.eq(config.primaryKey, original[config.primaryKey]);
+  } else if (original.id) {
+    query = query.eq('id', original.id);
+  } else {
+    (config.matchFields ?? []).forEach((field) => {
+      query = query.eq(field, original[field]);
+    });
+  }
+
+  const { error } = await query;
+  if (error) {
+    console.error('[HR] table editor delete:', error);
+    showToast('No se pudo eliminar la fila. Revisa RLS/permisos.', 'error');
+    return;
+  }
+
+  showToast('Fila eliminada.', 'success');
+  navigate('admin-table-editor');
+}
+
+function loadScriptOnce(src, globalCheck) {
+  if (globalCheck()) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      existing.addEventListener('load', resolve, { once: true });
+      existing.addEventListener('error', reject, { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+async function ensurePdfLibraries() {
+  await loadScriptOnce(
+    'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+    () => Boolean(window.jspdf?.jsPDF)
+  );
+  await loadScriptOnce(
+    'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js',
+    () => Boolean(window.jspdf?.jsPDF?.API?.autoTable)
+  );
+}
+
+async function handleAdminPdfExport(tableLabel = 'Tabla administrativa') {
+  if (!requireAdminMutation()) return;
+
+  const table = document.querySelector('.db-table--editor');
+  if (!table) {
+    showToast('No hay tabla visible para exportar.', 'error');
+    return;
+  }
+
+  const headers = [...table.querySelectorAll('thead th')]
+    .map((th) => th.textContent.trim())
+    .filter((text) => text && text.toLowerCase() !== 'acciones');
+
+  const rows = [...table.querySelectorAll('tbody tr')]
+    .filter((tr) => !tr.hidden && !tr.classList.contains('db-table__empty-row'))
+    .map((tr) => [...tr.children]
+      .slice(0, headers.length)
+      .map((td) => {
+        const input = td.querySelector('input, textarea, select');
+        return input ? input.value : td.textContent.trim();
+      }));
+
+  if (!rows.length) {
+    showToast('No hay filas visibles para exportar.', 'info');
+    return;
+  }
+
+  try {
+    await ensurePdfLibraries();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    const generatedAt = new Date().toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+
+    doc.setFontSize(16);
+    doc.text('Hidden Room - Exportacion BB.DD.', 40, 40);
+    doc.setFontSize(10);
+    doc.text(`Generado: ${generatedAt}`, 40, 58);
+    doc.text(`Tabla: ${tableLabel}`, 40, 74);
+
+    doc.autoTable({
+      head: [headers],
+      body: rows,
+      startY: 92,
+      styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak' },
+      headStyles: { fillColor: [32, 32, 32] },
+      margin: { left: 40, right: 40 },
+    });
+
+    const fileName = `hidden-room-${String(tableLabel).toLowerCase().replace(/[^a-z0-9]+/gi, '-')}-${new Date().toISOString().slice(0, 10)}.pdf`;
+    doc.save(fileName);
+    showToast('PDF generado.', 'success');
+  } catch (err) {
+    console.error('[HR] PDF export:', err);
+    showToast('No se pudo generar el PDF.', 'error');
+  }
+}
+
+async function handleFinancePdfExport() {
+  if (!requireAdminMutation()) return;
+
+  const rows = state.data.erpFinanceRows ?? [];
+  const filters = state.data.erpFinanceFilters ?? getFinanceFilters();
+  const scopeLabel = filters.scope === 'events'
+    ? eventLabel((state.data.financeEvents ?? []).find((event) => String(event.id) === String(filters.eventId)) ?? { id: filters.eventId })
+    : FINANCE_STUDIO_SOURCES.find((item) => item.value === filters.studio)?.label ?? filters.studio;
+
+  if (!rows.length) {
+    showToast('No hay datos financieros para exportar.', 'info');
+    return;
+  }
+
+  try {
+    await ensurePdfLibraries();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    const generatedAt = new Date().toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+    const ingresos = sumTransactions(rows, 'INGRESO');
+    const egresos = sumTransactions(rows, 'EGRESO');
+
+    doc.setFontSize(16);
+    doc.text('Hidden Room - Finanzas', 40, 40);
+    doc.setFontSize(10);
+    doc.text(`Generado: ${generatedAt}`, 40, 58);
+    doc.text(`Origen: ${filters.scope === 'events' ? 'Eventos' : 'Estudio'} / ${scopeLabel}`, 40, 74);
+    doc.text(`Periodo: ${financePeriodLabel(filters)} - Tipo: ${filters.type}`, 40, 90);
+    doc.text(`Ingresos: ${money(ingresos)}   Egresos: ${money(egresos)}   Balance: ${money(ingresos - egresos)}`, 40, 106);
+
+    doc.autoTable({
+      head: [['Concepto', 'Tipo', 'Monto', 'Fecha', 'Status', 'Cliente']],
+      body: rows.map((tx) => [
+        tx.concept ?? '-',
+        tx.type ?? '-',
+        money(Number(tx.amount ?? 0)),
+        formatDateOnly(tx.date),
+        tx.status ?? '-',
+        tx.username ?? tx.user_id ?? '-',
+      ]),
+      startY: 124,
+      styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak' },
+      headStyles: { fillColor: [32, 32, 32] },
+      margin: { left: 40, right: 40 },
+    });
+
+    const fileName = `hidden-room-finanzas-${new Date().toISOString().slice(0, 10)}.pdf`;
+    doc.save(fileName);
+    showToast('PDF financiero generado.', 'success');
+  } catch (err) {
+    console.error('[HR] finance PDF export:', err);
+    showToast('No se pudo exportar Finanzas a PDF.', 'error');
+  }
+}
+
 function filterTableRows(input) {
   const targetId = input.dataset.tableTarget;
   const tbody = document.getElementById(targetId);
   if (!tbody) return;
 
-  const query = input.value.trim().toLowerCase();
+  const tableName = input.dataset.adminTableName;
+  const query = input.value.trim();
+  if (tableName) setAdminTableSearch(tableName, query);
+
+  const normalizedQuery = normalizeSearchText(query);
   let visibleCount = 0;
   tbody.querySelectorAll('[data-search-row]').forEach((row) => {
-    const searchable = row.dataset.searchText || row.textContent.toLowerCase();
-    const visible = query ? searchable.includes(query) : true;
+    const searchable = normalizeSearchText(row.dataset.searchText || row.textContent);
+    const visible = normalizedQuery ? searchable.includes(normalizedQuery) : true;
     row.hidden = !visible;
     if (visible) visibleCount += 1;
   });
@@ -2630,6 +3664,41 @@ function relativeTime(ts) {
   return `${Math.floor(diff / 86400_000)} d`;
 }
 
+function syncUserAutofillFields(picker, user) {
+  const form = picker?.closest('form');
+  if (!form) return;
+
+  const userIdInput = form.querySelector('[data-user-autofill="user_id"]');
+  const usernameInput = form.querySelector('[data-user-autofill="username"]');
+
+  if (userIdInput) userIdInput.value = user?.user_id ?? '';
+  if (usernameInput) usernameInput.value = user?.username ?? '';
+}
+
+function filterUserPicker(search, { clearSelection = false } = {}) {
+  const picker = search.closest('.db-user-picker');
+  const menu = picker?.querySelector('.db-user-picker__menu');
+  const hidden = picker?.querySelector('input[type="hidden"]');
+  const query = normalizeSearchText(search.value);
+
+  if (clearSelection && hidden) hidden.value = '';
+  if (clearSelection) syncUserAutofillFields(picker, null);
+  if (!menu) return;
+
+  menu.hidden = false;
+  let visibleCount = 0;
+  menu.querySelectorAll('.db-user-option').forEach((option) => {
+    const text = normalizeSearchText(option.dataset.searchText || option.textContent);
+    const visible = query ? text.includes(query) : true;
+    option.hidden = !visible;
+    option.style.display = visible ? '' : 'none';
+    if (visible) visibleCount += 1;
+  });
+
+  const empty = menu.querySelector('[data-user-picker-empty]');
+  if (empty) empty.hidden = visibleCount > 0;
+}
+
 
 /* ================================================================
    Section 14  EVENT DELEGATION - MAIN AREA
@@ -2652,7 +3721,12 @@ function attachMainDelegation() {
       const user = (state.data.users ?? []).find((u) => String(u.user_id) === String(userOption.dataset.userId));
       if (hidden) hidden.value = userOption.dataset.userId;
       if (search) search.value = userLabel(userOption.dataset.userId);
+      syncUserAutofillFields(picker, user);
       picker?.querySelector('.db-user-picker__menu')?.setAttribute('hidden', '');
+      picker?.querySelectorAll('.db-user-option').forEach((option) => {
+        option.hidden = false;
+        option.style.display = '';
+      });
       if (user) search?.setAttribute('aria-label', usernameLabel(user));
     }
 
@@ -2683,6 +3757,46 @@ function attachMainDelegation() {
       const userUuid = btn?.dataset.userUuid;
       if (userUuid) showAdminUserEditModal(userUuid);
     }
+
+    if (action === 'share-login') {
+      const btn = e.target.closest('[data-user-row]');
+      if (btn?.dataset.userRow) handleShareLogin(btn.dataset.userRow);
+    }
+
+    if (action === 'copy-temp-password') {
+      const btn = e.target.closest('[data-temp-password]');
+      if (btn?.dataset.tempPassword) {
+        navigator.clipboard?.writeText(btn.dataset.tempPassword)
+          .then(() => showToast('Contraseña temporal copiada.', 'success'))
+          .catch(() => showToast('No se pudo copiar automáticamente.', 'error'));
+      }
+    }
+
+    if (action === 'table-sort') {
+      const btn = e.target.closest('[data-table-id][data-sort-field]');
+      if (btn) {
+        setTableSort(btn.dataset.tableId, btn.dataset.sortField);
+        navigate(state.activeSection);
+      }
+    }
+
+    if (action === 'export-admin-pdf') {
+      handleAdminPdfExport(e.target.closest('[data-table-label]')?.dataset.tableLabel);
+    }
+
+    if (action === 'export-finance-pdf') {
+      handleFinancePdfExport();
+    }
+
+    if (action === 'admin-table-delete') {
+      const btn = e.target.closest('[data-table-name][data-row-original]');
+      if (btn) handleAdminTableDelete(btn.dataset.tableName, btn.dataset.rowOriginal);
+    }
+
+    if (action === 'operation-receipt') {
+      const form = e.target.closest('form[data-form]');
+      if (form) handleOperationReceipt(form);
+    }
   });
 
   main?.addEventListener('change', (e) => {
@@ -2700,23 +3814,42 @@ function attachMainDelegation() {
     const tableSelect = e.target.closest('select[data-action="table-editor-table"]');
     if (tableSelect) {
       state.data.adminTableName = tableSelect.value;
-      state.data.adminTableSortField = '';
-      state.data.adminTableSortDirection = 'asc';
       navigate('admin-table-editor');
       return;
     }
 
-    const tableSortField = e.target.closest('select[data-action="table-editor-sort-field"]');
-    if (tableSortField) {
-      state.data.adminTableSortField = tableSortField.value;
-      navigate('admin-table-editor');
+    const scrumEvent = e.target.closest('select[data-action="scrum-event-change"]');
+    if (scrumEvent) {
+      state.data.scrumEventId = scrumEvent.value;
+      navigate('collab-tasks');
       return;
     }
 
-    const tableSortDirection = e.target.closest('select[data-action="table-editor-sort-direction"]');
-    if (tableSortDirection) {
-      state.data.adminTableSortDirection = tableSortDirection.value;
-      navigate('admin-table-editor');
+    const financeFilter = e.target.closest('select[data-action="finance-filter"]');
+    if (financeFilter) {
+      state.data[financeFilter.dataset.filterKey] = financeFilter.value;
+      if (financeFilter.dataset.filterKey === 'financeScope') {
+        if (financeFilter.value === 'studio' && !state.data.financeStudio) {
+          state.data.financeStudio = 'IXT';
+        }
+        if (financeFilter.value === 'events' && !state.data.financeEventId && (state.data.financeEvents ?? []).length) {
+          state.data.financeEventId = String(state.data.financeEvents[0].id);
+        }
+      }
+      navigate(state.activeSection);
+      return;
+    }
+
+    const opsForm = e.target.closest('select[data-action="erp-ops-form"]');
+    if (opsForm) {
+      state.data.erpOpsForm = opsForm.value;
+      navigate('erp-ops');
+      return;
+    }
+
+    const sessionField = e.target.closest('[data-session-type], [data-session-start]');
+    if (sessionField) {
+      updateSessionDerivedFields(sessionField.closest('form'));
       return;
     }
   });
@@ -2728,28 +3861,35 @@ function attachMainDelegation() {
       return;
     }
 
+    const sessionField = e.target.closest('[data-session-type], [data-session-start]');
+    if (sessionField) {
+      updateSessionDerivedFields(sessionField.closest('form'));
+      return;
+    }
+
     const search = e.target.closest('[data-user-search]');
+    if (!search) return;
+    filterUserPicker(search, { clearSelection: true });
+  });
+
+  main?.addEventListener('focusin', (e) => {
+    const search = e.target.closest?.('[data-user-search]');
     if (!search) return;
 
     const picker = search.closest('.db-user-picker');
     const menu = picker?.querySelector('.db-user-picker__menu');
-    const hidden = picker?.querySelector('input[type="hidden"]');
-    const query = search.value.trim().toLowerCase();
+    if (menu) filterUserPicker(search);
+  });
 
-    if (hidden) hidden.value = '';
-    if (!menu) return;
+  main?.addEventListener('focusout', (e) => {
+    const picker = e.target.closest?.('.db-user-picker');
+    if (!picker) return;
 
-    menu.hidden = false;
-    let visibleCount = 0;
-    menu.querySelectorAll('.db-user-option').forEach((option) => {
-      const text = option.dataset.searchText || option.textContent.toLowerCase();
-      const visible = query ? text.includes(query) : true;
-      option.hidden = !visible;
-      if (visible) visibleCount += 1;
-    });
-
-    const empty = menu.querySelector('[data-user-picker-empty]');
-    if (empty) empty.hidden = visibleCount > 0;
+    setTimeout(() => {
+      if (!picker.contains(document.activeElement)) {
+        picker.querySelector('.db-user-picker__menu')?.setAttribute('hidden', '');
+      }
+    }, 80);
   });
 
   main?.addEventListener('submit', (e) => {
@@ -2997,6 +4137,7 @@ async function init() {
 
   hydrateTopbar();
   applyRoleGates();
+  syncLocalStorageRecords();
 
   attachSidebarListeners();
   attachNotificationListeners();

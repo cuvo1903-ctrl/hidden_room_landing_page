@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="La Casa del Under">
+  <meta property="og:title" content="Hidden Room">
+  <meta property="og:description" content="La Casa del Under">
+  <meta property="og:image" content="https://hiddenroom.mx/assets/img/social-preview.webp">
+  <meta property="og:url" content="https://hiddenroom.mx/portal/recovery.html">
+  <meta property="og:type" content="website">
+  <title>Hidden Room - Recuperar contraseña</title>
+  <link rel="icon" type="image/webp" href="/assets/img/black_logo.webp" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/webp" href="/assets/img/white_logo.webp" media="(prefers-color-scheme: dark)">
+  <link rel="icon" type="image/webp" href="/assets/img/black_logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;1,300&family=Unbounded:wght@200;400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="login_style.css">
+</head>
+<body>
+
+  <div class="cursor" id="cursor"></div>
+  <div class="cursor-ring" id="cursorRing"></div>
+
+  <main class="login-page">
+    <div class="login-card">
+      <div class="login-logo">
+        <img src="../assets/img/white_logo.webp" alt="Hidden Room" class="img-logo">
+      </div>
+
+      <p class="login-eyebrow">La Casa del Under</p>
+      <h1 class="login-title">Nueva<br>Contraseña</h1>
+
+      <form class="login-form" id="recovery-form" novalidate>
+        <div class="login-field">
+          <label class="login-label" for="password">Nueva contraseña</label>
+          <input
+            class="login-input"
+            id="password"
+            type="password"
+            name="password"
+            placeholder="mínimo 8 caracteres"
+            autocomplete="new-password"
+            minlength="8"
+            required
+          >
+        </div>
+
+        <div class="login-field">
+          <label class="login-label" for="password_confirm">Confirmar contraseña</label>
+          <input
+            class="login-input"
+            id="password_confirm"
+            type="password"
+            name="password_confirm"
+            placeholder="repite la contraseña"
+            autocomplete="new-password"
+            minlength="8"
+            required
+          >
+        </div>
+
+        <p class="login-important" id="recovery-status">Valida tu enlace y escribe una nueva contraseña.</p>
+
+        <button class="login-submit" type="submit">Guardar contraseña</button>
+      </form>
+
+      <div class="login-divider">
+        <span class="login-divider-text">o</span>
+      </div>
+
+      <p class="login-register">
+        <a href="./">Volver al login</a>
+      </p>
+
+      <p class="login-version">Una Marca de Grupo Mysauth -
+        <span class="site-status"></span>
+        <span class="site-version"></span>
+      </p>
+    </div>
+  </main>
+
+  <script src="../site.js"></script>
+  <script type="module" src="recovery.js"></script>
+</body>
+</html>

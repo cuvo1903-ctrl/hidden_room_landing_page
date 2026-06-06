@@ -43,6 +43,8 @@
   /* No scroll-snap, no hero overflow tricks */
   overflow: hidden;
   height: 100dvh;
+  width: 100%;
+  max-width: 100%;
   /* Ensure the body itself doesn't fight our layout */
   display: block;
 }
@@ -63,6 +65,7 @@
   height: calc(100dvh - 56px); /* subtract topbar height */
   margin-top: 56px;             /* topbar height */
   overflow: hidden;             /* each column scrolls independently */
+  max-width: 100vw;
 }
 
 
@@ -381,6 +384,8 @@
 .db-table-wrap {
   overflow-x: auto;
   border: var(--border-subtle);
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .db-table {
@@ -397,7 +402,7 @@
 
 .db-table th {
   text-align: left;
-  padding: var(--space-md) var(--space-lg);
+  padding: 10px 12px;
   font-size: var(--text-xs);
   letter-spacing: var(--tracking-widest);
   text-transform: uppercase;
@@ -407,7 +412,7 @@
 }
 
 .db-table td {
-  padding: var(--space-md) var(--space-lg);
+  padding: 9px 12px;
   color: var(--white-dim);
   border-bottom: var(--border-subtle);
   vertical-align: middle;
@@ -425,6 +430,28 @@
 .db-table__empty-row td {
   padding: var(--space-2xl) var(--space-lg);
   text-align: center;
+}
+
+.db-table-sort {
+  width: 100%;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.db-table-sort:hover {
+  color: var(--white);
 }
 
 
@@ -463,7 +490,6 @@
 .db-badge--client      { color: var(--teal);    border-color: var(--teal-dim);    background: var(--teal-ghost); }
 .db-badge--collaborator{ color: var(--magenta); border-color: var(--magenta-dim); background: var(--magenta-ghost); }
 .db-badge--rrpp        { color: var(--green);   border-color: var(--green-dim);   background: var(--green-ghost); }
-.db-badge--media       { color: var(--white);   border-color: var(--white-faint); background: var(--white-ghost); }
 .db-badge--admin       { color: var(--red);     border-color: var(--red-dim);     background: var(--red-ghost); }
 
 /* Status badges in tables */
@@ -710,6 +736,10 @@
   margin-bottom: var(--space-xl);
 }
 
+.db-admin-grid--single {
+  grid-template-columns: minmax(280px, 680px);
+}
+
 .db-form {
   display: flex;
   flex-direction: column;
@@ -843,6 +873,10 @@
   cursor: pointer;
 }
 
+.db-user-option[hidden] {
+  display: none !important;
+}
+
 .db-user-option:hover {
   background: var(--white-ghost);
   color: var(--white);
@@ -940,6 +974,68 @@
 .db-table--editor code {
   color: var(--white-faint);
   font-size: var(--text-xs);
+}
+
+.db-table--editor {
+  table-layout: auto;
+}
+
+.db-table--editor th,
+.db-table--editor td {
+  max-width: 220px;
+}
+
+.db-table--editor .db-inline-form {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.db-readonly-secret {
+  color: var(--white-dim);
+  user-select: text;
+}
+
+.db-stat-card strong {
+  display: block;
+  margin-top: var(--space-sm);
+  color: var(--white);
+  font-family: var(--font-display);
+  font-size: clamp(20px, 2.5vw, 32px);
+  line-height: 1;
+}
+
+.db-finance-summary,
+.db-finance-dashboard {
+  margin-bottom: var(--space-lg);
+}
+
+.db-bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.db-bar-chart div {
+  display: grid;
+  grid-template-columns: 90px minmax(120px, 1fr) auto;
+  gap: var(--space-sm);
+  align-items: center;
+  color: var(--white-dim);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+}
+
+.db-bar-chart i {
+  display: block;
+  width: var(--bar);
+  min-width: 4px;
+  height: 12px;
+  background: var(--red);
+}
+
+.db-bar-chart strong {
+  color: var(--white);
+  font-weight: 400;
 }
 
 
@@ -1275,6 +1371,7 @@
   /* Layout becomes single-column; sidebar slides in as overlay */
   .db-layout {
     flex-direction: column;
+    width: 100%;
   }
 
   .db-sidebar {
@@ -1282,6 +1379,7 @@
     top: 56px;
     left: 0; bottom: 0;
     width: 260px;
+    max-width: calc(100vw - 24px);
     transform: translateX(-100%);
     z-index: calc(var(--z-nav) - 1);
     transition: transform var(--duration-base) var(--ease-standard);
@@ -1306,6 +1404,7 @@
   /* Main fills full width since sidebar is overlay */
   .db-main {
     width: 100%;
+    max-width: 100vw;
   }
 
   /* Notifications panel becomes full-width overlay on mobile */
@@ -1320,7 +1419,7 @@
   }
 
   .db-section-wrap {
-    padding: var(--space-xl) var(--space-lg);
+    padding: var(--space-lg) var(--space-md);
   }
 
   .db-grid--2col  { grid-template-columns: 1fr; }
@@ -1333,11 +1432,62 @@
   }
 
   .db-scrum-board { grid-template-columns: 1fr; }
+
+  .db-admin-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-md);
+  }
+
+  .db-card__inner,
+  .db-card-list {
+    padding: var(--space-md);
+  }
+
+  .db-toolbar {
+    gap: var(--space-sm);
+  }
+
+  .db-field--compact,
+  .db-field--search {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .db-table {
+    min-width: 640px;
+  }
+
+  .db-bar-chart div {
+    grid-template-columns: 72px minmax(80px, 1fr);
+  }
+
+  .db-bar-chart strong {
+    grid-column: 2;
+  }
 }
 
 @media (max-width: 480px) {
   .db-topbar {
-    padding: 0 var(--space-md);
+    padding: 0 var(--space-sm);
+    gap: var(--space-sm);
+  }
+
+  .db-logo-img {
+    width: 88px !important;
+    max-width: 88px !important;
+  }
+
+  .db-topbar__divider,
+  .db-topbar__context {
+    display: none;
+  }
+
+  .db-topbar__actions {
+    gap: var(--space-xs);
+  }
+
+  .db-user-chip__name {
+    display: none;
   }
 
   .db-topbar__section-title { display: none; }

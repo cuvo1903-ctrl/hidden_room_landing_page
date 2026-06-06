@@ -46,10 +46,10 @@
           <input
             class="login-input"
             id="usuario"
-            type="text"
+            type="email"
             name="usuario"
-            placeholder="usuario"
-            autocomplete="usuario"
+            placeholder="correo"
+            autocomplete="email"
             required
           >
         </div>
@@ -69,6 +69,11 @@
 
         <a href="#" class="login-forgot">ENLAZADO CON MYSAUTH OS</a>
 
+        <p class="login-important">
+          Si has USADO nuestros productos PREVIAMENTE tu registro fue generado por Kairen en automático.
+          <a id="js-password-reset" href="#">SOLICITA</a> un email con tu contraseña.
+        </p>
+
         <button class="login-submit" type="submit">Entrar</button>
 
       </form>
@@ -78,7 +83,7 @@
       </div>
 
       <p class="login-register">
-        SOLICITA TU <a href="#">REGISTRO</a>
+        <a href="#" id="js-register-link">Registrarse</a>
       </p>
 
       <p class="login-version">Una Marca de Grupo Mysauth -
