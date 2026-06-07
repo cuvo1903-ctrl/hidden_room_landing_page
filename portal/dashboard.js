@@ -409,12 +409,12 @@ const TABLE_EDITOR_CONFIG = {
     hiddenColumns: ['id'],
   },
   scores: {
-    label: 'Scores',
+    label: 'Puntuaciones',
     primaryKey: 'id',
-    select: 'id, game_id, user_id, type, amount',
-    lockedFields: ['id'],
-    editableFields: ['game_id', 'user_id', 'type', 'amount'],
-    hidden: true,
+    select: 'id, created_at, game_id, user_id, username, type, amount',
+    lockedFields: ['id', 'created_at'],
+    editableFields: ['game_id', 'user_id', 'username', 'type', 'amount'],
+    hiddenColumns: ['id'],
   },
   downloads: {
     label: 'Descargas',
