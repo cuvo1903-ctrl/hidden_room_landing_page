@@ -1600,7 +1600,7 @@ async function renderClientRewards() {
   let scoresHTML;
 
   if (!scores || scores.length === 0) {
-    scoresHTML = '<p class="db-empty">Sin partidas registradas.</p>';
+    scoresHTML = '<p class="db-empty">Ingresa <a href="../minijuegos/">MINIJUEGOS</a> para sincronizar tu puntuación.</p>';
   } else {
     scoresHTML = `
       <ul class="db-card-list" role="list">
@@ -1920,12 +1920,18 @@ function renderTaskCard(task, editable) {
   `;
 }
 
-function renderUserPicker(name, label, value = '') {
-  const users = uniqueUsers(state.data.users);
-  const selected = users.find((u) => String(u.user_id) === String(value));
-  const displayValue = selected ? userLabel(selected.user_id) : '';
+function renderUserPicker(name, label, value = '', options = {}) {
+  const valueField = options.valueField || 'user_id';
+  const users = uniqueUsers(state.data.users)
+    .filter((user) => !options.requiredField || String(user?.[options.requiredField] ?? '').trim());
+  const selected = users.find((u) => String(u?.[valueField] ?? '') === String(value));
+  const displayValue = selected
+    ? (options.displayValue?.(selected) ?? userLabel(selected.user_id))
+    : '';
   const inputId = `user-picker-${escapeAttr(name)}-${Math.random().toString(36).slice(2, 8)}`;
-  const options = users.map((user) => {
+  const optionButtons = users.map((user) => {
+    const optionValue = String(user?.[valueField] ?? '');
+    const optionDisplay = options.displayValue?.(user) ?? userLabel(user.user_id);
     const searchText = [
       user.display_name,
       user.email,
@@ -1939,9 +1945,9 @@ function renderUserPicker(name, label, value = '') {
       .toLowerCase();
 
     return `
-    <button class="db-user-option" type="button" data-user-id="${escapeHTML(String(user.user_id))}" data-search-text="${escapeAttr(searchText)}">
+    <button class="db-user-option" type="button" data-user-id="${escapeAttr(String(user.user_id ?? ''))}" data-user-value="${escapeAttr(optionValue)}" data-user-display="${escapeAttr(optionDisplay)}" data-search-text="${escapeAttr(searchText)}">
       <span>${escapeHTML(user.display_name || user.email || 'Usuario sin nombre')}</span>
-      <small>${escapeHTML(usernameLabel(user))}</small>
+      <small>${escapeHTML(options.caption?.(user) ?? `${usernameLabel(user)} · ${user.user_id ?? '-'}`)}</small>
     </button>
   `;
   }).join('');
@@ -1949,11 +1955,11 @@ function renderUserPicker(name, label, value = '') {
   return `
     <div class="db-field db-user-picker">
       <label for="${inputId}">${escapeHTML(label)}</label>
-      <input id="${inputId}" data-user-search autocomplete="off" placeholder="Buscar usuario" value="${escapeAttr(displayValue)}" />
+      <input id="${inputId}" data-user-search autocomplete="off" placeholder="${escapeAttr(options.placeholder || 'Buscar usuario')}" value="${escapeAttr(displayValue)}" />
       <input type="hidden" name="${escapeHTML(name)}" value="${escapeAttr(value)}" />
       <div class="db-user-picker__menu" hidden>
-        ${options}
-        <div class="db-user-picker__empty" data-user-picker-empty hidden>Sin usuarios encontrados.</div>
+        ${optionButtons}
+        <div class="db-user-picker__empty" data-user-picker-empty hidden>${escapeHTML(options.emptyLabel || 'Sin usuarios encontrados.')}</div>
       </div>
     </div>
   `;
@@ -2153,6 +2159,30 @@ async function renderErpOps() {
         </form>
       `,
     },
+    userMerge: {
+      label: 'Fusionar usuarios',
+      html: `
+        <form class="db-form" data-form="user-merge">
+          ${renderUserPicker('keep_user_id', 'User ID histórico a conservar', '', {
+            valueField: 'user_id',
+            placeholder: 'Buscar perfil histórico',
+            displayValue: (user) => `${user.display_name || user.username || user.email || 'Usuario'} · ${user.user_id ?? '-'}`,
+            caption: (user) => `${usernameLabel(user)} · ${user.email ?? 'sin email'}`,
+          })}
+          ${renderUserPicker('duplicate_email', 'Email del perfil duplicado', '', {
+            valueField: 'email',
+            requiredField: 'email',
+            placeholder: 'Buscar email duplicado',
+            displayValue: (user) => `${user.email ?? ''} · ${user.display_name || user.username || 'Usuario'}`,
+            caption: (user) => `${usernameLabel(user)} · ${user.email ?? 'sin email'}`,
+            emptyLabel: 'Sin emails encontrados.',
+          })}
+          <p class="db-empty">La fusión conserva operaciones, sesiones, transacciones, premios, contratos, descargas y puntuaciones del User ID histórico. Del email duplicado solo toma Auth para login.</p>
+          <button class="btn-primary" type="submit">Fusionar usuarios</button>
+          <div class="db-field__hint" data-admin-merge-user-result hidden></div>
+        </form>
+      `,
+    },
   };
 
   const selectedForm = opsForms[activeForm] ?? opsForms.session;
@@ -2168,6 +2198,7 @@ async function renderErpOps() {
             ['download', 'Descarga'],
             ['contract', 'Contrato'],
             ['user', 'Usuario'],
+            ['userMerge', 'Fusionar usuarios'],
           ].map(([value, label]) => optionHTML(value, label, activeForm)).join('')}
         </select>
       </label>
@@ -3017,6 +3048,11 @@ async function handleErpForm(form) {
   const type = form.dataset.form;
   const values = formValues(form);
 
+  if (type === 'user-merge') {
+    await handleAdminUserMerge(form, values);
+    return;
+  }
+
   if ('user_id' in values && !values.user_id) {
     showToast('Selecciona un usuario valido.', 'error');
     return;
@@ -3059,6 +3095,62 @@ async function handleErpForm(form) {
   if (ok) {
     await handleOperationReceipt(form, { silent: true });
     form.reset();
+  }
+}
+
+async function handleAdminUserMerge(form, values = formValues(form)) {
+  if (!hasRole('admin')) {
+    showToast('Acceso no autorizado.', 'error');
+    return;
+  }
+
+  const keepUserId = String(values.keep_user_id ?? '').trim();
+  const duplicateEmail = String(values.duplicate_email ?? '').trim().toLowerCase();
+  const holder = form.querySelector('[data-admin-merge-user-result]');
+
+  if (!keepUserId || !duplicateEmail) {
+    showToast('Ingresa el User ID historico y el email duplicado.', 'error');
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Advertencia: vas a conectar el Auth/email de ${duplicateEmail} al User ID historico ${keepUserId}.\n\nSe conservaran los datos operativos del User ID historico. No se importara el historial del perfil duplicado. ¿Confirmas la fusion?`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    const { data, error } = await supabase.rpc('admin_merge_public_user_profiles', {
+      p_keep_user_id: keepUserId,
+      p_duplicate_email: duplicateEmail,
+    });
+
+    if (error || data?.success === false) {
+      console.error('[HR] admin user merge:', error || data);
+      const message = error?.message || data?.error || 'No se pudo fusionar usuarios.';
+      showToast(message, 'error');
+      if (holder) {
+        holder.hidden = false;
+        holder.textContent = message;
+      }
+      return;
+    }
+
+    state.data.users = null;
+    showToast('Usuarios fusionados.', 'success');
+    if (holder) {
+      holder.hidden = false;
+      holder.textContent = `Fusion realizada. User ID conservado: ${data?.kept_user_id ?? keepUserId}. Email activo: ${data?.email ?? duplicateEmail}.`;
+    }
+    form.reset();
+  } catch (err) {
+    console.error('[HR] admin user merge invoke:', err);
+    const message = err?.message || 'Error al fusionar usuarios.';
+    showToast(message, 'error');
+    if (holder) {
+      holder.hidden = false;
+      holder.textContent = message;
+    }
   }
 }
 
@@ -4040,14 +4132,14 @@ function attachMainDelegation() {
       navigate(qa.dataset.section);
     }
 
-    const userOption = e.target.closest('.db-user-option[data-user-id]');
+    const userOption = e.target.closest('.db-user-option[data-user-value]');
     if (userOption) {
       const picker = userOption.closest('.db-user-picker');
       const hidden = picker?.querySelector('input[type="hidden"]');
       const search = picker?.querySelector('[data-user-search]');
       const user = (state.data.users ?? []).find((u) => String(u.user_id) === String(userOption.dataset.userId));
-      if (hidden) hidden.value = userOption.dataset.userId;
-      if (search) search.value = userLabel(userOption.dataset.userId);
+      if (hidden) hidden.value = userOption.dataset.userValue ?? '';
+      if (search) search.value = userOption.dataset.userDisplay || userLabel(userOption.dataset.userId);
       syncUserAutofillFields(picker, user);
       picker?.querySelector('.db-user-picker__menu')?.setAttribute('hidden', '');
       picker?.querySelectorAll('.db-user-option').forEach((option) => {
@@ -4234,6 +4326,7 @@ function attachMainDelegation() {
     if (form.dataset.form === 'account-update') handleAccountUpdate(form);
     if (form.dataset.form === 'permission-add') handlePermissionAdd(form);
     if (form.dataset.form === 'admin-table-update') handleAdminTableUpdate(form);
+    if (form.dataset.form === 'user-merge') handleErpForm(form);
     if (form.dataset.form?.endsWith('-create') && !form.dataset.form.startsWith('task-')) {
       handleErpForm(form);
     }
