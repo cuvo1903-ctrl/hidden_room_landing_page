@@ -366,6 +366,7 @@ const EVENT_PERMISSION_FLAGS = [
   ['can_view', 'Ver Evento'],
   ['can_add_finance', 'Capturar Finanzas'],
   ['can_edit_finance', 'Editar Finanzas'],
+  ['can_view_scrum', 'SCRUM View'],
   ['can_edit_scrum', 'Editar SCRUM'],
 ];
 
@@ -413,9 +414,9 @@ const TABLE_EDITOR_CONFIG = {
   hr_transactions: {
     label: 'hr_transactions',
     primaryKey: 'id',
-    select: 'id, event_id, event_key, movement_type, concept, amount, hidden_room_share, payment_method, movement_date, notes, user_id, username, created_by_user_id, type, via, date',
+    select: 'id, event_id, event_key, movement_type, concept, amount, hidden_room_share, from_counterparty_id, to_counterparty_id, owner_counterparty_id, payment_method, movement_date, notes, user_id, username, created_by_user_id, type, via, date',
     lockedFields: ['id', 'created_by_user_id'],
-    editableFields: ['event_id', 'event_key', 'movement_type', 'concept', 'amount', 'hidden_room_share', 'payment_method', 'movement_date', 'notes', 'user_id', 'username', 'type', 'via', 'date'],
+    editableFields: ['event_id', 'event_key', 'movement_type', 'concept', 'amount', 'hidden_room_share', 'from_counterparty_id', 'to_counterparty_id', 'owner_counterparty_id', 'payment_method', 'movement_date', 'notes', 'user_id', 'username', 'type', 'via', 'date'],
     hiddenColumns: ['id'],
   },
   sessions: {
@@ -1860,6 +1861,7 @@ async function renderCollabFinance() {
   const selectedEvent = events.find((event) => String(event.id ?? event.event_id) === String(eventId));
   const permissions = eventAccessFor(selectedEvent, false);
   const { data, error } = await fetchCollabFinanceTransactions(filters, eventId, events);
+  const counterparties = await fetchCounterpartiesForEvent(selectedEvent?.id ?? selectedEvent?.event_id ?? eventId);
 
   if (error) {
     console.error('[HR] renderCollabFinance:', error);
@@ -1877,7 +1879,8 @@ async function renderCollabFinance() {
     ${renderFinanceFilters(filters)}
     ${renderEventInfo(selectedEvent)}
     ${renderEventSummaryCards(eventSummaryFor(selectedEvent, data ?? []))}
-    ${permissions.can_add_finance ? renderEventMovementForm(selectedEvent, 'collab-event-movement-create') : ''}
+    ${renderEventRightsChart(selectedEvent, data ?? [])}
+    ${permissions.can_add_finance ? renderEventMovementForm(selectedEvent, 'collab-event-movement-create', counterparties) : ''}
     ${renderEventFinanceTransactionsTable(data ?? [], { canEdit: permissions.can_edit_finance })}
   `);
 }
@@ -2234,12 +2237,14 @@ async function renderErpFinance() {
 
     state.data.erpFinanceRows = data ?? [];
     state.data.erpFinanceFilters = filters;
+    await fetchAllEventCounterparties();
 
     return sectionShell('ERP', 'Finanzas', 'title-erp-finance', `
       ${renderFinanceScopeFilters(filters, events)}
       ${renderFinanceFilters(filters)}
       ${selectedEvent ? renderEventInfo(selectedEvent) : '<p class="db-empty">Sin eventos disponibles.</p>'}
       ${selectedEvent ? renderEventSummaryCards(selectedEvent) : ''}
+      ${selectedEvent ? renderEventRightsChart(selectedEvent, data ?? []) : ''}
       ${renderEventFinanceTransactionsTable(data ?? [], { canEdit: true })}
     `);
   }
@@ -2273,6 +2278,7 @@ async function renderErpFinance() {
 async function renderErpOps() {
   await ensureUsersLoaded();
   const events = await ensureFinanceEventsLoaded();
+  const counterparties = await fetchAllEventCounterparties();
   const activeForm = state.data.erpOpsForm || 'transaction';
   const opsForms = {
     transaction: {
@@ -2381,7 +2387,7 @@ async function renderErpOps() {
     },
     eventMovement: {
       label: 'Nuevo movimiento',
-      html: renderEventMovementOpsForm(events),
+      html: renderEventMovementOpsForm(events, counterparties),
     },
     userMerge: {
       label: 'Fusionar usuarios',
@@ -2656,8 +2662,74 @@ function eventAccessFor(event, adminDefault = hasRole('admin')) {
     can_view: adminDefault || Boolean(event?.can_view),
     can_add_finance: adminDefault || Boolean(event?.can_add_finance),
     can_edit_finance: adminDefault || Boolean(event?.can_edit_finance),
+    can_view_scrum: adminDefault || Boolean(event?.can_view_scrum),
     can_edit_scrum: adminDefault || Boolean(event?.can_edit_scrum),
   };
+}
+
+const counterpartyLabel = (counterparty) => {
+  if (!counterparty) return '-';
+  const type = counterparty.type ? ` · ${counterparty.type}` : '';
+  return `${counterparty.name ?? counterparty.id ?? '-'}${type}`;
+};
+
+function renderCounterpartyOptions(counterparties = [], selectedValue = '', placeholder = 'Seleccionar') {
+  return [
+    optionHTML('', placeholder, selectedValue),
+    ...counterparties.map((counterparty) => optionHTML(String(counterparty.id), counterpartyLabel(counterparty), selectedValue)),
+  ].join('');
+}
+
+function counterpartyName(counterpartyId) {
+  if (!counterpartyId) return '-';
+  const counterparty = (state.data.eventCounterpartiesAll ?? []).find((item) => String(item.id) === String(counterpartyId));
+  return counterparty?.name ?? counterpartyId;
+}
+
+function eventRightsTotals(event, transactions = []) {
+  const expenseTransactions = (transactions ?? []).filter((tx) => {
+    const amount = Number(tx.amount ?? 0);
+    return tx.movement_type === 'expense' || amount < 0;
+  });
+
+  const totalCost = expenseTransactions.length
+    ? expenseTransactions.reduce((sum, tx) => sum + Math.abs(Number(tx.amount ?? 0)), 0)
+    : Number(event?.rights_total_cost ?? event?.egresos ?? 0);
+
+  const hiddenRoom = expenseTransactions.length
+    ? expenseTransactions.reduce((sum, tx) => sum + Math.abs(Number(tx.hidden_room_share ?? 0)), 0)
+    : Number(event?.rights_hidden_room_acquired ?? Math.abs(Number(event?.hidden_room_share_total ?? 0)));
+
+  const counterparty = Math.max(totalCost - hiddenRoom, 0);
+  const hiddenRoomPercent = totalCost > 0 ? (hiddenRoom / totalCost) * 100 : 0;
+  const counterpartyPercent = totalCost > 0 ? (counterparty / totalCost) * 100 : 0;
+
+  return { totalCost, hiddenRoom, counterparty, hiddenRoomPercent, counterpartyPercent };
+}
+
+function renderEventRightsChart(event, transactions = []) {
+  const totals = eventRightsTotals(event, transactions);
+  const hiddenRoomDeg = totals.totalCost > 0 ? Math.max(0, Math.min(360, totals.hiddenRoomPercent * 3.6)) : 0;
+
+  return `
+    <div class="db-grid db-grid--2col db-event-rights">
+      <article class="db-card">
+        <header class="db-card__header"><span class="section-label">Derechos Adquiridos</span></header>
+        <div class="db-card__inner db-event-rights__inner">
+          <div class="db-pie-chart" style="--hr-deg:${hiddenRoomDeg}deg" aria-label="Derechos adquiridos"></div>
+          <div class="db-event-rights__legend">
+            <span><i class="db-event-rights__swatch db-event-rights__swatch--hr"></i>Hidden Room ${totals.hiddenRoomPercent.toFixed(2)}%</span>
+            <span><i class="db-event-rights__swatch db-event-rights__swatch--counterparty"></i>Contraparte ${totals.counterpartyPercent.toFixed(2)}%</span>
+          </div>
+        </div>
+      </article>
+      <div class="db-grid db-grid--1col db-finance-summary">
+        ${renderStatCard('Costo Total Evento', money(totals.totalCost))}
+        ${renderStatCard('Hidden Room Adquirido', money(totals.hiddenRoom))}
+        ${renderStatCard('Contraparte Adquirido', money(totals.counterparty))}
+      </div>
+    </div>
+  `;
 }
 
 function renderEventInfo(event) {
@@ -2679,7 +2751,7 @@ function renderEventSummaryCards(event) {
     ['Utilidad devuelta', event?.utilidad_devuelta],
     ['Entregas a favor', event?.entregas_a_favor],
     ['M.A.I.', event?.mai],
-    ['Hidden Room Share', event?.hidden_room_share_total],
+    ['M.A.I. acumulado', event?.hidden_room_share_total],
     ['Balance evento', event?.balance_evento],
   ];
 
@@ -2723,7 +2795,7 @@ function eventSummaryFor(event, transactions = []) {
   };
 }
 
-function renderEventMovementForm(event, formName) {
+function renderEventMovementForm(event, formName, counterparties = []) {
   const today = todayDateInputValue();
   return `
     <article class="db-card">
@@ -2739,7 +2811,12 @@ function renderEventMovementForm(event, formName) {
           </div>
           <label class="db-field"><span>Concept</span><input name="concept" required /></label>
           <div class="db-form__row">
-            <label class="db-field"><span>Hidden Room Share</span><input name="hidden_room_share" type="number" step="0.01" value="0" /></label>
+            <label class="db-field"><span>FROM</span><select name="from_counterparty_id">${renderCounterpartyOptions(counterparties, '', 'Sin origen')}</select></label>
+            <label class="db-field"><span>TO</span><select name="to_counterparty_id">${renderCounterpartyOptions(counterparties, '', 'Sin destino')}</select></label>
+          </div>
+          <label class="db-field"><span>CORRESPONDE A</span><select name="owner_counterparty_id">${renderCounterpartyOptions(counterparties, '', 'Sin asignar')}</select></label>
+          <div class="db-form__row">
+            <label class="db-field"><span>Monto Absorbido Internamente (M.A.I.)</span><input name="hidden_room_share" type="number" step="0.01" value="0" /></label>
             <label class="db-field"><span>Payment Method</span><input name="payment_method" /></label>
           </div>
           <label class="db-field"><span>Date</span><input name="movement_date" type="date" value="${escapeAttr(today)}" required /></label>
@@ -2751,7 +2828,7 @@ function renderEventMovementForm(event, formName) {
   `;
 }
 
-function renderEventMovementOpsForm(events = []) {
+function renderEventMovementOpsForm(events = [], counterparties = []) {
   const today = todayDateInputValue();
   const availableEvents = events.filter((event) => event.id || event.event_id);
 
@@ -2773,7 +2850,12 @@ function renderEventMovementOpsForm(events = []) {
       </div>
       <label class="db-field"><span>Concept</span><input name="concept" required /></label>
       <div class="db-form__row">
-        <label class="db-field"><span>Hidden Room Share</span><input name="hidden_room_share" type="number" step="0.01" value="0" /></label>
+        <label class="db-field"><span>FROM</span><select name="from_counterparty_id">${renderCounterpartyOptions(counterparties, '', 'Sin origen')}</select></label>
+        <label class="db-field"><span>TO</span><select name="to_counterparty_id">${renderCounterpartyOptions(counterparties, '', 'Sin destino')}</select></label>
+      </div>
+      <label class="db-field"><span>CORRESPONDE A</span><select name="owner_counterparty_id">${renderCounterpartyOptions(counterparties, '', 'Sin asignar')}</select></label>
+      <div class="db-form__row">
+        <label class="db-field"><span>Monto Absorbido Internamente (M.A.I.)</span><input name="hidden_room_share" type="number" step="0.01" value="0" /></label>
         <label class="db-field"><span>Payment Method</span><input name="payment_method" /></label>
       </div>
       <label class="db-field"><span>Date</span><input name="movement_date" type="date" value="${escapeAttr(today)}" required /></label>
@@ -2828,7 +2910,10 @@ function renderEventFinanceTransactionsTable(transactions, options = {}) {
     ['concept', 'Concepto'],
     ['movement_type', 'Tipo'],
     ['amount', 'Monto'],
-    ['hidden_room_share', 'Hidden Room Share'],
+    ['hidden_room_share', 'M.A.I.'],
+    ['from_counterparty_id', 'FROM'],
+    ['to_counterparty_id', 'TO'],
+    ['owner_counterparty_id', 'Corresponde a'],
     ['movement_date', 'Fecha'],
     ['payment_method', 'Metodo'],
     ['created_by_user_id', 'Creado por'],
@@ -2841,6 +2926,9 @@ function renderEventFinanceTransactionsTable(transactions, options = {}) {
         <td>${escapeHTML(movementTypeLabel(tx.movement_type) || tx.type || '-')}</td>
         <td>${money(Number(tx.amount ?? 0))}</td>
         <td>${money(Number(tx.hidden_room_share ?? eventFinanceAmount(tx) ?? 0))}</td>
+        <td>${escapeHTML(counterpartyName(tx.from_counterparty_id))}</td>
+        <td>${escapeHTML(counterpartyName(tx.to_counterparty_id))}</td>
+        <td>${escapeHTML(counterpartyName(tx.owner_counterparty_id))}</td>
         <td>${escapeHTML(formatDateOnly(tx.movement_date ?? tx.date))}</td>
         <td>${escapeHTML(tx.payment_method ?? tx.via ?? '-')}</td>
         <td>${escapeHTML(tx.created_by_user_id ?? '-')}</td>
@@ -2890,7 +2978,7 @@ async function renderErpPermissions() {
       .order('event_date', { ascending: false }),
     supabase
       .from('event_user_permissions')
-      .select('id, event_id, user_id, can_view, can_add_finance, can_edit_finance, can_edit_scrum'),
+      .select('id, event_id, user_id, can_view, can_add_finance, can_edit_finance, can_view_scrum, can_edit_scrum'),
   ]);
 
   if (usersError || permissionsError || eventsError || eventPermissionsError) {
@@ -3329,6 +3417,51 @@ async function fetchAccessibleEventFinanceOptions(context = 'finance') {
   }
 }
 
+async function fetchAllEventCounterparties() {
+  if (Array.isArray(state.data.eventCounterpartiesAll)) return state.data.eventCounterpartiesAll;
+
+  const { data, error } = await supabase
+    .from('event_counterparties')
+    .select('id, name, type, notes')
+    .order('name', { ascending: true });
+
+  if (error) {
+    console.info('[HR] event counterparties unavailable:', error.message);
+    state.data.eventCounterpartiesAll = [];
+    return [];
+  }
+
+  state.data.eventCounterpartiesAll = data ?? [];
+  return state.data.eventCounterpartiesAll;
+}
+
+async function fetchCounterpartiesForEvent(eventId) {
+  const all = await fetchAllEventCounterparties();
+  if (!eventId) return all;
+
+  const cacheKey = String(eventId);
+  state.data.eventCounterpartiesByEvent ??= {};
+  if (Array.isArray(state.data.eventCounterpartiesByEvent[cacheKey])) {
+    return state.data.eventCounterpartiesByEvent[cacheKey];
+  }
+
+  const { data, error } = await supabase
+    .from('event_participations')
+    .select('counterparty_id')
+    .eq('event_id', eventId);
+
+  if (error) {
+    console.info('[HR] event participations unavailable:', error.message);
+    state.data.eventCounterpartiesByEvent[cacheKey] = all;
+    return all;
+  }
+
+  const ids = [...new Set((data ?? []).map((item) => item.counterparty_id).filter(Boolean).map(String))];
+  const scoped = ids.length ? all.filter((counterparty) => ids.includes(String(counterparty.id))) : all;
+  state.data.eventCounterpartiesByEvent[cacheKey] = scoped;
+  return scoped;
+}
+
 function normalizeEventFinanceOptions(events = []) {
   const seen = new Set();
   return (events ?? [])
@@ -3588,7 +3721,8 @@ async function handleEventMovementCreate(form, values = formValues(form)) {
   }
 
   const signedAmount = rawAmount * movement.sign;
-  const hiddenRoomShare = Number(values.hidden_room_share ?? 0);
+  const rawHiddenRoomShare = Math.abs(Number(values.hidden_room_share ?? 0));
+  const signedHiddenRoomShare = Number.isFinite(rawHiddenRoomShare) ? rawHiddenRoomShare * movement.sign : 0;
   const movementDate = values.movement_date ? formatDateOnly(values.movement_date) : todayDateInputValue();
   const payload = {
     event_id: eventId || null,
@@ -3596,7 +3730,10 @@ async function handleEventMovementCreate(form, values = formValues(form)) {
     movement_type: movement.value,
     concept: values.concept,
     amount: signedAmount,
-    hidden_room_share: Number.isFinite(hiddenRoomShare) ? hiddenRoomShare : 0,
+    hidden_room_share: signedHiddenRoomShare,
+    from_counterparty_id: values.from_counterparty_id ?? null,
+    to_counterparty_id: values.to_counterparty_id ?? null,
+    owner_counterparty_id: values.owner_counterparty_id ?? null,
     payment_method: values.payment_method ?? null,
     movement_date: movementDate,
     notes: values.notes ?? null,
@@ -3606,7 +3743,7 @@ async function handleEventMovementCreate(form, values = formValues(form)) {
     type: movement.legacyType,
     via: values.payment_method ?? null,
     date: movementDate,
-    'M.A.I.': Number.isFinite(hiddenRoomShare) ? hiddenRoomShare : 0,
+    'M.A.I.': signedHiddenRoomShare,
   };
 
   const ok = await insertRow('hr_transactions', payload, 'Movimiento financiero creado.');
@@ -4743,7 +4880,7 @@ async function handleFinancePdfExport() {
 
     doc.autoTable({
       head: [isEventFinance
-        ? ['Concepto', 'Tipo', 'Monto', 'Hidden Room Share', 'Fecha', 'Metodo', 'Creado por', 'Notas']
+        ? ['Concepto', 'Tipo', 'Monto', 'M.A.I.', 'FROM', 'TO', 'Corresponde a', 'Fecha', 'Metodo', 'Creado por', 'Notas']
         : ['Concepto', 'Tipo', 'Monto', 'Fecha', 'Status', 'Cliente']],
       body: rows.map((tx) => isEventFinance
         ? [
@@ -4751,6 +4888,9 @@ async function handleFinancePdfExport() {
           movementTypeLabel(tx.movement_type) || tx.type || '-',
           money(Number(tx.amount ?? 0)),
           money(Number(tx.hidden_room_share ?? eventFinanceAmount(tx) ?? 0)),
+          counterpartyName(tx.from_counterparty_id),
+          counterpartyName(tx.to_counterparty_id),
+          counterpartyName(tx.owner_counterparty_id),
           formatDateOnly(tx.movement_date ?? tx.date),
           tx.payment_method ?? tx.via ?? '-',
           tx.created_by_user_id ?? '-',

@@ -1298,6 +1298,52 @@
   line-height: 1;
 }
 
+.db-event-rights {
+  align-items: stretch;
+  margin-bottom: var(--space-lg);
+}
+
+.db-event-rights__inner {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) 1fr;
+  gap: var(--space-lg);
+  align-items: center;
+}
+
+.db-pie-chart {
+  width: min(180px, 42vw);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: conic-gradient(var(--red) 0 var(--hr-deg), var(--teal) var(--hr-deg) 360deg);
+  border: var(--border-subtle);
+  box-shadow: inset 0 0 0 18px rgba(6, 6, 6, 0.48);
+}
+
+.db-event-rights__legend {
+  display: grid;
+  gap: var(--space-sm);
+  color: var(--white-dim);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-normal);
+  text-transform: uppercase;
+}
+
+.db-event-rights__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.db-event-rights__swatch {
+  width: 10px;
+  height: 10px;
+  display: inline-block;
+  border-radius: 50%;
+}
+
+.db-event-rights__swatch--hr { background: var(--red); }
+.db-event-rights__swatch--counterparty { background: var(--teal); }
+
 .db-finance-summary,
 .db-finance-dashboard {
   margin-bottom: var(--space-lg);
