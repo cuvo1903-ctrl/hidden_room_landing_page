@@ -389,8 +389,8 @@ const TABLE_EDITOR_CONFIG = {
     primaryKey: 'id',
     select: 'id, user_id, display_name, email, whatsapp, avatar_url, username, roles, has_auth, old_id, temp_password',
     lockedFields: ['id', 'user_id', 'roles', 'has_auth', 'old_id', 'temp_password'],
-    editableFields: ['display_name', 'email', 'whatsapp', 'avatar_url', 'username'],
-    hiddenColumns: ['id', 'temp_password'],
+    editableFields: ['user_id', 'display_name', 'email', 'whatsapp', 'avatar_url', 'username'],
+    hiddenColumns: ['id', 'old_id', 'temp_password'],
     pdfColumns: ['user_id', 'display_name', 'email', 'whatsapp', 'username', 'roles', 'has_auth'],
     pdfColumnLabels: {
       user_id: 'User ID',
@@ -528,9 +528,15 @@ function getTableSort(tableId, fallbackField = '', fallbackDirection = 'asc') {
   return sorts[tableId] ?? { field: fallbackField, direction: fallbackDirection };
 }
 
+function isDateSortField(field) {
+  return /(^|_)(date|fecha)(_de)?|date$|fecha$/i.test(String(field ?? ''));
+}
+
 function setTableSort(tableId, field) {
   const current = getTableSort(tableId);
-  const direction = current.field === field && current.direction === 'asc' ? 'desc' : 'asc';
+  const direction = current.field === field
+    ? (current.direction === 'asc' ? 'desc' : 'asc')
+    : (isDateSortField(field) ? 'desc' : 'asc');
   state.data.tableSorts = {
     ...(state.data.tableSorts ?? {}),
     [tableId]: { field, direction },
@@ -551,6 +557,12 @@ function setAdminTableSearch(tableName, query) {
     ...(state.data.adminTableSearches ?? {}),
     [tableName]: query,
   };
+}
+
+function persistAdminTableSearchFromDOM(tableName = state.data.adminTableName || 'users') {
+  const input = [...document.querySelectorAll('[data-table-search]')]
+    .find((item) => item.dataset.adminTableName === tableName);
+  if (input) setAdminTableSearch(tableName, input.value.trim());
 }
 
 function rowMatchesSearch(row, columns, query) {
@@ -3021,6 +3033,7 @@ async function renderAdminTableEditor() {
         <input data-table-search data-admin-table-name="${escapeAttr(tableName)}" data-table-target="js-admin-table-body" data-table-count="js-admin-table-count" placeholder="Buscar por nombre, email, user_id..." value="${escapeAttr(searchQuery)}" />
         <small id="js-admin-table-count" class="db-field__hint">${searchQuery ? `${visibleData.length} resultado${visibleData.length === 1 ? '' : 's'}` : `${visibleData.length} filas visibles`}</small>
       </label>
+      ${config.readOnly ? '' : '<button class="db-btn-secondary" type="button" data-action="admin-table-save-all">GUARDAR</button>'}
       <button class="db-btn-secondary" type="button" data-action="export-admin-pdf" data-table-label="${escapeAttr(config.label)}">Exportar PDF</button>
     </div>
     ${tableName === 'users' ? '<p class="db-empty">El campo email se guarda a través de Auth (Edge Function). El cambio se aplica al confirmar el correo.</p>' : ''}
@@ -3054,12 +3067,13 @@ function renderAdminTableEditorRow(tableName, config, row, index) {
     <tr data-search-row data-search-text="${escapeAttr(searchText)}">
       ${visibleColumns.map((field) => {
         const value = row[field] ?? '';
-        if (config.lockedFields.includes(field)) {
-          return `<td><code class="${field === 'temp_password' ? 'db-readonly-secret' : ''}">${escapeHTML(String(value))}</code></td>`;
+        const isEditable = config.editableFields.includes(field);
+        if (config.lockedFields.includes(field) && !isEditable) {
+          return `<td class="db-table-cell--readonly"><code class="${field === 'temp_password' ? 'db-readonly-secret' : ''}">${escapeHTML(String(value))}</code></td>`;
         }
 
         return `
-          <td>
+          <td class="db-table-cell--editable">
             <input
               class="db-table-input"
               form="admin-table-form-${index}"
@@ -3070,7 +3084,7 @@ function renderAdminTableEditorRow(tableName, config, row, index) {
         `;
       }).join('')}
       ${config.readOnly ? '' : `
-      <td>
+      <td class="db-table-cell--actions">
         <form class="db-inline-form" id="admin-table-form-${index}" data-form="admin-table-update">
           <input type="hidden" name="table_name" value="${escapeAttr(tableName)}" />
           <input type="hidden" name="original" value="${escapeAttr(original)}" />
@@ -4291,6 +4305,7 @@ async function handleAdminTableUpdate(form) {
 
   const values = formValues(form);
   const tableName = values.table_name;
+  persistAdminTableSearchFromDOM(tableName);
   const config = TABLE_EDITOR_CONFIG[tableName];
 
   if (!config) {
@@ -4316,6 +4331,22 @@ async function handleAdminTableUpdate(form) {
     if (field in values) payload[field] = values[field];
   });
 
+  const ok = await saveAdminTableRow(tableName, config, original, payload, { confirmUserId: true });
+  if (ok) {
+    showToast('Fila actualizada.', 'success');
+    navigate('admin-table-editor');
+  }
+}
+
+async function saveAdminTableRow(tableName, config, original, payload, options = {}) {
+  if (tableName === 'users' && 'user_id' in payload && String(payload.user_id ?? '') !== String(original.user_id ?? '') && options.confirmUserId !== false) {
+    const confirmed = window.confirm(
+      `Advertencia: vas a cambiar el User ID operativo de este usuario.\n\nAnterior: ${original.user_id ?? '-'}\nNuevo: ${payload.user_id || '-'}\n\nEste campo conecta historial, sesiones, transacciones y membresias. Confirma solo si sabes que este cambio es intencional.`
+    );
+
+    if (!confirmed) return false;
+  }
+
   // public.users.email must be updated through auth.users via the Edge Function.
   // The DB trigger then syncs auth.users.email → public.users.email automatically.
   if (tableName === 'users' && 'email' in payload) {
@@ -4324,7 +4355,7 @@ async function handleAdminTableUpdate(form) {
 
     if (!newEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
       showToast('El email no tiene un formato válido.', 'error');
-      return;
+      return false;
     }
 
     try {
@@ -4337,7 +4368,7 @@ async function handleAdminTableUpdate(form) {
             username:     payload.username     ?? original.username     ?? null,
             whatsapp:     payload.whatsapp     ?? original.whatsapp     ?? null,
             avatar_url:   payload.avatar_url   ?? original.avatar_url   ?? null,
-            user_id:      original.user_id     ?? null,
+            user_id:      payload.user_id      ?? original.user_id     ?? null,
           },
         },
       });
@@ -4345,26 +4376,23 @@ async function handleAdminTableUpdate(form) {
       if (fnError) {
         console.error('[HR] table editor admin-update-user:', fnError);
         showToast(fnError.message || 'No se pudo actualizar el email. Revisa la Edge Function.', 'error');
-        return;
+        return false;
       }
     } catch (err) {
       console.error('[HR] table editor admin-update-user invoke:', err);
       showToast('Error al contactar la función de actualización de email.', 'error');
-      return;
+      return false;
     }
 
     // If there are no other fields left to update, we're done.
     if (Object.keys(payload).length === 0) {
-      showToast('Email actualizado vía Auth. Se sincronizará tras confirmación.', 'success');
-      navigate('admin-table-editor');
-      return;
+      return true;
     }
   }
 
   // Update remaining non-email fields directly in public.users (or any other table).
   if (Object.keys(payload).length === 0) {
-    showToast('Sin cambios que guardar.', 'info');
-    return;
+    return true;
   }
 
   let query = supabase.from(tableName).update(payload);
@@ -4382,15 +4410,99 @@ async function handleAdminTableUpdate(form) {
   if (error) {
     console.error('[HR] table editor update:', error);
     showToast('No se pudo actualizar la fila. Revisa RLS/permisos.', 'error');
+    return false;
+  }
+
+  return true;
+}
+
+function adminRowLabel(row) {
+  return row.display_name || row.username || row.email || row.concept || row.name || row.user_id || row.id || 'Fila';
+}
+
+function adminFieldLabel(config, field) {
+  return config.pdfColumnLabels?.[field] ?? field;
+}
+
+function collectAdminTableFormChange(form, config) {
+  const values = formValues(form);
+  let original;
+  try {
+    original = JSON.parse(decodeURIComponent(values.original));
+  } catch (err) {
+    console.error('[HR] table editor original parse:', err);
+    return null;
+  }
+
+  const payload = {};
+  const changes = [];
+  config.editableFields.forEach((field) => {
+    if (!(field in values)) return;
+    const beforeValue = original[field] ?? '';
+    const afterValue = values[field] ?? '';
+    if (String(beforeValue) === String(afterValue)) return;
+    payload[field] = afterValue;
+    changes.push({ field, beforeValue, afterValue });
+  });
+
+  if (!changes.length) return null;
+  return { original, payload, changes };
+}
+
+async function handleAdminTableSaveAll() {
+  if (!requireAdminMutation()) return;
+
+  const tableName = state.data.adminTableName || 'users';
+  persistAdminTableSearchFromDOM(tableName);
+  const config = TABLE_EDITOR_CONFIG[tableName];
+
+  if (!config) {
+    showToast('Tabla no permitida.', 'error');
+    return;
+  }
+  if (config.readOnly) {
+    showToast('Esta vista es solo lectura.', 'info');
     return;
   }
 
-  showToast('Fila actualizada.', 'success');
+  const forms = [...document.querySelectorAll('form[data-form="admin-table-update"]')];
+  const pending = forms
+    .map((form) => collectAdminTableFormChange(form, config))
+    .filter(Boolean);
+
+  if (!pending.length) {
+    showToast('No hay cambios pendientes.', 'info');
+    return;
+  }
+
+  const summary = pending.flatMap((item, index) => {
+    const label = adminRowLabel(item.original);
+    return item.changes.map((change) => {
+      const beforeText = String(change.beforeValue || '-');
+      const afterText = String(change.afterValue || '-');
+      return `${index + 1}. ${label} - ${adminFieldLabel(config, change.field)}: ${beforeText} -> ${afterText}`;
+    });
+  });
+  const extraCount = Math.max(0, summary.length - 18);
+  const preview = summary.slice(0, 18).join('\n');
+  const confirmed = window.confirm(
+    `Vas a guardar ${pending.length} fila${pending.length === 1 ? '' : 's'} con ${summary.length} cambio${summary.length === 1 ? '' : 's'}:\n\n${preview}${extraCount ? `\n... y ${extraCount} cambio${extraCount === 1 ? '' : 's'} más.` : ''}\n\n¿Confirmas guardar estos cambios?`
+  );
+
+  if (!confirmed) return;
+
+  for (const item of pending) {
+    const ok = await saveAdminTableRow(tableName, config, item.original, { ...item.payload }, { confirmUserId: false });
+    if (!ok) return;
+  }
+
+  showToast('Cambios guardados.', 'success');
   navigate('admin-table-editor');
 }
 
 async function handleAdminTableDelete(tableName, encodedRow) {
   if (!requireAdminMutation()) return;
+  persistAdminTableSearchFromDOM(tableName);
 
   const config = TABLE_EDITOR_CONFIG[tableName];
   if (!config) {
@@ -4864,6 +4976,7 @@ function attachMainDelegation() {
     if (action === 'table-sort') {
       const btn = e.target.closest('[data-table-id][data-sort-field]');
       if (btn) {
+        persistAdminTableSearchFromDOM();
         setTableSort(btn.dataset.tableId, btn.dataset.sortField);
         navigate(state.activeSection);
       }
@@ -4871,6 +4984,10 @@ function attachMainDelegation() {
 
     if (action === 'export-admin-pdf') {
       handleAdminPdfExport(e.target.closest('[data-table-label]')?.dataset.tableLabel);
+    }
+
+    if (action === 'admin-table-save-all') {
+      handleAdminTableSaveAll();
     }
 
     if (action === 'export-finance-pdf') {
@@ -4907,6 +5024,7 @@ function attachMainDelegation() {
 
     const tableSelect = e.target.closest('select[data-action="table-editor-table"]');
     if (tableSelect) {
+      persistAdminTableSearchFromDOM();
       state.data.adminTableName = tableSelect.value;
       navigate('admin-table-editor');
       return;
