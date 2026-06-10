@@ -1145,6 +1145,46 @@
   margin-bottom: var(--space-lg);
 }
 
+.db-session-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  border: 1px solid var(--red-dim);
+  background: rgba(219, 1, 0, 0.08);
+  color: var(--white);
+  padding: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.db-session-banner div {
+  display: grid;
+  gap: 4px;
+}
+
+.db-session-banner strong {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  text-transform: uppercase;
+}
+
+.db-session-banner span {
+  color: var(--white-dim);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-normal);
+}
+
+@media (max-width: 720px) {
+  .db-session-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .db-session-banner .db-btn-secondary {
+    width: 100%;
+  }
+}
+
 .db-field--compact {
   min-width: 220px;
 }
@@ -1343,6 +1383,80 @@
 
 .db-event-rights__swatch--hr { background: var(--red); }
 .db-event-rights__swatch--counterparty { background: var(--teal); }
+
+.db-event-investors {
+  margin-bottom: var(--space-lg);
+}
+
+.db-event-investors__summary {
+  display: grid;
+  grid-template-columns: minmax(110px, 160px) minmax(180px, 1fr) minmax(180px, 240px);
+  gap: var(--space-lg);
+  align-items: center;
+  margin-bottom: var(--space-md);
+}
+
+.db-event-investors .db-stat-card {
+  margin-bottom: 0;
+}
+
+.db-investor-pie {
+  width: min(160px, 36vw);
+}
+
+.db-event-investors__legend {
+  display: grid;
+  gap: var(--space-xs);
+  color: var(--white-dim);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-normal);
+  text-transform: uppercase;
+}
+
+.db-event-investors__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.db-event-investors__legend i {
+  width: 10px;
+  height: 10px;
+  display: inline-block;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: rgba(240, 236, 228, 0.2);
+}
+
+.db-investor-share {
+  width: min(180px, 30vw);
+  height: 10px;
+  background: rgba(240, 236, 228, 0.08);
+  border: var(--border-subtle);
+}
+
+.db-investor-share i {
+  display: block;
+  width: var(--bar);
+  height: 100%;
+  background: var(--teal);
+}
+
+@media (max-width: 860px) {
+  .db-event-investors__summary {
+    grid-template-columns: minmax(110px, 150px) 1fr;
+  }
+
+  .db-event-investors__summary .db-stat-card {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 560px) {
+  .db-event-investors__summary {
+    grid-template-columns: 1fr;
+  }
+}
 
 .db-finance-summary,
 .db-finance-dashboard {

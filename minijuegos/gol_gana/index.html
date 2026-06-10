@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>GOL GANA — Hidden Room x Tlalpan Wings House</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ══════════════════════════════════════
+       PANTALLAS DE UI (sobre el canvas)
+  ══════════════════════════════════════ -->
+
+  <!-- MENÚ PRINCIPAL -->
+  <div id="screen-menu" class="screen active">
+    <div class="menu-bg-deco"></div>
+    <div class="menu-content">
+      <div class="brand-tag">HIDDEN ROOM × TLALPAN WINGS HOUSE</div>
+      <h1 class="game-title">GOL<br>GANA</h1>
+      <p class="subtitle">CASCARITA CALLEJERA · CDMX</p>
+      <div class="menu-buttons">
+        <button class="btn btn-primary" id="btn-play">⚽ JUGAR</button>
+        <button class="btn btn-secondary" id="btn-how">📋 CÓMO JUGAR</button>
+        <button class="btn btn-secondary" id="btn-credits">🎤 CRÉDITOS</button>
+      </div>
+      <div class="record-display" id="menu-record">RÉCORD: 0</div>
+    </div>
+  </div>
+
+  <!-- CÓMO JUGAR -->
+  <div id="screen-howto" class="screen">
+    <div class="overlay-panel">
+      <h2 class="panel-title">CÓMO JUGAR</h2>
+      <div class="how-grid">
+        <div class="how-section">
+          <h3>🖥️ PC</h3>
+          <ul>
+            <li><b>WASD / Flechas</b> — Moverse</li>
+            <li><b>ESPACIO</b> — Disparar</li>
+            <li><b>SHIFT</b> — Sprint</li>
+          </ul>
+        </div>
+        <div class="how-section">
+          <h3>📱 MÓVIL</h3>
+          <ul>
+            <li><b>Joystick izq.</b> — Moverse</li>
+            <li><b>Botón ⚽</b> — Disparar</li>
+            <li><b>Botón ⚡</b> — Sprint</li>
+          </ul>
+        </div>
+        <div class="how-section">
+          <h3>⚡ POWERUPS</h3>
+          <ul>
+            <li>🐔 <b>Pollito</b> — Puntos extra + multiplicador</li>
+            <li>🌶️ <b>Salsa Nuclear</b> — 2× puntos</li>
+            <li>🔧 <b>Talacha</b> — 2× recompensas</li>
+          </ul>
+        </div>
+        <div class="how-section">
+          <h3>⚠️ PELIGROS</h3>
+          <ul>
+            <li>👹 <b>Clara</b> — ¡Te ajolotiza!</li>
+            <li>🦎 <b>Modo Ajolote</b> — Lento y chueco</li>
+            <li>🛡️ <b>Rivales</b> — Quitan el balón</li>
+          </ul>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="btn-howto-back">← VOLVER</button>
+    </div>
+  </div>
+
+  <!-- CRÉDITOS -->
+  <div id="screen-credits" class="screen">
+    <div class="overlay-panel">
+      <h2 class="panel-title">CRÉDITOS</h2>
+      <div class="credits-content">
+        <p class="credits-line big">🏟️ GOL GANA</p>
+        <p class="credits-line">Un juego de fútbol callejero CDMX</p>
+        <hr class="credits-hr"/>
+        <p class="credits-line brand">HIDDEN ROOM</p>
+        <p class="credits-line">×</p>
+        <p class="credits-line brand">TLALPAN WINGS HOUSE</p>
+        <hr class="credits-hr"/>
+        <p class="credits-line small">Arte generado con Canvas 2D</p>
+        <p class="credits-line small">Inspirado en FIFA Street, Jet Set Radio</p>
+        <p class="credits-line small">y la cultura callejera de la CDMX 🇲🇽</p>
+        <p class="credits-line small">¡Que viva el fútbol de barrio!</p>
+      </div>
+      <button class="btn btn-primary" id="btn-credits-back">← VOLVER</button>
+    </div>
+  </div>
+
+  <!-- GAME OVER -->
+  <div id="screen-gameover" class="screen">
+    <div class="overlay-panel gameover-panel">
+      <div class="gameover-emoji">🏁</div>
+      <h2 class="panel-title">TIEMPO</h2>
+      <div class="go-score-wrap">
+        <div class="go-score-block">
+          <span class="go-label">GOLES</span>
+          <span class="go-value" id="go-goals">0</span>
+        </div>
+        <div class="go-score-block">
+          <span class="go-label">PUNTOS</span>
+          <span class="go-value" id="go-score">0</span>
+        </div>
+        <div class="go-score-block">
+          <span class="go-label">RÉCORD</span>
+          <span class="go-value" id="go-record">0</span>
+        </div>
+      </div>
+      <div id="go-new-record" class="new-record-badge" style="display:none">🏆 NUEVO RÉCORD</div>
+      <div class="gameover-buttons">
+        <button class="btn btn-primary" id="btn-retry">⚽ REINTENTAR</button>
+        <button class="btn btn-secondary" id="btn-menu">🏠 MENÚ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CANVAS DEL JUEGO -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- HUD (sobre canvas, solo durante juego) -->
+  <div id="hud" class="hud hidden">
+    <div class="hud-left">
+      <span class="hud-label">GOLES</span>
+      <span class="hud-value" id="hud-goals">0</span>
+    </div>
+    <div class="hud-center">
+      <span class="hud-time" id="hud-time">90</span>
+    </div>
+    <div class="hud-right">
+      <span class="hud-label">PUNTOS</span>
+      <span class="hud-value" id="hud-score">0</span>
+    </div>
+    <div class="hud-mult" id="hud-mult">×1</div>
+  </div>
+
+  <!-- CONTROLES TÁCTILES MÓVIL -->
+  <div id="mobile-controls" class="mobile-controls hidden">
+    <!-- Joystick izquierdo -->
+    <div id="joystick-zone" class="joystick-zone">
+      <div id="joystick-base" class="joystick-base">
+        <div id="joystick-stick" class="joystick-stick"></div>
+      </div>
+    </div>
+    <!-- Botones derecha -->
+    <div class="action-buttons">
+      <button id="btn-sprint-mobile" class="action-btn sprint-btn">⚡</button>
+      <button id="btn-shoot-mobile" class="action-btn shoot-btn">⚽</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

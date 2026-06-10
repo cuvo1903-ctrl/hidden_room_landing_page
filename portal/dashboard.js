@@ -34,18 +34,38 @@ const PROFILE_UPDATE_WHATSAPP = '5210000000000';
 const SHARE_LOGIN_WHATSAPP_FALLBACK = '5210000000000';
 const LOCAL_SCORE_SYNC_KEYS = ['dem00nz_best'];
 const NOTIFICATIONS_ENABLED = false;
+const ACTIVE_SECTION_STORAGE_KEY = 'hr_dashboard_active_section';
+const MEMBERSHIP_CANONICAL = 'MEMBRESÍA';
+const MEMBERSHIP_WEEKLY_COST = 500;
 const ERP_TYPE_OPTIONS = ['INGRESO', 'EGRESO'];
 const ERP_STATUS_OPTIONS = ['sin apartado', 'apartado', 'saldado'];
+const SERVICE_OPTIONS = [
+  MEMBERSHIP_CANONICAL,
+  'GRABACIÓN',
+  'PRODUCCIÓN BÁSICA',
+  'PRODUCCIÓN PREMIUM',
+  'DISTRIBUCIÓN',
+  'PERSONALIZADO',
+];
+const TRANSACTION_CONCEPT_OPTIONS = [
+  MEMBERSHIP_CANONICAL,
+  'PAGO',
+  'ABONO',
+  'APARTADO',
+  'SALDO',
+  'RENTA DE ESTUDIO',
+  'PERSONALIZADO',
+];
 const FINANCE_STUDIO_SOURCES = [
   { value: 'IXT', label: 'Ixtapaluca' },
   { value: 'VC', label: 'Venustiano Carranza' },
   { value: '003', label: 'Los $antos' },
 ];
 const SESSION_TYPE_OPTIONS = [
-  { value: 'GRABACION (1 HR) $650', label: 'GRABACION (1 HR) $650', minutes: 60, cost: 650 },
-  { value: 'SESION DE PRODUCCION BASICA 1:30 $1,700', label: 'SESION DE PRODUCCION BASICA 1:30 $1,700', minutes: 90, cost: 1700 },
-  { value: 'SESION DE PRODUCCION PREMIUM 2:30 HRS $3,700', label: 'SESION DE PRODUCCION PREMIUM 2:30 HRS $3,700', minutes: 150, cost: 3700 },
-  { value: 'MEMBRESIA 2 HRS $500', label: 'MEMBRESIA 2 HRS $500', minutes: 120, cost: 500 },
+  { value: 'GRABACIÓN', label: 'GRABACIÓN (1 HR) $650', minutes: 60, cost: 650 },
+  { value: 'PRODUCCIÓN BÁSICA', label: 'PRODUCCIÓN BÁSICA 1:30 $1,700', minutes: 90, cost: 1700 },
+  { value: 'PRODUCCIÓN PREMIUM', label: 'PRODUCCIÓN PREMIUM 2:30 HRS $3,700', minutes: 150, cost: 3700 },
+  { value: MEMBERSHIP_CANONICAL, label: 'MEMBRESÍA 2 HRS $500', minutes: 120, cost: MEMBERSHIP_WEEKLY_COST },
 ];
 
 
@@ -88,6 +108,9 @@ const state = {
 
   /** Monotonic render guard for async section transitions */
   renderToken: 0,
+
+  /** Session may be stale when UI role and API/RLS responses disagree */
+  sessionStale: false,
 };
 
 /**
@@ -406,9 +429,9 @@ const TABLE_EDITOR_CONFIG = {
   transactions: {
     label: 'Transacciones',
     primaryKey: 'id',
-    select: 'id, user_id, type, concept, date, amount, via, username, id_trans, notes',
+    select: 'id, user_id, type, concept, service, date, amount, via, username, id_trans, notes',
     lockedFields: ['id'],
-    editableFields: ['user_id', 'type', 'concept', 'date', 'amount', 'via', 'username', 'id_trans', 'notes'],
+    editableFields: ['user_id', 'type', 'concept', 'service', 'date', 'amount', 'via', 'username', 'id_trans', 'notes'],
     hiddenColumns: ['id'],
   },
   hr_transactions: {
@@ -558,6 +581,17 @@ function setAdminTableSearch(tableName, query) {
     ...(state.data.adminTableSearches ?? {}),
     [tableName]: query,
   };
+}
+
+function isSessionStaleError(error) {
+  const text = [
+    error?.message,
+    error?.details,
+    error?.hint,
+    error?.code,
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  return /jwt|token|expired|permission denied|row-level security|rls|invalid claim|not authorized|unauthorized/.test(text);
 }
 
 function persistAdminTableSearchFromDOM(tableName = state.data.adminTableName || 'users') {
@@ -843,11 +877,97 @@ function navigate(sectionKey) {
   }
 
   setState({ activeSection: sectionKey });
+  persistActiveSection(sectionKey);
   updateSidebarActiveState(sectionKey);
   updateTopbarTitle(section.label);
 
   // Fire-and-forget: renderSection is async but navigate stays sync
   renderSection(sectionKey);
+}
+
+function persistActiveSection(sectionKey) {
+  try {
+    localStorage.setItem(ACTIVE_SECTION_STORAGE_KEY, sectionKey);
+  } catch (err) {
+    console.warn('[HR] active section storage unavailable:', err);
+  }
+
+  if (window.location.hash !== `#${sectionKey}`) {
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${sectionKey}`);
+  }
+}
+
+function initialSectionKey() {
+  const hashKey = decodeURIComponent(window.location.hash.replace(/^#/, '')).trim();
+  if (SECTIONS[hashKey]) return hashKey;
+
+  try {
+    const stored = localStorage.getItem(ACTIVE_SECTION_STORAGE_KEY);
+    if (SECTIONS[stored]) return stored;
+  } catch (err) {
+    console.warn('[HR] active section restore unavailable:', err);
+  }
+
+  return 'overview';
+}
+
+function attachRoutePersistenceListener() {
+  window.addEventListener('hashchange', () => {
+    const key = decodeURIComponent(window.location.hash.replace(/^#/, '')).trim();
+    if (SECTIONS[key] && key !== state.activeSection) navigate(key);
+  });
+}
+
+function markSessionStale(reason = '') {
+  if (state.sessionStale) return;
+  state.sessionStale = true;
+  console.warn('[HR] stale session suspected:', reason);
+  showToast('Tu sesión parece desactualizada. Actualiza sesión para validar permisos.', 'error', 7000);
+}
+
+function renderSessionStaleBanner() {
+  if (!state.sessionStale) return '';
+  return `
+    <div class="db-session-banner" role="alert">
+      <div>
+        <strong>Sesión desactualizada</strong>
+        <span>Tu navegador puede estar usando permisos viejos. Actualiza la sesión para volver a consultar datos protegidos.</span>
+      </div>
+      <button class="db-btn-secondary" type="button" data-action="refresh-session">Actualizar sesión</button>
+    </div>
+  `;
+}
+
+async function handleRefreshSession() {
+  try {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error || !data?.session) {
+      await supabase.auth.signOut();
+      window.location.href = './';
+      return;
+    }
+
+    const session = await bootstrapSession();
+    if (!session) {
+      await supabase.auth.signOut();
+      window.location.href = './';
+      return;
+    }
+
+    setState({
+      user: session.user,
+      roles: session.roles,
+      permissions: session.permissions,
+      data: {},
+      sessionStale: false,
+    });
+    showToast('Sesión actualizada.', 'success');
+    navigate(state.activeSection);
+  } catch (err) {
+    console.error('[HR] refresh session:', err);
+    await supabase.auth.signOut();
+    window.location.href = './';
+  }
 }
 
 /**
@@ -884,12 +1004,14 @@ async function renderSection(sectionKey) {
       await new Promise((resolve) => setTimeout(resolve, SECTION_LOADING_MIN_MS - elapsed));
     }
     if (state.renderToken !== renderToken) return;
-    wrap.innerHTML = html;
+    wrap.innerHTML = `${renderSessionStaleBanner()}${html}`;
     enhancePasswordToggles(wrap);
   } catch (error) {
     if (state.renderToken !== renderToken) return;
     console.error('[HR] renderSection:', error);
+    if (isSessionStaleError(error)) markSessionStale(error.message || 'render error');
     wrap.innerHTML = sectionShell('Sistema', 'No se pudo cargar', 'title-render-error', `
+      ${renderSessionStaleBanner()}
       <p class="db-empty db-empty--error">Error al cargar este modulo.</p>
     `);
     enhancePasswordToggles(wrap);
@@ -1606,14 +1728,22 @@ async function renderClientContracts() {
 }
 
 async function renderClientMembership() {
-  const { data, error } = await supabase
-    .from('membership_dashboard')
-    .select('user_id, username, semana, fecha_de_sesion, estado, fecha_de_saldo, saldo, notas')
-    .eq('user_id', state.user.user_id)
-    .order('semana', { ascending: true });
+  const userId = state.user?.user_id;
+  const [sessionsResult, transactionsResult] = await Promise.all([
+    supabase
+      .from('sessions')
+      .select('id, user_id, username, session_date, type, concept, notes, status, cost, hour, sc_end')
+      .eq('user_id', userId)
+      .order('session_date', { ascending: true }),
+    supabase
+      .from('transactions')
+      .select('id, user_id, username, date, amount, type, concept, service, via, notes, id_trans')
+      .eq('user_id', userId)
+      .order('date', { ascending: true }),
+  ]);
 
-  if (error) {
-    console.error('[HR] renderClientMembership:', error);
+  if (sessionsResult.error || transactionsResult.error) {
+    console.error('[HR] renderClientMembership:', sessionsResult.error || transactionsResult.error);
     return `
       <section class="db-section" aria-labelledby="title-membership">
         <header class="db-section__header">
@@ -1625,8 +1755,9 @@ async function renderClientMembership() {
     `;
   }
 
-  const rows = data?.length
-    ? data.map((item) => `
+  const membershipRows = buildMembershipRows(sessionsResult.data ?? [], transactionsResult.data ?? []);
+  const rows = membershipRows.length
+    ? membershipRows.map((item) => `
       <tr>
         <td>${escapeHTML(item.semana ?? '-')}</td>
         <td>${escapeHTML(formatDateOnly(item.fecha_de_sesion))}</td>
@@ -2245,6 +2376,7 @@ async function renderErpFinance() {
       ${selectedEvent ? renderEventInfo(selectedEvent) : '<p class="db-empty">Sin eventos disponibles.</p>'}
       ${selectedEvent ? renderEventSummaryCards(selectedEvent) : ''}
       ${selectedEvent ? renderEventRightsChart(selectedEvent, data ?? []) : ''}
+      ${selectedEvent ? renderEventInternalInvestors(data ?? []) : ''}
       ${renderEventFinanceTransactionsTable(data ?? [], { canEdit: true })}
     `);
   }
@@ -2294,7 +2426,7 @@ async function renderErpOps() {
           <div class="db-form__row">
             <label class="db-field"><span>Fecha</span><input name="session_date" type="date" required /></label>
           </div>
-          <label class="db-field"><span>Concepto</span><input name="concept" required /></label>
+          <label class="db-field"><span>Concepto</span><input name="concept" data-session-concept required /></label>
           <div class="db-form__row">
             <label class="db-field"><span>Status</span><select name="status">${ERP_STATUS_OPTIONS.map((status) => optionHTML(status, status, 'sin apartado')).join('')}</select></label>
             <label class="db-field"><span>Tipo</span><select name="type" data-session-type required>${SESSION_TYPE_OPTIONS.map((item) => optionHTML(item.value, item.label, '')).join('')}</select></label>
@@ -2452,9 +2584,13 @@ function renderTransactionForm(formName) {
       ${renderUserAutofillFields()}
       <div class="db-form__row">
         <label class="db-field"><span>Tipo</span><select name="type" required>${ERP_TYPE_OPTIONS.map((type) => optionHTML(type, type, '')).join('')}</select></label>
-        <label class="db-field"><span>Monto</span><input name="amount" type="number" step="0.01" required /></label>
+        <label class="db-field"><span>Servicio</span><select name="service" data-transaction-service required>${SERVICE_OPTIONS.map((service) => optionHTML(service, service, '')).join('')}</select></label>
       </div>
-      <label class="db-field"><span>Concepto</span><input name="concept" required /></label>
+      <div class="db-form__row">
+        <label class="db-field"><span>Monto</span><input name="amount" type="number" step="0.01" required /></label>
+        <label class="db-field"><span>Concepto</span><select name="concept" data-transaction-concept required>${TRANSACTION_CONCEPT_OPTIONS.map((concept) => optionHTML(concept, concept, '')).join('')}</select></label>
+      </div>
+      <label class="db-field" data-custom-concept-wrap hidden><span>Concepto personalizado</span><input name="concept_custom" data-custom-concept /></label>
       <label class="db-field"><span>Fecha</span><input name="date" type="date" value="${escapeAttr(today)}" required /></label>
       <div class="db-form__row">
         <label class="db-field"><span>Via</span><select name="via">${['NU', 'NU CRED', 'EFECTIVO'].map((via) => optionHTML(via, via, '')).join('')}</select></label>
@@ -2732,6 +2868,89 @@ function renderEventRightsChart(event, transactions = []) {
   `;
 }
 
+function internalInvestorRows(transactions = []) {
+  const totals = new Map();
+
+  (transactions ?? [])
+    .filter((tx) => tx.movement_type === 'investment_in')
+    .forEach((tx) => {
+      const investorId = tx.from_counterparty_id ? String(tx.from_counterparty_id) : 'sin_inversor';
+      const current = totals.get(investorId) ?? { id: investorId, label: tx.from_counterparty_id ? counterpartyName(tx.from_counterparty_id) : 'Sin inversor asignado', total: 0 };
+      current.total += Math.abs(Number(tx.amount ?? 0));
+      totals.set(investorId, current);
+    });
+
+  const grandTotal = [...totals.values()].reduce((sum, item) => sum + item.total, 0);
+  return [...totals.values()]
+    .map((item) => ({
+      ...item,
+      percent: grandTotal > 0 ? (item.total / grandTotal) * 100 : 0,
+    }))
+    .sort((a, b) => b.total - a.total);
+}
+
+function investorPieGradient(investors = []) {
+  const colors = ['var(--red)', 'var(--teal)', '#f0ece4', '#9b5cff', '#f4b860', '#55a6ff', '#6ddf8d'];
+  if (!investors.length) return 'rgba(240, 236, 228, 0.08) 0 360deg';
+
+  let cursor = 0;
+  return investors.map((investor, index) => {
+    const start = cursor;
+    const end = index === investors.length - 1 ? 360 : cursor + ((investor.percent / 100) * 360);
+    cursor = end;
+    return `${colors[index % colors.length]} ${start.toFixed(2)}deg ${end.toFixed(2)}deg`;
+  }).join(', ');
+}
+
+function renderEventInternalInvestors(transactions = []) {
+  const investors = internalInvestorRows(transactions);
+  const total = investors.reduce((sum, investor) => sum + investor.total, 0);
+  const colors = ['var(--red)', 'var(--teal)', '#f0ece4', '#9b5cff', '#f4b860', '#55a6ff', '#6ddf8d'];
+  const pieGradient = investorPieGradient(investors);
+  const legend = investors.length
+    ? investors.map((investor, index) => `
+      <span><i style="background:${colors[index % colors.length]}"></i>${escapeHTML(investor.label)} ${investor.percent.toFixed(2)}%</span>
+    `).join('')
+    : '<span><i></i>Sin inversiones internas</span>';
+
+  const rows = investors.length
+    ? investors.map((investor) => `
+      <tr>
+        <td>${escapeHTML(investor.label)}</td>
+        <td>${money(investor.total)}</td>
+        <td>${investor.percent.toFixed(2)}%</td>
+        <td><div class="db-investor-share"><i style="--bar:${Math.max(2, investor.percent)}%"></i></div></td>
+      </tr>
+    `).join('')
+    : '<tr class="db-table__empty-row"><td colspan="4" class="db-empty">Sin inversiones internas registradas.</td></tr>';
+
+  return `
+    <article class="db-card db-event-investors">
+      <header class="db-card__header"><span class="section-label">Inversores internos</span></header>
+      <div class="db-card__inner">
+        <div class="db-event-investors__summary">
+          <div class="db-pie-chart db-investor-pie" style="background:conic-gradient(${pieGradient})" aria-label="Distribucion de inversion interna"></div>
+          <div class="db-event-investors__legend">${legend}</div>
+          ${renderStatCard('Inversión interna total', money(total))}
+        </div>
+        <div class="db-table-wrap">
+          <table class="db-table" aria-label="Porcentaje de inversión por participante">
+            <thead>
+              <tr>
+                <th scope="col">Participante</th>
+                <th scope="col">Inversión</th>
+                <th scope="col">%</th>
+                <th scope="col">Participación</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
 function renderEventInfo(event) {
   if (!event) return '';
   return `
@@ -2982,7 +3201,9 @@ async function renderErpPermissions() {
   ]);
 
   if (usersError || permissionsError || eventsError || eventPermissionsError) {
-    console.error('[HR] renderErpPermissions:', usersError || permissionsError || eventsError || eventPermissionsError);
+    const error = usersError || permissionsError || eventsError || eventPermissionsError;
+    console.error('[HR] renderErpPermissions:', error);
+    if (isSessionStaleError(error)) markSessionStale(error.message || 'permissions fetch');
     return sectionShell('ERP', 'Permisos', 'title-erp-permissions', `
       <p class="db-empty db-empty--error">Error al cargar usuarios y permisos.</p>
     `);
@@ -2993,9 +3214,12 @@ async function renderErpPermissions() {
   state.data.permissionEvents = events ?? [];
   state.data.eventUserPermissions = eventPermissions ?? [];
 
+  const suspiciousAdminEmpty = hasRole('admin') && (users ?? []).length === 0;
+  if (suspiciousAdminEmpty) markSessionStale('erp permissions users returned 0 rows');
+
   const rows = (users ?? []).length
     ? users.map(renderPermissionUserRow).join('')
-    : `<tr class="db-table__empty-row"><td colspan="6" class="db-empty">Sin usuarios registrados.</td></tr>`;
+    : `<tr class="db-table__empty-row"><td colspan="6" class="db-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin usuarios registrados.'}</td></tr>`;
 
   return sectionShell('ERP', 'Permisos', 'title-erp-permissions', `
     <div class="db-toolbar">
@@ -3087,6 +3311,7 @@ async function renderAdminTableEditor() {
     data = await fetchAllTableEditorRows(tableName, config.select);
   } catch (error) {
     console.error('[HR] renderAdminTableEditor:', error);
+    if (isSessionStaleError(error)) markSessionStale(error.message || 'admin table fetch');
     return sectionShell('ERP', 'BB.DD', 'title-admin-table-editor', `
       <p class="db-empty db-empty--error">No se pudo cargar ${escapeHTML(config.label)}. Revisa RLS/permisos.</p>
     `);
@@ -3104,9 +3329,14 @@ async function renderAdminTableEditor() {
   const searchQuery = adminTableSearchFor(tableName);
   const visibleData = sortedData.filter((row) => rowMatchesSearch(row, columns, searchQuery));
 
-  const rows = visibleData.length
-    ? visibleData.map((row, index) => renderAdminTableEditorRow(tableName, config, row, index)).join('')
-    : `<tr class="db-table__empty-row"><td colspan="99" class="db-empty">Sin filas disponibles.</td></tr>`;
+  const suspiciousAdminEmpty = hasRole('admin') && tableName === 'users' && !searchQuery && (data ?? []).length === 0;
+  if (suspiciousAdminEmpty) markSessionStale('admin users table returned 0 rows');
+
+  const rows = sortedData.length
+    ? sortedData.map((row, index) => renderAdminTableEditorRow(tableName, config, row, index, {
+      hidden: Boolean(searchQuery) && !rowMatchesSearch(row, columns, searchQuery),
+    })).join('')
+    : `<tr class="db-table__empty-row"><td colspan="99" class="db-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin filas disponibles.'}</td></tr>`;
 
   return sectionShell('ERP', 'BB.DD', 'title-admin-table-editor', `
     <div class="db-toolbar">
@@ -3139,7 +3369,7 @@ async function renderAdminTableEditor() {
   `);
 }
 
-function renderAdminTableEditorRow(tableName, config, row, index) {
+function renderAdminTableEditorRow(tableName, config, row, index, options = {}) {
   const columns = [...config.lockedFields, ...config.editableFields]
     .filter((field, fieldIndex, arr) => arr.indexOf(field) === fieldIndex);
   const visibleColumns = columns.filter((field) => !(config.hiddenColumns ?? []).includes(field));
@@ -3152,7 +3382,7 @@ function renderAdminTableEditorRow(tableName, config, row, index) {
     .toLowerCase();
 
   return `
-    <tr data-search-row data-search-text="${escapeAttr(searchText)}">
+    <tr data-search-row data-search-text="${escapeAttr(searchText)}"${options.hidden ? ' hidden' : ''}>
       ${visibleColumns.map((field) => {
         const value = row[field] ?? '';
         const isEditable = config.editableFields.includes(field);
@@ -3280,15 +3510,129 @@ function updateSessionDerivedFields(form) {
   const startInput = form.querySelector('[data-session-start]');
   const endInput = form.querySelector('[data-session-end]');
   const costInput = form.querySelector('[data-session-cost]');
+  const conceptInput = form.querySelector('[data-session-concept]');
   const config = sessionTypeConfig(typeSelect?.value);
+  const isMembership = isMembershipValue(typeSelect?.value);
 
   if (costInput) costInput.value = config?.cost ?? '';
   if (endInput) endInput.value = addMinutesToTime(startInput?.value, config?.minutes);
+  if (conceptInput && isMembership) {
+    conceptInput.value = MEMBERSHIP_CANONICAL;
+    conceptInput.readOnly = true;
+  } else if (conceptInput) {
+    conceptInput.readOnly = false;
+  }
+}
+
+function updateTransactionConceptFields(form) {
+  if (!form || form.dataset.form !== 'transaction-create') return;
+
+  const serviceSelect = form.querySelector('[data-transaction-service]');
+  const conceptSelect = form.querySelector('[data-transaction-concept]');
+  const customWrap = form.querySelector('[data-custom-concept-wrap]');
+  const customInput = form.querySelector('[data-custom-concept]');
+
+  if (serviceSelect && isMembershipValue(serviceSelect.value)) {
+    serviceSelect.value = MEMBERSHIP_CANONICAL;
+    if (conceptSelect && (!conceptSelect.value || conceptSelect.value === 'PERSONALIZADO')) {
+      conceptSelect.value = MEMBERSHIP_CANONICAL;
+    }
+  }
+
+  const custom = conceptSelect?.value === 'PERSONALIZADO';
+  if (customWrap) customWrap.hidden = !custom;
+  if (customInput) {
+    customInput.disabled = !custom;
+    customInput.required = custom;
+    if (!custom) customInput.value = '';
+  }
 }
 
 function formatDateOnly(value) {
   if (!value) return '-';
   return String(value).slice(0, 10);
+}
+
+function normalizeCatalogValue(value) {
+  return String(value ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+}
+
+function isMembershipValue(value) {
+  const normalized = normalizeCatalogValue(value).replace(/[^A-Z0-9]/g, '');
+  return normalized.includes('MEMBRESIA') || normalized.includes('MEMBRES');
+}
+
+function canonicalServiceValue(value) {
+  return isMembershipValue(value) ? MEMBERSHIP_CANONICAL : String(value ?? '').trim();
+}
+
+function canonicalSessionTypeValue(value) {
+  return isMembershipValue(value) ? MEMBERSHIP_CANONICAL : String(value ?? '').trim();
+}
+
+function compareDateOnly(a, b) {
+  return String(formatDateOnly(a)).localeCompare(String(formatDateOnly(b)));
+}
+
+function buildMembershipRows(sessions = [], transactions = []) {
+  const membershipSessions = (sessions ?? [])
+    .filter((session) => isMembershipValue(session.type) || isMembershipValue(session.concept))
+    .sort((a, b) => compareDateOnly(a.session_date, b.session_date) || String(a.id ?? '').localeCompare(String(b.id ?? '')));
+
+  const membershipPayments = (transactions ?? [])
+    .filter((tx) => isMembershipValue(tx.service))
+    .map((tx) => ({
+      ...tx,
+      amount: Math.max(0, Number(tx.amount ?? 0)),
+      date: formatDateOnly(tx.date),
+    }))
+    .filter((tx) => tx.amount > 0)
+    .sort((a, b) => compareDateOnly(a.date, b.date) || String(a.id ?? '').localeCompare(String(b.id ?? '')));
+
+  let paymentIndex = 0;
+  let accumulatedPaid = 0;
+  const today = todayDateInputValue();
+
+  return membershipSessions.map((session, index) => {
+    const requiredTotal = (index + 1) * MEMBERSHIP_WEEKLY_COST;
+
+    // Saldo acumulado: los pagos se aplican al adeudo total del usuario,
+    // no a una semana exacta. Esta fecha marca cuándo el acumulado alcanzó
+    // para cubrir la obligación de esta sesión.
+    while (paymentIndex < membershipPayments.length && accumulatedPaid < requiredTotal) {
+      accumulatedPaid += membershipPayments[paymentIndex].amount;
+      paymentIndex += 1;
+    }
+
+    const coveringPayment = accumulatedPaid >= requiredTotal
+      ? membershipPayments[paymentIndex - 1]
+      : null;
+    const fechaSesion = formatDateOnly(session.session_date);
+    const fechaSaldo = coveringPayment?.date ?? null;
+    const saldo = accumulatedPaid - requiredTotal;
+    let estado = 'PENDIENTE';
+
+    if (fechaSaldo) {
+      if (fechaSaldo < fechaSesion) estado = 'ADELANTADO';
+      else if (fechaSaldo === fechaSesion) estado = 'CORRIENTE';
+      else estado = 'ATRASADO';
+    } else if (fechaSesion <= today) {
+      estado = 'ATRASADO';
+    }
+
+    return {
+      semana: index + 1,
+      fecha_de_sesion: fechaSesion,
+      estado,
+      fecha_de_saldo: fechaSaldo,
+      saldo,
+      notas: session.notes || session.status || '-',
+    };
+  });
 }
 
 function normalizeTransactionType(value) {
@@ -3604,7 +3948,24 @@ async function handleErpForm(form) {
   });
 
   if (values.type) values.type = normalizeTransactionType(values.type);
-  if (type === 'session-create' && !values.status) values.status = 'sin apartado';
+  if (type === 'transaction-create') {
+    values.service = canonicalServiceValue(values.service);
+    if (values.concept === 'PERSONALIZADO') values.concept = String(values.concept_custom ?? '').trim();
+    if (isMembershipValue(values.service)) {
+      values.service = MEMBERSHIP_CANONICAL;
+      if (!values.concept) values.concept = MEMBERSHIP_CANONICAL;
+    }
+    delete values.concept_custom;
+  }
+  if (type === 'session-create') {
+    values.type = canonicalSessionTypeValue(values.type);
+    if (isMembershipValue(values.type)) {
+      values.type = MEMBERSHIP_CANONICAL;
+      values.concept = MEMBERSHIP_CANONICAL;
+      values.cost = MEMBERSHIP_WEEKLY_COST;
+    }
+    if (!values.status) values.status = 'sin apartado';
+  }
 
   if (type === 'user-create') {
     const ok = await handleAdminUserCreate(values);
@@ -5113,6 +5474,10 @@ function attachMainDelegation() {
       }
     }
 
+    if (action === 'refresh-session') {
+      handleRefreshSession();
+    }
+
     if (action === 'table-sort') {
       const btn = e.target.closest('[data-table-id][data-sort-field]');
       if (btn) {
@@ -5208,6 +5573,12 @@ function attachMainDelegation() {
       updateSessionDerivedFields(sessionField.closest('form'));
       return;
     }
+
+    const transactionField = e.target.closest('[data-transaction-service], [data-transaction-concept]');
+    if (transactionField) {
+      updateTransactionConceptFields(transactionField.closest('form'));
+      return;
+    }
   });
 
   main?.addEventListener('input', (e) => {
@@ -5220,6 +5591,12 @@ function attachMainDelegation() {
     const sessionField = e.target.closest('[data-session-type], [data-session-start]');
     if (sessionField) {
       updateSessionDerivedFields(sessionField.closest('form'));
+      return;
+    }
+
+    const transactionField = e.target.closest('[data-transaction-service], [data-transaction-concept]');
+    if (transactionField) {
+      updateTransactionConceptFields(transactionField.closest('form'));
       return;
     }
 
@@ -5501,6 +5878,7 @@ async function init() {
   attachNotificationListeners();
   attachUserMenuListeners();
   attachMainDelegation();
+  attachRoutePersistenceListener();
 
   await loadAndRenderNotifications();
 
@@ -5518,7 +5896,7 @@ async function init() {
   }
   // ── End onboarding gate ──────────────────────────────────────────
 
-  navigate('overview');
+  navigate(initialSectionKey());
 }
 
 if (document.readyState === 'loading') {
