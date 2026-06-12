@@ -889,9 +889,25 @@ window.dynamicJoystickEnabled=true;
   document.body.appendChild(root);
   const knob = root.querySelector(".dynamic-joystick-knob");
 
+  function gamePanelIsRotated() {
+    const panel = document.getElementById("gamePanel");
+    if (!panel) return false;
+    const transform = window.getComputedStyle(panel).transform;
+    return transform && transform !== "none";
+  }
+
+  function screenVectorToGameVector(x, y) {
+    if (!gamePanelIsRotated()) return { x, y };
+
+    // In portrait, CSS rotates the game panel 90deg. Convert finger movement
+    // back into the canvas axis so visual right/up match player movement.
+    return { x: y, y: -x };
+  }
+
   function setMovementVector(x, y) {
-    joyX = Math.abs(x) < 0.08 ? 0 : x;
-    joyY = Math.abs(y) < 0.08 ? 0 : y;
+    const gameVector = screenVectorToGameVector(x, y);
+    joyX = Math.abs(gameVector.x) < 0.08 ? 0 : gameVector.x;
+    joyY = Math.abs(gameVector.y) < 0.08 ? 0 : gameVector.y;
 
     // Common control object names used by small canvas games.
     window.__golGanaJoystick = { x: joyX, y: joyY, active: activeTouchId !== null };
@@ -970,6 +986,7 @@ window.dynamicJoystickEnabled=true;
   }
 
   function onTouchStart(e) {
+    if (window.PointerEvent) return;
     if (activeTouchId !== null) return;
 
     for (const touch of e.changedTouches) {
@@ -986,6 +1003,7 @@ window.dynamicJoystickEnabled=true;
   }
 
   function onTouchMove(e) {
+    if (window.PointerEvent) return;
     if (activeTouchId === null) return;
 
     for (const touch of e.changedTouches) {
@@ -997,6 +1015,7 @@ window.dynamicJoystickEnabled=true;
   }
 
   function onTouchEnd(e) {
+    if (window.PointerEvent) return;
     if (activeTouchId === null) return;
 
     for (const touch of e.changedTouches) {
