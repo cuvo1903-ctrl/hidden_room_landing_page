@@ -54,8 +54,6 @@ canvas { width: 100%; height: 100%; display: block; border-radius: 18px; backgro
 .message { position: absolute; z-index: 6; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,.72); color: #fff; border: 2px solid var(--yellow); border-radius: 20px; padding: 14px 24px; font-size: clamp(1.4rem, 5vw, 3rem); font-weight: 1000; text-align: center; text-shadow: 3px 3px 0 #000; white-space: nowrap; animation: pop .18s ease-out; }
 @keyframes pop { from { transform: translate(-50%, -50%) scale(.75); opacity: .4; } }
 .touch-controls { display: none; position: absolute; inset: 0; pointer-events: none; z-index: 7; }
-.stick-base { position: absolute; left: 22px; bottom: 22px; width: 96px; height: 96px; border-radius: 50%; background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.22); pointer-events: auto; touch-action: none; }
-.stick { position: absolute; left: 26px; top: 26px; width: 40px; height: 40px; border-radius: 50%; background: var(--green); box-shadow: 0 0 18px rgba(33,212,107,.6); }
 .touch-buttons { position: absolute; right: 22px; bottom: 22px; display: flex; gap: 12px; pointer-events: auto; }
 .round-btn { width: 70px; height: 70px; border-radius: 50%; color: #111; font-size: 1.7rem; font-weight: 900; background: var(--orange); box-shadow: 0 7px 0 #913b00; }
 .round-btn.shoot { background: var(--green); box-shadow: 0 7px 0 #087333; }
@@ -137,8 +135,6 @@ canvas { width: 100%; height: 100%; display: block; border-radius: 18px; backgro
   .hud div { padding: 5px 3px; }
   .hud .scoreboard strong { font-size: 1.8rem; }
   .hud .timebox strong { font-size: 1.15rem; }
-  .stick-base { left: max(14px, env(safe-area-inset-left)); bottom: max(16px, env(safe-area-inset-bottom)); width: 88px; height: 88px; }
-  .stick { left: 24px; top: 24px; width: 36px; height: 36px; }
   .touch-buttons { right: max(14px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); gap: 10px; }
   .round-btn { width: 62px; height: 62px; font-size: 1.45rem; }
 }

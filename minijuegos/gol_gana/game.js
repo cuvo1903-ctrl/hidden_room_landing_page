@@ -138,7 +138,9 @@ function getGolGanaJoystickVector() {
     if (keys.has('arrowright') || keys.has('d')) x += 1;
     if (keys.has('arrowup') || keys.has('w')) y -= 1;
     if (keys.has('arrowdown') || keys.has('s')) y += 1;
-    x += state.touchMove.x; y += state.touchMove.y;
+    const joystickVector = getGolGanaJoystickVector();
+    x += joystickVector?.x ?? state.touchMove.x;
+    y += joystickVector?.y ?? state.touchMove.y;
     const m = Math.hypot(x, y);
     return m > 0 ? { x: x / m, y: y / m } : { x: 0, y: 0 };
   }
@@ -852,23 +854,7 @@ function getGolGanaJoystickVector() {
   $('retryBtn').addEventListener('click', newGame);
   $('howBtn').addEventListener('click', () => ui.howTo.classList.toggle('hidden'));
 
-  // Controles táctiles simples.
-  const base = $('stickBase'), stick = $('stick');
-  let activeTouch = null;
-  function setStick(clientX, clientY) {
-    const rect = base.getBoundingClientRect();
-    const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
-    let dx = clientX - cx, dy = clientY - cy;
-    const max = rect.width * .32, m = Math.hypot(dx,dy);
-    if (m > max) { dx = dx / m * max; dy = dy / m * max; }
-    stick.style.transform = `translate(${dx}px, ${dy}px)`;
-    state.touchMove.x = dx / max; state.touchMove.y = dy / max;
-  }
-  base.addEventListener('touchstart', e => { activeTouch = e.changedTouches[0].identifier; setStick(e.changedTouches[0].clientX, e.changedTouches[0].clientY); e.preventDefault(); }, {passive:false});
-  base.addEventListener('touchmove', e => { for (const t of e.changedTouches) if (t.identifier === activeTouch) setStick(t.clientX, t.clientY); e.preventDefault(); }, {passive:false});
-  function resetStick(e) { if (e) e.preventDefault(); activeTouch = null; stick.style.transform = 'translate(0,0)'; state.touchMove.x = state.touchMove.y = 0; }
-  base.addEventListener('touchend', resetStick, {passive:false});
-  base.addEventListener('touchcancel', resetStick, {passive:false});
+  // Controles tactiles: movimiento por joystick dinamico, botones fijos para tiro/sprint.
   $('shootTouch').addEventListener('touchstart', e => { state.touchShoot = true; e.preventDefault(); }, {passive:false});
   $('shootTouch').addEventListener('touchend', e => { state.touchShoot = false; e.preventDefault(); }, {passive:false});
   $('shootTouch').addEventListener('touchcancel', e => { state.touchShoot = false; e.preventDefault(); }, {passive:false});
