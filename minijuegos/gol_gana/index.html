@@ -18,8 +18,8 @@
         <button id="howBtn" class="ghost-btn">Cómo jugar</button>
       </div>
       <div id="howTo" class="how hidden">
-        <p><strong>PC:</strong> WASD/flechas para moverte, Espacio para tirar, Shift para sprint.</p>
-        <p><strong>Móvil:</strong> joystick, botón ⚽ para tirar y ⚡ para sprint.</p>
+        <p><strong>PC:</strong> WASD/flechas para moverte, mantén Espacio para cargar tiro, Shift para sprint.</p>
+        <p><strong>Móvil:</strong> juega en horizontal. Joystick, mantén ⚽ para cargar tiro y ⚡ para sprint.</p>
         <p>Mete goles, junta alitas y evita que Clara te ajolotifique.</p>
       </div>
     </section>
@@ -32,6 +32,10 @@
         <div><span>Puntos</span><strong id="scoreUI">0</strong></div>
       </div>
       <canvas id="game" width="960" height="540" aria-label="Cancha de GOL GANA"></canvas>
+      <div class="rotate-hint">
+        <strong>GIRA TU CELULAR</strong>
+        <span>GOL GANA se juega en horizontal</span>
+      </div>
       <div id="message" class="message hidden"></div>
 
       <div class="touch-controls" aria-hidden="true">

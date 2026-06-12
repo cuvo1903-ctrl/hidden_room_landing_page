@@ -62,10 +62,10 @@ const FINANCE_STUDIO_SOURCES = [
   { value: '003', label: 'Los $antos' },
 ];
 const SESSION_TYPE_OPTIONS = [
-  { value: 'GRABACIÓN', label: 'GRABACIÓN (1 HR) $650', minutes: 60, cost: 650 },
-  { value: 'PRODUCCIÓN BÁSICA', label: 'PRODUCCIÓN BÁSICA 1:30 $1,700', minutes: 90, cost: 1700 },
-  { value: 'PRODUCCIÓN PREMIUM', label: 'PRODUCCIÓN PREMIUM 2:30 HRS $3,700', minutes: 150, cost: 3700 },
-  { value: MEMBERSHIP_CANONICAL, label: 'MEMBRESÍA 2 HRS $500', minutes: 120, cost: MEMBERSHIP_WEEKLY_COST },
+  { value: MEMBERSHIP_CANONICAL, label: MEMBERSHIP_CANONICAL, minutes: 120, cost: MEMBERSHIP_WEEKLY_COST },
+  { value: 'GRABACIÓN', label: 'GRABACIÓN', minutes: 60, cost: 650 },
+  { value: 'SESIÓN BÁSICA', label: 'SESIÓN BÁSICA', minutes: 90, cost: 1700 },
+  { value: 'SESIÓN PREMIUM', label: 'SESIÓN PREMIUM', minutes: 150, cost: 3700 },
 ];
 
 
@@ -359,6 +359,11 @@ const SECTIONS = {
     roleRequired: 'admin',
     render: renderErpPermissions,
   },
+  'erp-auth-audit': {
+    label: 'Auth / Registros',
+    roleRequired: 'admin',
+    render: renderErpAuthAudit,
+  },
   'admin-table-editor': {
     label: 'BB.DD',
     roleRequired: 'admin',
@@ -430,6 +435,7 @@ const TABLE_EDITOR_CONFIG = {
     label: 'Transacciones',
     primaryKey: 'id',
     select: 'id, user_id, type, concept, service, date, amount, via, username, id_trans, notes',
+    defaultSort: { field: 'date', direction: 'desc' },
     lockedFields: ['id'],
     editableFields: ['user_id', 'type', 'concept', 'service', 'date', 'amount', 'via', 'username', 'id_trans', 'notes'],
     hiddenColumns: ['id'],
@@ -437,15 +443,17 @@ const TABLE_EDITOR_CONFIG = {
   hr_transactions: {
     label: 'hr_transactions',
     primaryKey: 'id',
-    select: 'id, event_id, event_key, movement_type, concept, amount, hidden_room_share, from_counterparty_id, to_counterparty_id, owner_counterparty_id, payment_method, movement_date, notes, user_id, username, created_by_user_id, type, via, date',
+    select: 'id, event_id, event_key, movement_type, concept, amount, hidden_room_share, from_user_id, to_user_id, owner_user_id, payment_method, movement_date, notes, user_id, username, created_by_user_id, type, via, date',
+    defaultSort: { field: 'movement_date', direction: 'desc' },
     lockedFields: ['id', 'created_by_user_id'],
-    editableFields: ['event_id', 'event_key', 'movement_type', 'concept', 'amount', 'hidden_room_share', 'from_counterparty_id', 'to_counterparty_id', 'owner_counterparty_id', 'payment_method', 'movement_date', 'notes', 'user_id', 'username', 'type', 'via', 'date'],
+    editableFields: ['event_id', 'event_key', 'movement_type', 'concept', 'amount', 'hidden_room_share', 'from_user_id', 'to_user_id', 'owner_user_id', 'payment_method', 'movement_date', 'notes', 'user_id', 'username', 'type', 'via', 'date'],
     hiddenColumns: ['id'],
   },
   sessions: {
     label: 'Sesiones',
     primaryKey: 'id',
     select: 'id, session_date, concept, user_id, status, type, notes, username, hour, sc_end, cost, promo',
+    defaultSort: { field: 'session_date', direction: 'desc' },
     lockedFields: ['id'],
     editableFields: ['session_date', 'concept', 'user_id', 'status', 'type', 'notes', 'username', 'hour', 'sc_end', 'cost', 'promo'],
     hiddenColumns: ['id'],
@@ -454,6 +462,7 @@ const TABLE_EDITOR_CONFIG = {
     label: 'Puntuaciones',
     primaryKey: 'id',
     select: 'id, created_at, game_id, user_id, username, type, amount',
+    defaultSort: { field: 'created_at', direction: 'desc' },
     lockedFields: ['id', 'created_at'],
     editableFields: ['game_id', 'user_id', 'username', 'type', 'amount'],
     hiddenColumns: ['id'],
@@ -479,6 +488,7 @@ const TABLE_EDITOR_CONFIG = {
     label: 'Membresia',
     primaryKey: null,
     select: 'user_id, username, semana, fecha_de_sesion, estado, fecha_de_saldo, saldo, notas',
+    defaultSort: { field: 'fecha_de_sesion', direction: 'desc' },
     lockedFields: ['user_id', 'username', 'semana', 'fecha_de_sesion', 'estado', 'fecha_de_saldo', 'saldo', 'notas'],
     editableFields: [],
     hiddenColumns: [],
@@ -498,21 +508,37 @@ const TABLE_EDITOR_CONFIG = {
     label: 'Eventos',
     primaryKey: 'id',
     select: 'id, event_key, name, event_date, venue, city, status, notes',
+    defaultSort: { field: 'event_date', direction: 'desc' },
     lockedFields: ['id'],
     editableFields: ['event_key', 'name', 'event_date', 'venue', 'city', 'status', 'notes'],
     hiddenColumns: ['id'],
   },
+  event_participations: {
+    label: 'Participaciones de evento',
+    primaryKey: 'id',
+    select: 'id, event_id, user_id, participation_percent, role, notes, created_at',
+    defaultSort: { field: 'created_at', direction: 'desc' },
+    lockedFields: ['id', 'created_at'],
+    editableFields: ['event_id', 'user_id', 'participation_percent', 'role', 'notes'],
+    hiddenColumns: ['id'],
+  },
 };
 
-async function fetchAllTableEditorRows(tableName, select) {
+async function fetchAllTableEditorRows(tableName, select, defaultSort = null) {
   const rows = [];
   let from = 0;
 
   while (true) {
-    const { data, error } = await supabase
+    let query = supabase
       .from(tableName)
       .select(select)
       .range(from, from + ADMIN_TABLE_FETCH_SIZE - 1);
+
+    if (defaultSort?.field) {
+      query = query.order(defaultSort.field, { ascending: defaultSort.direction !== 'desc' });
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
@@ -553,7 +579,7 @@ function getTableSort(tableId, fallbackField = '', fallbackDirection = 'asc') {
 }
 
 function isDateSortField(field) {
-  return /(^|_)(date|fecha)(_de)?|date$|fecha$/i.test(String(field ?? ''));
+  return /(^|_)(date|fecha)(_de)?|date$|fecha$|_at$/i.test(String(field ?? ''));
 }
 
 function setTableSort(tableId, field) {
@@ -1479,7 +1505,8 @@ async function renderClientDownloads() {
   const { data, error } = await supabase
     .from('downloads')
     .select('*')
-    .eq('user_id', state.user.user_id);
+    .eq('user_id', state.user.user_id)
+    .order('created_at', { ascending: false });
 
   if (error) {
     console.error('[HR] renderClientDownloads:', error);
@@ -1684,7 +1711,8 @@ async function renderClientContracts() {
   const { data, error } = await supabase
     .from('contracts')
     .select('*')
-    .eq('user_id', state.user.user_id);
+    .eq('user_id', state.user.user_id)
+    .order('created_at', { ascending: false });
 
   if (error) {
     console.error('[HR] renderClientContracts:', error);
@@ -1756,8 +1784,10 @@ async function renderClientMembership() {
   }
 
   const membershipRows = buildMembershipRows(sessionsResult.data ?? [], transactionsResult.data ?? []);
-  const rows = membershipRows.length
-    ? membershipRows.map((item) => `
+  const visibleMembershipRows = sortRowsByColumn(membershipRows, 'fecha_de_sesion', 'desc');
+  const membershipNotices = renderMembershipNotices(membershipRows);
+  const rows = visibleMembershipRows.length
+    ? visibleMembershipRows.map((item) => `
       <tr>
         <td>${escapeHTML(item.semana ?? '-')}</td>
         <td>${escapeHTML(formatDateOnly(item.fecha_de_sesion))}</td>
@@ -1794,6 +1824,7 @@ async function renderClientMembership() {
           <tbody>${rows}</tbody>
         </table>
       </div>
+      ${membershipNotices}
     </section>
   `;
 }
@@ -1855,11 +1886,13 @@ async function renderClientRewards() {
     supabase
       .from('scores')
       .select('*')
-      .eq('user_id', state.user.user_id),
+      .eq('user_id', state.user.user_id)
+      .order('created_at', { ascending: false }),
     supabase
       .from('rewards')
-      .select('id, concept')
-      .eq('user_id', state.user.user_id),
+      .select('id, concept, created_at')
+      .eq('user_id', state.user.user_id)
+      .order('created_at', { ascending: false }),
   ]);
 
   if (scoresError || rewardsError) {
@@ -1990,9 +2023,9 @@ async function renderCollabFinance() {
   const eventId = state.data.collabFinanceEventId || String(events[0].id ?? events[0].event_id);
   state.data.collabFinanceEventId = eventId;
   const selectedEvent = events.find((event) => String(event.id ?? event.event_id) === String(eventId));
-  const permissions = eventAccessFor(selectedEvent, false);
+  const permissions = eventAccessFor(selectedEvent);
   const { data, error } = await fetchCollabFinanceTransactions(filters, eventId, events);
-  const counterparties = await fetchCounterpartiesForEvent(selectedEvent?.id ?? selectedEvent?.event_id ?? eventId);
+  const participants = await fetchParticipantsForEvent(selectedEvent?.id ?? selectedEvent?.event_id ?? eventId);
 
   if (error) {
     console.error('[HR] renderCollabFinance:', error);
@@ -2011,7 +2044,7 @@ async function renderCollabFinance() {
     ${renderEventInfo(selectedEvent)}
     ${renderEventSummaryCards(eventSummaryFor(selectedEvent, data ?? []))}
     ${renderEventRightsChart(selectedEvent, data ?? [])}
-    ${permissions.can_add_finance ? renderEventMovementForm(selectedEvent, 'collab-event-movement-create', counterparties) : ''}
+    ${permissions.can_add_finance ? renderEventMovementForm(selectedEvent, 'collab-event-movement-create', participants) : ''}
     ${renderEventFinanceTransactionsTable(data ?? [], { canEdit: permissions.can_edit_finance })}
   `);
 }
@@ -2368,7 +2401,7 @@ async function renderErpFinance() {
 
     state.data.erpFinanceRows = data ?? [];
     state.data.erpFinanceFilters = filters;
-    await fetchAllEventCounterparties();
+    await fetchAllEventParticipants();
 
     return sectionShell('ERP', 'Finanzas', 'title-erp-finance', `
       ${renderFinanceScopeFilters(filters, events)}
@@ -2410,7 +2443,7 @@ async function renderErpFinance() {
 async function renderErpOps() {
   await ensureUsersLoaded();
   const events = await ensureFinanceEventsLoaded();
-  const counterparties = await fetchAllEventCounterparties();
+  const participants = await fetchAllEventParticipants();
   const activeForm = state.data.erpOpsForm || 'transaction';
   const opsForms = {
     transaction: {
@@ -2486,6 +2519,7 @@ async function renderErpOps() {
             <label class="db-field"><span>Nombre</span><input name="display_name" required /></label>
             <label class="db-field"><span>Username</span><input name="username" /></label>
           </div>
+          <label class="db-field"><span>User ID</span><input name="user_id" autocomplete="off" /></label>
           <label class="db-field"><span>Email</span><input type="email" name="email" required /></label>
           <div class="db-form__row">
             <label class="db-field"><span>WhatsApp</span><input name="whatsapp" /></label>
@@ -2519,7 +2553,11 @@ async function renderErpOps() {
     },
     eventMovement: {
       label: 'Nuevo movimiento',
-      html: renderEventMovementOpsForm(events, counterparties),
+      html: renderEventMovementOpsForm(events, participants),
+    },
+    eventParticipant: {
+      label: 'Nuevo participante',
+      html: renderEventParticipantForm(events),
     },
     userMerge: {
       label: 'Fusionar usuarios',
@@ -2562,6 +2600,7 @@ async function renderErpOps() {
             ['user', 'Usuario'],
             ['event', 'Evento'],
             ['eventMovement', 'Nuevo movimiento'],
+            ['eventParticipant', 'Nuevo participante'],
             ['userMerge', 'Fusionar usuarios'],
           ].map(([value, label]) => optionHTML(value, label, activeForm)).join('')}
         </select>
@@ -2574,6 +2613,22 @@ async function renderErpOps() {
       </article>
     </div>
   `);
+}
+
+function renderEventParticipantForm(events = []) {
+  return `
+    <form class="db-form" data-form="event-participant-create">
+      <label class="db-field"><span>Evento</span><select name="event_id" required>${events.map((event) => optionHTML(String(event.id ?? event.event_id), eventLabel(event), '')).join('')}</select></label>
+      ${renderErpUserPicker('user_id', 'Usuario / participante')}
+      ${renderUserAutofillFields()}
+      <div class="db-form__row">
+        <label class="db-field"><span>Rol en evento</span><input name="role" placeholder="Inversor, proveedor, venue..." /></label>
+        <label class="db-field"><span>Participación %</span><input name="participation_percent" type="number" step="0.01" min="0" max="100" /></label>
+      </div>
+      <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
+      <button class="btn-primary" type="submit">Crear participante</button>
+    </form>
+  `;
 }
 
 function renderTransactionForm(formName) {
@@ -2803,23 +2858,23 @@ function eventAccessFor(event, adminDefault = hasRole('admin')) {
   };
 }
 
-const counterpartyLabel = (counterparty) => {
-  if (!counterparty) return '-';
-  const type = counterparty.type ? ` · ${counterparty.type}` : '';
-  return `${counterparty.name ?? counterparty.id ?? '-'}${type}`;
+const participantLabel = (participant) => {
+  if (!participant) return '-';
+  const role = participant.role ? ` · ${participant.role}` : '';
+  return `${userLabel(participant.user_id)}${role}`;
 };
 
-function renderCounterpartyOptions(counterparties = [], selectedValue = '', placeholder = 'Seleccionar') {
+function renderParticipantOptions(participants = [], selectedValue = '', placeholder = 'Seleccionar') {
   return [
     optionHTML('', placeholder, selectedValue),
-    ...counterparties.map((counterparty) => optionHTML(String(counterparty.id), counterpartyLabel(counterparty), selectedValue)),
+    ...participants.map((participant) => optionHTML(String(participant.user_id), participantLabel(participant), selectedValue)),
   ].join('');
 }
 
-function counterpartyName(counterpartyId) {
-  if (!counterpartyId) return '-';
-  const counterparty = (state.data.eventCounterpartiesAll ?? []).find((item) => String(item.id) === String(counterpartyId));
-  return counterparty?.name ?? counterpartyId;
+function participantName(userId) {
+  if (!userId) return '-';
+  const participant = (state.data.eventParticipantsAll ?? []).find((item) => String(item.user_id) === String(userId));
+  return participant ? participantLabel(participant) : userLabel(userId);
 }
 
 function eventRightsTotals(event, transactions = []) {
@@ -2874,8 +2929,8 @@ function internalInvestorRows(transactions = []) {
   (transactions ?? [])
     .filter((tx) => tx.movement_type === 'investment_in')
     .forEach((tx) => {
-      const investorId = tx.from_counterparty_id ? String(tx.from_counterparty_id) : 'sin_inversor';
-      const current = totals.get(investorId) ?? { id: investorId, label: tx.from_counterparty_id ? counterpartyName(tx.from_counterparty_id) : 'Sin inversor asignado', total: 0 };
+      const investorId = tx.from_user_id ? String(tx.from_user_id) : 'sin_inversor';
+      const current = totals.get(investorId) ?? { id: investorId, label: tx.from_user_id ? participantName(tx.from_user_id) : 'Sin inversor asignado', total: 0 };
       current.total += Math.abs(Number(tx.amount ?? 0));
       totals.set(investorId, current);
     });
@@ -3014,7 +3069,7 @@ function eventSummaryFor(event, transactions = []) {
   };
 }
 
-function renderEventMovementForm(event, formName, counterparties = []) {
+function renderEventMovementForm(event, formName, participants = []) {
   const today = todayDateInputValue();
   return `
     <article class="db-card">
@@ -3030,10 +3085,10 @@ function renderEventMovementForm(event, formName, counterparties = []) {
           </div>
           <label class="db-field"><span>Concept</span><input name="concept" required /></label>
           <div class="db-form__row">
-            <label class="db-field"><span>FROM</span><select name="from_counterparty_id">${renderCounterpartyOptions(counterparties, '', 'Sin origen')}</select></label>
-            <label class="db-field"><span>TO</span><select name="to_counterparty_id">${renderCounterpartyOptions(counterparties, '', 'Sin destino')}</select></label>
+            <label class="db-field"><span>FROM</span><select name="from_user_id">${renderParticipantOptions(participants, '', 'Sin origen')}</select></label>
+            <label class="db-field"><span>TO</span><select name="to_user_id">${renderParticipantOptions(participants, '', 'Sin destino')}</select></label>
           </div>
-          <label class="db-field"><span>CORRESPONDE A</span><select name="owner_counterparty_id">${renderCounterpartyOptions(counterparties, '', 'Sin asignar')}</select></label>
+          <label class="db-field"><span>CORRESPONDE A</span><select name="owner_user_id">${renderParticipantOptions(participants, '', 'Sin asignar')}</select></label>
           <div class="db-form__row">
             <label class="db-field"><span>Monto Absorbido Internamente (M.A.I.)</span><input name="hidden_room_share" type="number" step="0.01" value="0" /></label>
             <label class="db-field"><span>Payment Method</span><input name="payment_method" /></label>
@@ -3047,7 +3102,7 @@ function renderEventMovementForm(event, formName, counterparties = []) {
   `;
 }
 
-function renderEventMovementOpsForm(events = [], counterparties = []) {
+function renderEventMovementOpsForm(events = [], participants = []) {
   const today = todayDateInputValue();
   const availableEvents = events.filter((event) => event.id || event.event_id);
 
@@ -3069,10 +3124,10 @@ function renderEventMovementOpsForm(events = [], counterparties = []) {
       </div>
       <label class="db-field"><span>Concept</span><input name="concept" required /></label>
       <div class="db-form__row">
-        <label class="db-field"><span>FROM</span><select name="from_counterparty_id">${renderCounterpartyOptions(counterparties, '', 'Sin origen')}</select></label>
-        <label class="db-field"><span>TO</span><select name="to_counterparty_id">${renderCounterpartyOptions(counterparties, '', 'Sin destino')}</select></label>
+        <label class="db-field"><span>FROM</span><select name="from_user_id">${renderParticipantOptions(participants, '', 'Sin origen')}</select></label>
+        <label class="db-field"><span>TO</span><select name="to_user_id">${renderParticipantOptions(participants, '', 'Sin destino')}</select></label>
       </div>
-      <label class="db-field"><span>CORRESPONDE A</span><select name="owner_counterparty_id">${renderCounterpartyOptions(counterparties, '', 'Sin asignar')}</select></label>
+      <label class="db-field"><span>CORRESPONDE A</span><select name="owner_user_id">${renderParticipantOptions(participants, '', 'Sin asignar')}</select></label>
       <div class="db-form__row">
         <label class="db-field"><span>Monto Absorbido Internamente (M.A.I.)</span><input name="hidden_room_share" type="number" step="0.01" value="0" /></label>
         <label class="db-field"><span>Payment Method</span><input name="payment_method" /></label>
@@ -3130,9 +3185,9 @@ function renderEventFinanceTransactionsTable(transactions, options = {}) {
     ['movement_type', 'Tipo'],
     ['amount', 'Monto'],
     ['hidden_room_share', 'M.A.I.'],
-    ['from_counterparty_id', 'FROM'],
-    ['to_counterparty_id', 'TO'],
-    ['owner_counterparty_id', 'Corresponde a'],
+    ['from_user_id', 'FROM'],
+    ['to_user_id', 'TO'],
+    ['owner_user_id', 'Corresponde a'],
     ['movement_date', 'Fecha'],
     ['payment_method', 'Metodo'],
     ['created_by_user_id', 'Creado por'],
@@ -3145,9 +3200,9 @@ function renderEventFinanceTransactionsTable(transactions, options = {}) {
         <td>${escapeHTML(movementTypeLabel(tx.movement_type) || tx.type || '-')}</td>
         <td>${money(Number(tx.amount ?? 0))}</td>
         <td>${money(Number(tx.hidden_room_share ?? eventFinanceAmount(tx) ?? 0))}</td>
-        <td>${escapeHTML(counterpartyName(tx.from_counterparty_id))}</td>
-        <td>${escapeHTML(counterpartyName(tx.to_counterparty_id))}</td>
-        <td>${escapeHTML(counterpartyName(tx.owner_counterparty_id))}</td>
+        <td>${escapeHTML(participantName(tx.from_user_id))}</td>
+        <td>${escapeHTML(participantName(tx.to_user_id))}</td>
+        <td>${escapeHTML(participantName(tx.owner_user_id))}</td>
         <td>${escapeHTML(formatDateOnly(tx.movement_date ?? tx.date))}</td>
         <td>${escapeHTML(tx.payment_method ?? tx.via ?? '-')}</td>
         <td>${escapeHTML(tx.created_by_user_id ?? '-')}</td>
@@ -3247,6 +3302,265 @@ async function renderErpPermissions() {
   `);
 }
 
+async function renderErpAuthAudit() {
+  if (!hasRole('admin')) {
+    return sectionShell('ERP', 'Auth / Registros', 'title-erp-auth-audit', `
+      <p class="db-empty db-empty--error">Acceso no autorizado.</p>
+    `);
+  }
+
+  let audit;
+  try {
+    const { data, error } = await supabase.functions.invoke('admin-auth-audit', {
+      body: { limit: 25 },
+    });
+
+    if (error || data?.success === false) {
+      throw error || new Error(data?.error || 'No se pudo cargar Auth.');
+    }
+
+    audit = data;
+  } catch (err) {
+    console.error('[HR] renderErpAuthAudit:', err);
+    return sectionShell('ERP', 'Auth / Registros', 'title-erp-auth-audit', `
+      <p class="db-empty db-empty--error">No se pudo cargar la auditoría de Auth. Revisa que la Edge Function admin-auth-audit esté desplegada.</p>
+    `);
+  }
+
+  const totals = audit?.totals ?? {};
+  const generatedAt = audit?.generated_at ? formatDateTime(audit.generated_at) : '-';
+  const alerts =
+    Number(totals.auth_without_public_profile ?? 0)
+    + Number(totals.public_profiles_without_auth ?? 0)
+    + Number(totals.duplicate_emails ?? 0)
+    + Number(totals.duplicate_user_ids ?? 0);
+
+  return sectionShell('ERP', 'Auth / Registros', 'title-erp-auth-audit', `
+    ${renderAuthAuditFilterBar(state.data.authAuditFilter ?? 'all')}
+    <div class="db-grid db-grid--3col">
+      ${renderStatCard('Auth users', String(totals.auth_users ?? 0))}
+      ${renderStatCard('Perfiles public.users', String(totals.public_profiles ?? 0))}
+      ${renderStatCard('Alertas de fusión', String(alerts))}
+    </div>
+    <p class="db-empty">Generado: ${escapeHTML(generatedAt)}</p>
+    ${renderAuthUsersTable('Últimos usuarios logueados', audit?.recent_logins ?? [], 'last_sign_in_at', ['auth'], 'js-auth-logins')}
+    ${renderAuthUsersTable('Últimos usuarios creados en Auth', audit?.recent_created ?? [], 'created_at', ['auth'], 'js-auth-created')}
+    ${renderAuthUsersTable('Auth sin perfil public.users', audit?.possible_merges?.auth_without_public_profile ?? [], 'created_at', ['auth', 'alerts', 'missing-profile'], 'js-auth-missing-profile')}
+    ${renderPublicProfilesTable('public.users sin Auth', audit?.possible_merges?.public_profiles_without_auth ?? [], ['public', 'alerts'], 'js-public-without-auth')}
+    ${renderDuplicateEmailAudit(audit?.possible_merges?.duplicate_emails ?? [], ['alerts'], 'js-duplicate-emails')}
+    ${renderDuplicateUserIdAudit(audit?.possible_merges?.duplicate_user_ids ?? [], ['alerts'], 'js-duplicate-user-ids')}
+  `);
+}
+
+function renderAuthAuditFilterBar(activeFilter = 'all') {
+  return `
+    <div class="db-toolbar">
+      <label class="db-field db-field--compact">
+        <span>Filtro</span>
+        <select data-action="auth-audit-filter" aria-label="Filtrar auditoría de Auth">
+          ${[
+            ['all', 'Todos'],
+            ['auth', 'Auth users'],
+            ['public', 'Perfiles public.users'],
+            ['alerts', 'Alertas de fusión'],
+            ['missing-profile', 'Sin perfil'],
+          ].map(([value, label]) => optionHTML(value, label, activeFilter)).join('')}
+        </select>
+      </label>
+    </div>
+  `;
+}
+
+function authAuditBlockAttrs(groups = []) {
+  const groupText = groups.join(' ');
+  const activeFilter = state.data.authAuditFilter ?? 'all';
+  const hidden = activeFilter !== 'all' && !groups.includes(activeFilter);
+  return `data-auth-audit-groups="${escapeAttr(groupText)}"${hidden ? ' hidden' : ''}`;
+}
+
+function renderAuditTableSearch(tableId, rowCount, label = 'Buscar') {
+  return `
+    <label class="db-field db-field--compact db-field--search">
+      <span>${escapeHTML(label)}</span>
+      <input data-table-search data-table-target="${escapeAttr(tableId)}" data-table-count="${escapeAttr(`${tableId}-count`)}" placeholder="Buscar por email, User ID, perfil o estado" />
+      <small id="${escapeAttr(`${tableId}-count`)}" class="db-field__hint">${rowCount} filas visibles</small>
+    </label>
+  `;
+}
+
+function renderAuthUsersTable(title, users = [], dateField = 'created_at', groups = ['auth'], tableId = 'js-auth-users') {
+  const rows = users.length
+    ? users.map((user) => {
+      const profile = user.profile ?? {};
+      const searchText = [
+        user?.[dateField],
+        user.email,
+        user.id,
+        profile.user_id,
+        profile.display_name,
+        profile.username,
+        user.needs_profile_merge ? 'Sin perfil' : 'OK',
+      ].filter(Boolean).join(' ');
+      return `
+        <tr data-search-row data-search-text="${escapeAttr(searchText)}">
+          <td>${escapeHTML(formatDateTime(user?.[dateField]))}</td>
+          <td>${escapeHTML(user.email ?? '-')}</td>
+          <td><code>${escapeHTML(user.id ?? '-')}</code></td>
+          <td>${escapeHTML(profile.user_id ?? '-')}</td>
+          <td>${escapeHTML(profile.display_name ?? profile.username ?? '-')}</td>
+          <td>${user.needs_profile_merge ? '<span class="db-auth-audit__flag">Sin perfil</span>' : '<span class="db-auth-audit__ok">OK</span>'}</td>
+        </tr>
+      `;
+    }).join('')
+    : '<tr class="db-table__empty-row"><td colspan="6" class="db-empty">Sin registros.</td></tr>';
+
+  return `
+    <article class="db-auth-audit-block" ${authAuditBlockAttrs(groups)}>
+      <h2 class="db-auth-audit-block__title">${escapeHTML(title)}</h2>
+      ${renderAuditTableSearch(tableId, users.length)}
+      <div class="db-table-wrap">
+        <table class="db-table" aria-label="${escapeAttr(title)}">
+          <thead>
+            <tr>
+              <th scope="col">Fecha</th>
+              <th scope="col">Email Auth</th>
+              <th scope="col">Auth ID</th>
+              <th scope="col">User ID</th>
+              <th scope="col">Perfil</th>
+              <th scope="col">Estado</th>
+            </tr>
+          </thead>
+          <tbody id="${escapeAttr(tableId)}">${rows}</tbody>
+        </table>
+      </div>
+    </article>
+  `;
+}
+
+function renderPublicProfilesTable(title, profiles = [], groups = ['public'], tableId = 'js-public-profiles') {
+  const rows = profiles.length
+    ? profiles.map((profile) => {
+      const searchText = [
+        profile.email,
+        profile.id,
+        profile.user_id,
+        profile.display_name,
+        profile.username,
+        profile.roles,
+      ].filter(Boolean).join(' ');
+      return `
+        <tr data-search-row data-search-text="${escapeAttr(searchText)}">
+          <td>${escapeHTML(profile.email ?? '-')}</td>
+          <td><code>${escapeHTML(profile.id ?? '-')}</code></td>
+          <td>${escapeHTML(profile.user_id ?? '-')}</td>
+          <td>${escapeHTML(profile.display_name ?? profile.username ?? '-')}</td>
+          <td>${escapeHTML(profile.roles ?? '-')}</td>
+        </tr>
+      `;
+    }).join('')
+    : '<tr class="db-table__empty-row"><td colspan="5" class="db-empty">Sin registros.</td></tr>';
+
+  return `
+    <article class="db-auth-audit-block" ${authAuditBlockAttrs(groups)}>
+      <h2 class="db-auth-audit-block__title">${escapeHTML(title)}</h2>
+      ${renderAuditTableSearch(tableId, profiles.length)}
+      <div class="db-table-wrap">
+        <table class="db-table" aria-label="${escapeAttr(title)}">
+          <thead>
+            <tr>
+              <th scope="col">Email public.users</th>
+              <th scope="col">Public ID</th>
+              <th scope="col">User ID</th>
+              <th scope="col">Perfil</th>
+              <th scope="col">Rol</th>
+            </tr>
+          </thead>
+          <tbody id="${escapeAttr(tableId)}">${rows}</tbody>
+        </table>
+      </div>
+    </article>
+  `;
+}
+
+function renderDuplicateEmailAudit(emailGroups = [], groups = ['alerts'], tableId = 'js-duplicate-emails') {
+  const rows = emailGroups.length
+    ? emailGroups.map((group) => {
+      const possibleProfiles = (group.public_profiles ?? []).map((profile) => profile.user_id || profile.display_name || profile.id).join(', ') || '-';
+      const searchText = [
+        group.email,
+        possibleProfiles,
+        ...(group.auth_users ?? []).map((user) => user.email || user.id),
+      ].filter(Boolean).join(' ');
+      return `
+        <tr data-search-row data-search-text="${escapeAttr(searchText)}">
+          <td>${escapeHTML(group.email ?? '-')}</td>
+          <td>${escapeHTML(String(group.auth_users?.length ?? 0))}</td>
+          <td>${escapeHTML(String(group.public_profiles?.length ?? 0))}</td>
+          <td>${escapeHTML(possibleProfiles)}</td>
+        </tr>
+      `;
+    }).join('')
+    : '<tr class="db-table__empty-row"><td colspan="4" class="db-empty">Sin emails duplicados.</td></tr>';
+
+  return `
+    <article class="db-auth-audit-block" ${authAuditBlockAttrs(groups)}>
+      <h2 class="db-auth-audit-block__title">Emails duplicados</h2>
+      ${renderAuditTableSearch(tableId, emailGroups.length)}
+      <div class="db-table-wrap">
+        <table class="db-table" aria-label="Emails duplicados">
+          <thead>
+            <tr>
+              <th scope="col">Email</th>
+              <th scope="col">Auth</th>
+              <th scope="col">public.users</th>
+              <th scope="col">Perfiles posibles</th>
+            </tr>
+          </thead>
+          <tbody id="${escapeAttr(tableId)}">${rows}</tbody>
+        </table>
+      </div>
+    </article>
+  `;
+}
+
+function renderDuplicateUserIdAudit(userIdGroups = [], groups = ['alerts'], tableId = 'js-duplicate-user-ids') {
+  const rows = userIdGroups.length
+    ? userIdGroups.map((group) => {
+      const possibleEmails = (group.public_profiles ?? []).map((profile) => profile.email || profile.display_name || profile.id).join(', ') || '-';
+      const searchText = [
+        group.user_id,
+        possibleEmails,
+      ].filter(Boolean).join(' ');
+      return `
+        <tr data-search-row data-search-text="${escapeAttr(searchText)}">
+          <td>${escapeHTML(group.user_id ?? '-')}</td>
+          <td>${escapeHTML(String(group.public_profiles?.length ?? 0))}</td>
+          <td>${escapeHTML(possibleEmails)}</td>
+        </tr>
+      `;
+    }).join('')
+    : '<tr class="db-table__empty-row"><td colspan="3" class="db-empty">Sin User ID duplicados.</td></tr>';
+
+  return `
+    <article class="db-auth-audit-block" ${authAuditBlockAttrs(groups)}>
+      <h2 class="db-auth-audit-block__title">User ID duplicados</h2>
+      ${renderAuditTableSearch(tableId, userIdGroups.length)}
+      <div class="db-table-wrap">
+        <table class="db-table" aria-label="User ID duplicados">
+          <thead>
+            <tr>
+              <th scope="col">User ID</th>
+              <th scope="col">Perfiles</th>
+              <th scope="col">Emails posibles</th>
+            </tr>
+          </thead>
+          <tbody id="${escapeAttr(tableId)}">${rows}</tbody>
+        </table>
+      </div>
+    </article>
+  `;
+}
+
 function renderPermissionUserRow(user) {
   const permissions = (state.data.userPermissions ?? [])
     .filter((permission) => String(permission.user_id) === String(user.id));
@@ -3308,7 +3622,7 @@ async function renderAdminTableEditor() {
   let data = [];
 
   try {
-    data = await fetchAllTableEditorRows(tableName, config.select);
+    data = await fetchAllTableEditorRows(tableName, config.select, config.defaultSort);
   } catch (error) {
     console.error('[HR] renderAdminTableEditor:', error);
     if (isSessionStaleError(error)) markSessionStale(error.message || 'admin table fetch');
@@ -3323,7 +3637,8 @@ async function renderAdminTableEditor() {
     .filter((field, index, arr) => arr.indexOf(field) === index);
   const visibleColumns = columns.filter((field) => !(config.hiddenColumns ?? []).includes(field));
   const tableId = `admin-${tableName}`;
-  const activeSort = getTableSort(tableId);
+  const defaultSort = config.defaultSort ?? { field: '', direction: 'asc' };
+  const activeSort = getTableSort(tableId, defaultSort.field, defaultSort.direction);
   const sortField = visibleColumns.includes(activeSort.field) ? activeSort.field : '';
   const sortedData = sortRowsByColumn(data ?? [], sortField, activeSort.direction);
   const searchQuery = adminTableSearchFor(tableName);
@@ -3492,7 +3807,8 @@ function todayDateInputValue() {
 }
 
 function sessionTypeConfig(value) {
-  return SESSION_TYPE_OPTIONS.find((item) => item.value === value) ?? SESSION_TYPE_OPTIONS[0];
+  const canonicalValue = canonicalSessionTypeValue(value);
+  return SESSION_TYPE_OPTIONS.find((item) => item.value === canonicalValue) ?? SESSION_TYPE_OPTIONS[0];
 }
 
 function addMinutesToTime(time, minutes) {
@@ -3553,6 +3869,13 @@ function formatDateOnly(value) {
   return String(value).slice(0, 10);
 }
 
+function formatDateTime(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return formatDateOnly(value);
+  return date.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
 function normalizeCatalogValue(value) {
   return String(value ?? '')
     .trim()
@@ -3571,7 +3894,12 @@ function canonicalServiceValue(value) {
 }
 
 function canonicalSessionTypeValue(value) {
-  return isMembershipValue(value) ? MEMBERSHIP_CANONICAL : String(value ?? '').trim();
+  const normalized = normalizeCatalogValue(value);
+  if (isMembershipValue(normalized)) return MEMBERSHIP_CANONICAL;
+  if (normalized.includes('BASICA') || normalized.includes('BÁSICA')) return 'SESIÓN BÁSICA';
+  if (normalized.includes('PREMIUM')) return 'SESIÓN PREMIUM';
+  if (normalized.includes('GRABACION') || normalized.includes('GRABACIÓN')) return 'GRABACIÓN';
+  return String(value ?? '').trim();
 }
 
 function compareDateOnly(a, b) {
@@ -3633,6 +3961,48 @@ function buildMembershipRows(sessions = [], transactions = []) {
       notas: session.notes || session.status || '-',
     };
   });
+}
+
+function renderMembershipNotices(membershipRows = []) {
+  if (!membershipRows.length) return '';
+
+  const paidLateCount = membershipRows
+    .filter((row) => row.estado === 'ATRASADO' && row.fecha_de_saldo)
+    .length;
+  const latestBalance = Number(membershipRows[membershipRows.length - 1]?.saldo ?? 0);
+  const notices = [];
+
+  if (paidLateCount > 0) {
+    notices.push({
+      tone: 'warning',
+      text: `Tienes ${paidLateCount} sesiones saldadas CON ATRASO`,
+    });
+  }
+
+  if (latestBalance < 0) {
+    notices.push({
+      tone: 'danger',
+      text: `AVISO: Tu cuenta presenta un adeudo pendiente por un total de ${money(Math.abs(latestBalance))}. En caso de incumplimiento, Hidden Room podrá suspender o cancelar la membresía de acuerdo con los Términos y Condiciones aceptados durante su contratación. Consulta los TyC para conocer los detalles aplicables.`,
+    });
+  } else if (latestBalance > 0) {
+    notices.push({
+      tone: 'success',
+      text: `Tienes un saldo a favor de ${money(latestBalance)}, ¡MUCHAS FELICIDADES!`,
+    });
+  } else {
+    notices.push({
+      tone: 'success',
+      text: '¡FELICIDADES! Tu cuenta se encuentra al corriente. Eres acreedor a recompensas y dinámicas.',
+    });
+  }
+
+  return `
+    <div class="db-membership-notices" aria-live="polite">
+      ${notices.map((notice) => `
+        <p class="db-membership-notice db-membership-notice--${escapeAttr(notice.tone)}">${escapeHTML(notice.text)}</p>
+      `).join('')}
+    </div>
+  `;
 }
 
 function normalizeTransactionType(value) {
@@ -3761,49 +4131,47 @@ async function fetchAccessibleEventFinanceOptions(context = 'finance') {
   }
 }
 
-async function fetchAllEventCounterparties() {
-  if (Array.isArray(state.data.eventCounterpartiesAll)) return state.data.eventCounterpartiesAll;
+async function fetchAllEventParticipants() {
+  if (Array.isArray(state.data.eventParticipantsAll)) return state.data.eventParticipantsAll;
 
   const { data, error } = await supabase
-    .from('event_counterparties')
-    .select('id, name, type, notes')
-    .order('name', { ascending: true });
+    .from('event_participations')
+    .select('id, event_id, user_id, participation_percent, role, notes')
+    .order('user_id', { ascending: true });
 
   if (error) {
-    console.info('[HR] event counterparties unavailable:', error.message);
-    state.data.eventCounterpartiesAll = [];
+    console.info('[HR] event participants unavailable:', error.message);
+    state.data.eventParticipantsAll = [];
     return [];
   }
 
-  state.data.eventCounterpartiesAll = data ?? [];
-  return state.data.eventCounterpartiesAll;
+  state.data.eventParticipantsAll = data ?? [];
+  return state.data.eventParticipantsAll;
 }
 
-async function fetchCounterpartiesForEvent(eventId) {
-  const all = await fetchAllEventCounterparties();
+async function fetchParticipantsForEvent(eventId) {
+  const all = await fetchAllEventParticipants();
   if (!eventId) return all;
 
   const cacheKey = String(eventId);
-  state.data.eventCounterpartiesByEvent ??= {};
-  if (Array.isArray(state.data.eventCounterpartiesByEvent[cacheKey])) {
-    return state.data.eventCounterpartiesByEvent[cacheKey];
+  state.data.eventParticipantsByEvent ??= {};
+  if (Array.isArray(state.data.eventParticipantsByEvent[cacheKey])) {
+    return state.data.eventParticipantsByEvent[cacheKey];
   }
 
   const { data, error } = await supabase
     .from('event_participations')
-    .select('counterparty_id')
+    .select('id, event_id, user_id, participation_percent, role, notes')
     .eq('event_id', eventId);
 
   if (error) {
     console.info('[HR] event participations unavailable:', error.message);
-    state.data.eventCounterpartiesByEvent[cacheKey] = all;
+    state.data.eventParticipantsByEvent[cacheKey] = all;
     return all;
   }
 
-  const ids = [...new Set((data ?? []).map((item) => item.counterparty_id).filter(Boolean).map(String))];
-  const scoped = ids.length ? all.filter((counterparty) => ids.includes(String(counterparty.id))) : all;
-  state.data.eventCounterpartiesByEvent[cacheKey] = scoped;
-  return scoped;
+  state.data.eventParticipantsByEvent[cacheKey] = data ?? [];
+  return state.data.eventParticipantsByEvent[cacheKey];
 }
 
 function normalizeEventFinanceOptions(events = []) {
@@ -3933,6 +4301,11 @@ async function handleErpForm(form) {
     return;
   }
 
+  if (type === 'event-participant-create') {
+    await handleEventParticipantCreate(form, values);
+    return;
+  }
+
   if ('user_id' in values && !values.user_id) {
     showToast('Selecciona un usuario valido.', 'error');
     return;
@@ -4059,6 +4432,46 @@ async function handleAdminUserMerge(form, values = formValues(form)) {
   }
 }
 
+async function handleEventParticipantCreate(form, values = formValues(form)) {
+  if (!hasRole('admin')) {
+    showToast('Acceso no autorizado.', 'error');
+    return;
+  }
+
+  const userId = String(values.user_id ?? '').trim();
+  const eventId = String(values.event_id ?? '').trim();
+  if (!userId || !eventId) {
+    showToast('Selecciona evento y usuario participante.', 'error');
+    return;
+  }
+
+  const percent = values.participation_percent == null ? null : Number(values.participation_percent);
+  const participationPayload = {
+    event_id: eventId,
+    user_id: userId,
+    participation_percent: Number.isFinite(percent) ? percent : null,
+    role: values.role ?? null,
+    notes: values.notes ?? null,
+  };
+
+  const { error: participationError } = await supabase
+    .from('event_participations')
+    .upsert(participationPayload, { onConflict: 'event_id,user_id' });
+
+  if (participationError) {
+    console.error('[HR] event participation insert:', participationError);
+    showToast('No se pudo guardar el participante del evento.', 'error');
+    return;
+  } else {
+    showToast('Participante vinculado al evento.', 'success');
+  }
+
+  state.data.eventParticipantsAll = null;
+  state.data.eventParticipantsByEvent = {};
+  form.reset();
+  navigate('erp-ops');
+}
+
 async function handleEventMovementCreate(form, values = formValues(form)) {
   const isAdmin = hasRole('admin');
   const eventId = values.event_id;
@@ -4092,9 +4505,9 @@ async function handleEventMovementCreate(form, values = formValues(form)) {
     concept: values.concept,
     amount: signedAmount,
     hidden_room_share: signedHiddenRoomShare,
-    from_counterparty_id: values.from_counterparty_id ?? null,
-    to_counterparty_id: values.to_counterparty_id ?? null,
-    owner_counterparty_id: values.owner_counterparty_id ?? null,
+    from_user_id: values.from_user_id ?? null,
+    to_user_id: values.to_user_id ?? null,
+    owner_user_id: values.owner_user_id ?? null,
     payment_method: values.payment_method ?? null,
     movement_date: movementDate,
     notes: values.notes ?? null,
@@ -4304,6 +4717,7 @@ async function handleAdminUserCreate(values) {
         profile: {
           display_name: values.display_name ?? null,
           username: values.username ?? null,
+          user_id: values.user_id ?? null,
           whatsapp: values.whatsapp ?? null,
           roles: values.roles ?? 'client',
         },
@@ -4333,10 +4747,12 @@ function showAdminCreatedUserResult(values, result) {
   if (!holder || !tempPassword) return;
 
   const email = result?.user?.email ?? values.email ?? '';
+  const userId = result?.user?.user_id ?? values.user_id ?? '';
   holder.hidden = false;
   holder.innerHTML = `
     <strong>Usuario creado.</strong>
     <span style="display:block;margin-top:6px;">Email: ${escapeHTML(email)}</span>
+    <span style="display:block;margin-top:6px;">User ID: ${escapeHTML(userId || '-')}</span>
     <span style="display:block;margin-top:6px;">Contraseña temporal: <code>${escapeHTML(tempPassword)}</code></span>
     <button class="db-btn-secondary" type="button" data-action="copy-temp-password" data-temp-password="${escapeAttr(tempPassword)}">Copiar contraseña temporal</button>
   `;
@@ -4525,6 +4941,7 @@ async function handlePermissionRemove(permissionId) {
 
 function renderEventPermissionsEditor(user) {
   const events = state.data.permissionEvents ?? [];
+  const userHasAdminDefaults = expandRoles(user?.roles).includes('admin');
   const assigned = new Map(
     (state.data.eventUserPermissions ?? [])
       .filter((permission) => String(permission.user_id) === String(user.user_id))
@@ -4550,7 +4967,7 @@ function renderEventPermissionsEditor(user) {
           ${EVENT_PERMISSION_FLAGS.map(([flag, label]) => `
             <td>
               <label class="db-checkbox-label">
-                <input type="checkbox" name="${escapeAttr(`${event.id}:${flag}`)}" ${permission[flag] ? 'checked' : ''} />
+                <input type="checkbox" name="${escapeAttr(`${event.id}:${flag}`)}" ${userHasAdminDefaults || permission[flag] ? 'checked' : ''} />
                 <span>${escapeHTML(label)}</span>
               </label>
             </td>
@@ -5249,9 +5666,9 @@ async function handleFinancePdfExport() {
           movementTypeLabel(tx.movement_type) || tx.type || '-',
           money(Number(tx.amount ?? 0)),
           money(Number(tx.hidden_room_share ?? eventFinanceAmount(tx) ?? 0)),
-          counterpartyName(tx.from_counterparty_id),
-          counterpartyName(tx.to_counterparty_id),
-          counterpartyName(tx.owner_counterparty_id),
+          participantName(tx.from_user_id),
+          participantName(tx.to_user_id),
+          participantName(tx.owner_user_id),
           formatDateOnly(tx.movement_date ?? tx.date),
           tx.payment_method ?? tx.via ?? '-',
           tx.created_by_user_id ?? '-',
@@ -5304,6 +5721,13 @@ function filterTableRows(input) {
       ? `${visibleCount} resultado${visibleCount === 1 ? '' : 's'}`
       : `${visibleCount} filas visibles`;
   }
+}
+
+function applyAuthAuditFilter(filter = 'all') {
+  document.querySelectorAll('[data-auth-audit-groups]').forEach((block) => {
+    const groups = String(block.dataset.authAuditGroups ?? '').split(/\s+/).filter(Boolean);
+    block.hidden = filter !== 'all' && !groups.includes(filter);
+  });
 }
 
 
@@ -5565,6 +5989,13 @@ function attachMainDelegation() {
     if (opsForm) {
       state.data.erpOpsForm = opsForm.value;
       navigate('erp-ops');
+      return;
+    }
+
+    const authAuditFilter = e.target.closest('select[data-action="auth-audit-filter"]');
+    if (authAuditFilter) {
+      state.data.authAuditFilter = authAuditFilter.value;
+      applyAuthAuditFilter(authAuditFilter.value);
       return;
     }
 

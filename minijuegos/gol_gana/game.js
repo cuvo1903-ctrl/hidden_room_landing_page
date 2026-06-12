@@ -24,27 +24,24 @@
 
   let W = 960, H = 540;
 
+  // GOL GANA se juega en horizontal. En móvil vertical mostramos aviso para girar,
+  // pero el canvas y la lógica siempre conservan proporción 16:9 para no deformar la cancha.
   function isPortraitGame() {
-    return window.innerWidth <= 760 && window.innerHeight > window.innerWidth;
+    return false;
   }
 
   function configureCanvas() {
-    if (isPortraitGame()) {
-      W = 540;
-      H = 960;
-    } else {
-      W = 960;
-      H = 540;
-    }
+    W = 960;
+    H = 540;
     canvas.width = W;
     canvas.height = H;
   }
 
-  function goalTop() { return H / 2 - (isPortraitGame() ? 92 : 58); }
-  function goalBottom() { return H / 2 + (isPortraitGame() ? 92 : 58); }
-  function fieldTop() { return isPortraitGame() ? 118 : 70; }
-  function fieldBottom() { return H - (isPortraitGame() ? 118 : 50); }
-  function fieldLeft() { return isPortraitGame() ? 52 : 70; }
+  function goalTop() { return H / 2 - 58; }
+  function goalBottom() { return H / 2 + 58; }
+  function fieldTop() { return 70; }
+  function fieldBottom() { return H - 50; }
+  function fieldLeft() { return 70; }
   function fieldRight() { return W - fieldLeft(); }
 
   configureCanvas();
@@ -70,6 +67,8 @@
     comboTimer: 0,
     messageTimer: 0,
     messageText: '',
+    warning20Shown: false,
+    warning10Shown: false,
     claraTimer: 0,
     claraCooldown: 8,
     ajoloteTimer: 0,
@@ -80,6 +79,8 @@
     touchSprint: false,
     touchShoot: false,
     shootPressed: false,
+    shootCharge: 0,
+    maxShootCharge: 0.82,
     tackleCooldown: 0
   };
 
@@ -98,15 +99,15 @@
     rivals.push({ x: W * 0.63, y: H * 0.40, r: 17, color: '#ff4141', speed: 74, facing: {x:-1,y:0}, shootCooldown: 0, passCooldown: 0, receiveCooldown: 0, lane: -1 });
     rivals.push({ x: W * 0.70, y: H * 0.60, r: 17, color: '#ff7a18', speed: 78, facing: {x:-1,y:0}, shootCooldown: 0, passCooldown: 0, receiveCooldown: 0, lane: 1 });
     rivals.push({ x: W * 0.78, y: H * 0.50, r: 17, color: '#22a7ff', speed: 68, facing: {x:-1,y:0}, shootCooldown: 0, passCooldown: 0, receiveCooldown: 0, lane: 0 });
-    goalie.x = W - (isPortraitGame() ? 44 : 62); goalie.y = H / 2; goalie.targetY = H / 2; goalie.reaction = 0; goalie.passCooldown = 0;
+    goalie.x = W - (62); goalie.y = H / 2; goalie.targetY = H / 2; goalie.reaction = 0; goalie.passCooldown = 0;
   }
 
   function newGame() {
     state.running = true;
     state.last = performance.now();
-    state.timeLeft = 50;
+    state.timeLeft = 90;
     state.score = 0; state.goals = 0; state.rivalGoals = 0; state.chicks = 0; state.difficulty = 1.0; state.rivalSpeedBonus = 1.0; state.stealCooldown = 0; state.sprintEnergy = 100; state.comboTimer = 0;
-    state.claraCooldown = 7; state.claraTimer = 0; state.ajoloteTimer = 0;
+    state.claraCooldown = 7; state.claraTimer = 0; state.ajoloteTimer = 0; state.warning20Shown = false; state.warning10Shown = false;
     state.multiplierTimer = 0; state.speedTimer = 0; state.invincibleTimer = 0; state.tackleCooldown = 0;
     pickups.length = 0;
     for (let i = 0; i < 4; i++) spawnPickup();
@@ -119,7 +120,7 @@
   function flash(text, seconds = 1.0) { state.messageText = text; state.messageTimer = seconds; ui.message.textContent = text; show(ui.message, true); }
 
   function spawnPickup() {
-    const types = ['chick', 'chick', 'chick', 'chick', 'gold', 'salsa', 'humo'];
+    const types = ['chick', 'chick', 'chick', 'chick', 'gold', 'salsa', 'hiddenCoin'];
     pickups.push({ type: types[Math.floor(Math.random() * types.length)], x: rand(fieldLeft() + 60, fieldRight() - 60), y: rand(fieldTop() + 55, fieldBottom() - 55), r: 12 });
   }
 
@@ -134,18 +135,43 @@
     return m > 0 ? { x: x / m, y: y / m } : { x: 0, y: 0 };
   }
 
-  function shoot() {
+  function shoot(powerRatio = 0.45) {
     if (!player.hasBall) return;
-    const crooked = state.ajoloteTimer > 0 ? rand(-0.55, 0.55) : 0;
+    powerRatio = clamp(powerRatio, 0.25, 1);
+    const crooked = state.ajoloteTimer > 0 ? rand(-0.55, 0.55) : rand(-0.05, 0.05);
     const fx = player.facing.x * Math.cos(crooked) - player.facing.y * Math.sin(crooked);
     const fy = player.facing.x * Math.sin(crooked) + player.facing.y * Math.cos(crooked);
+    const shotSpeed = 360 + 330 * powerRatio;
     ball.owner = null; ball.ownerIndex = -1; ball.passTargetIndex = -1; player.hasBall = false;
     ball.x = player.x + fx * 24; ball.y = player.y + fy * 24;
-    ball.vx = fx * 520; ball.vy = fy * 520;
+    ball.vx = fx * shotSpeed; ball.vy = fy * shotSpeed;
+  }
+
+  function currentDifficultyFromGoals() {
+    // Curva de saturación: los primeros goles sí suben fuerte la dificultad,
+    // pero cada gol adicional aporta menos.
+    // Calibración: al gol 4 se siente cercano a la versión anterior que gustaba,
+    // sin volverse una pared imposible después del 5.º.
+    const g = Math.max(0, state.goals);
+    return 1 + 0.95 * (1 - Math.exp(-g / 3.2));
+  }
+
+  function currentRivalSpeedBonusFromGoals() {
+    // Refuerzo independiente de velocidad rival, también con rendimientos decrecientes.
+    const g = Math.max(0, state.goals);
+    return 1 + 0.55 * (1 - Math.exp(-g / 3.0));
   }
 
   function update(dt) {
     state.timeLeft -= dt;
+    if (!state.warning20Shown && state.timeLeft <= 20 && state.timeLeft > 10) {
+      state.warning20Shown = true;
+      flash('¡QUEDAN 20 SEGUNDOS!', 1.05);
+    }
+    if (!state.warning10Shown && state.timeLeft <= 10 && state.timeLeft > 0) {
+      state.warning10Shown = true;
+      flash('¡ÚLTIMOS 10 SEGUNDOS!', 1.15);
+    }
     if (state.timeLeft <= 0) return endGame();
 
     for (const k of ['messageTimer','claraCooldown','claraTimer','ajoloteTimer','multiplierTimer','speedTimer','invincibleTimer','stealCooldown','comboTimer','tackleCooldown']) state[k] = Math.max(0, state[k] - dt);
@@ -158,14 +184,24 @@
     const sprint = wantsSprint && moving && state.sprintEnergy > 4;
     if (sprint) state.sprintEnergy = Math.max(0, state.sprintEnergy - 30 * dt);
     else state.sprintEnergy = Math.min(100, state.sprintEnergy + 18 * dt);
-    let speed = 180 * (sprint ? 1.32 : 1) * (state.speedTimer > 0 ? 1.25 : 1) * (state.ajoloteTimer > 0 ? 0.58 : 1);
+    // Sin balón corres un poco más: sirve para presionar, robar e interceptar pases.
+    let speed = 180 * (player.hasBall ? 1 : 1.14) * (sprint ? 1.32 : 1) * (state.speedTimer > 0 ? 1.25 : 1) * (state.ajoloteTimer > 0 ? 0.58 : 1);
     player.vx = v.x * speed; player.vy = v.y * speed;
     if (Math.hypot(v.x, v.y) > 0.1) player.facing = { x: v.x, y: v.y };
     player.x = clamp(player.x + player.vx * dt, fieldLeft() + 18, fieldRight() - 18);
     player.y = clamp(player.y + player.vy * dt, fieldTop() + 18, fieldBottom() - 18);
 
-    if ((keys.has(' ') || state.touchShoot) && !state.shootPressed) shoot();
-    state.shootPressed = keys.has(' ') || state.touchShoot;
+    const shootInput = keys.has(' ') || state.touchShoot;
+    if (player.hasBall && shootInput) {
+      state.shootCharge = Math.min(state.maxShootCharge, state.shootCharge + dt);
+    }
+    if (!shootInput && state.shootPressed && player.hasBall) {
+      const ratio = Math.max(0.28, state.shootCharge / state.maxShootCharge);
+      shoot(ratio);
+      state.shootCharge = 0;
+    }
+    if (!shootInput && !player.hasBall) state.shootCharge = 0;
+    state.shootPressed = shootInput;
 
     updateBall(dt);
     updateRivals(dt);
@@ -206,15 +242,18 @@
     if (leftGoal) rivalGoal();
 
     if (ball.passGrace <= 0 && dist(player, ball) < player.r + ball.r + 4 && Math.hypot(ball.vx, ball.vy) < 230) {
-      player.hasBall = true; ball.owner = 'player'; ball.ownerIndex = -1; flash('¡BALÓN RECUPERADO!', .45);
+      player.hasBall = true; ball.owner = 'player'; ball.ownerIndex = -1; flash('¡GOL!', .45);
     }
   }
 
   function goal() {
-    state.goals++; state.difficulty += 0.18; state.rivalSpeedBonus += 0.085; state.claraCooldown = Math.min(state.claraCooldown, rand(4.5, 8));
+    state.goals++;
+    state.difficulty = currentDifficultyFromGoals();
+    state.rivalSpeedBonus = currentRivalSpeedBonusFromGoals();
+    state.claraCooldown = Math.min(state.claraCooldown, rand(4.5, 8));
     const mult = state.multiplierTimer > 0 ? 2 : 1;
     state.score += 250 * mult;
-    state.timeLeft = Math.min(state.timeLeft + 4, 55);
+    // No se aumenta el tiempo por gol: el partido debe tener duración fija.
     flash('¡GOOOL GANA!', 1.05);
     resetMatch();
   }
@@ -242,7 +281,7 @@
       if (hasBall) {
         // Si tiene balón, ataca con intención: avanza hacia la portería izquierda,
         // pero no se mete al centro siempre; busca ángulo para tirar o soltar pase filtrado.
-        const laneY = H / 2 + (r.lane || 0) * (isPortraitGame() ? 90 : 58);
+        const laneY = H / 2 + (r.lane || 0) * (58);
         target = {
           x: fieldLeft() + 34,
           y: clamp((laneY * 0.45) + (H / 2 * 0.55), goalTop() + 18, goalBottom() - 18)
@@ -255,7 +294,7 @@
         // Si un compañero tiene el balón, los demás NO persiguen la pelota:
         // se desmarcan hacia carriles útiles para recibir y rematar.
         const holder = rivals[ball.ownerIndex];
-        const laneY = H / 2 + (r.lane || 0) * (isPortraitGame() ? 110 : 72);
+        const laneY = H / 2 + (r.lane || 0) * (72);
         const aheadX = holder ? holder.x - (80 + i * 14) : ball.x - 80;
         target = {
           x: clamp(aheadX, fieldLeft() + 80, fieldRight() - 95),
@@ -314,7 +353,7 @@
       }
 
       if (hasBall) {
-        const closeToGoal = r.x < fieldLeft() + (isPortraitGame() ? 150 : 175) && r.y > goalTop() - 62 && r.y < goalBottom() + 62;
+        const closeToGoal = r.x < fieldLeft() + (175) && r.y > goalTop() - 62 && r.y < goalBottom() + 62;
         const veryClose = r.x < fieldLeft() + 95 && r.y > goalTop() - 35 && r.y < goalBottom() + 35;
         const pressured = dist(r, player) < 92;
         const teammateAhead = findBestTeammate(i);
@@ -326,7 +365,7 @@
         // 3) Si no, sigue avanzando.
         const passChance = closeToGoal ? 0.035 : 0.055;
         const mate = hasGoodPass ? rivals[teammateAhead] : null;
-        const mateInBetterShotLane = mate && mate.x < r.x - 28 && mate.x < fieldLeft() + (isPortraitGame() ? 210 : 250) && mate.y > goalTop() - 78 && mate.y < goalBottom() + 78;
+        const mateInBetterShotLane = mate && mate.x < r.x - 28 && mate.x < fieldLeft() + (250) && mate.y > goalTop() - 78 && mate.y < goalBottom() + 78;
         const shouldPass = r.passCooldown <= 0 && hasGoodPass && (
           pressured || mateInBetterShotLane || Math.random() < passChance * Math.min(2.25, state.difficulty)
         );
@@ -520,7 +559,7 @@
         if (p.type === 'chick') { state.chicks++; state.comboTimer = 3; state.score += state.multiplierTimer > 0 ? 70 : 35; flash('+1 ALITA', .35); }
         if (p.type === 'gold') { state.chicks += 3; state.speedTimer = 4; state.score += 90; flash('ALITA DORADA', .55); }
         if (p.type === 'salsa') { state.multiplierTimer = 4.5; flash('SALSA x2', .55); }
-        if (p.type === 'humo') { state.invincibleTimer = 3.5; flash('HUMO DE BARRIO', .55); }
+        if (p.type === 'hiddenCoin') { state.invincibleTimer = 3.5; state.score += 100; flash('HIDDEN COIN', .65); }
         spawnPickup();
       }
     }
@@ -549,6 +588,7 @@
     // La dificultad solo sube cuando el jugador mete gol, no por tiempo ni por gol rival.
     ui.scoreboard.textContent = `${state.goals} - ${state.rivalGoals}`;
     ui.time.textContent = Math.ceil(state.timeLeft);
+    ui.time.classList.toggle('danger-time', state.timeLeft <= 10);
     ui.score.textContent = Math.floor(state.score);
     ui.chicks.textContent = state.chicks;
     ui.gamePanel.classList.toggle('ajolote-mode', state.ajoloteTimer > 0);
@@ -557,7 +597,12 @@
   function endGame() {
     state.running = false;
     show(ui.gamePanel, false); show(ui.gameOver, true);
-    const final = Math.floor(state.score);
+    let final = Math.floor(state.score);
+    const won = state.goals > state.rivalGoals;
+    const tied = state.goals === state.rivalGoals;
+    if (!won) {
+      final = tied ? Math.floor(final * 0.75) : Math.floor(final * 0.5);
+    }
     const record = Math.max(final, Number(localStorage.getItem('gol_gana_record') || 0));
     localStorage.setItem('gol_gana_record', record);
     ui.finalGoals.textContent = `GOL GANA ${state.goals} - ${state.rivalGoals} RIVALES`;
@@ -577,8 +622,8 @@
     ctx.fillStyle = state.ajoloteTimer > 0 ? '#301849' : '#202320'; ctx.fillRect(fieldLeft(), fieldTop(), fieldRight()-fieldLeft(), fieldBottom()-fieldTop());
     ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3; ctx.strokeRect(fieldLeft(), fieldTop(), fieldRight()-fieldLeft(), fieldBottom()-fieldTop());
     ctx.beginPath(); ctx.moveTo(W/2,fieldTop()); ctx.lineTo(W/2,fieldBottom()); ctx.stroke();
-    ctx.beginPath(); ctx.arc(W/2,H/2,isPortraitGame() ? 48 : 58,0,Math.PI*2); ctx.stroke();
-    ctx.strokeRect(fieldLeft(), H/2 - 112, isPortraitGame() ? 58 : 95, 224); ctx.strokeRect(fieldRight() - (isPortraitGame() ? 58 : 95), H/2 - 112, isPortraitGame() ? 58 : 95, 224);
+    ctx.beginPath(); ctx.arc(W/2,H/2,58,0,Math.PI*2); ctx.stroke();
+    ctx.strokeRect(fieldLeft(), H/2 - 112, 95, 224); ctx.strokeRect(fieldRight() - (95), H/2 - 112, 95, 224);
     ctx.fillStyle = 'rgba(255,210,46,.12)'; ctx.fillRect(fieldLeft(),fieldTop(),fieldRight()-fieldLeft(),20);
     ctx.fillStyle = '#ffd22e'; ctx.font = isPortraitGame() ? '900 16px system-ui' : '900 22px system-ui'; ctx.textAlign='center'; ctx.fillText('HIDDEN ROOM x TLALPAN WINGS HOUSE', W/2, fieldTop()+36);
     ctx.font = '900 16px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.13)';
@@ -594,16 +639,144 @@
     ctx.fillStyle = '#21d46b'; ctx.font = '900 18px system-ui'; ctx.textAlign='center'; ctx.fillText('GOL', fieldRight()+15, goalTop()-16);
   }
 
-  function drawCircleThing(o, label, color) {
-    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(o.x, o.y+18, o.r*1.05, 8, 0,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(o.x,o.y,o.r,0,Math.PI*2); ctx.fill();
-    ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke();
-    ctx.fillStyle = '#111'; ctx.font = '900 14px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, o.x, o.y);
+  function drawCircleThing(o, label, color, kind = 'field') {
+    const fx = (o.facing && Math.abs(o.facing.x) + Math.abs(o.facing.y) > 0.01) ? o.facing.x : 1;
+    const fy = (o.facing && Math.abs(o.facing.x) + Math.abs(o.facing.y) > 0.01) ? o.facing.y : 0;
+    const mag = Math.hypot(fx, fy) || 1;
+    const dirX = fx / mag;
+    const dirY = fy / mag;
+    const sideX = -dirY;
+    const sideY = dirX;
+    const isAjolote = kind === 'ajolote';
+    const isClara = kind === 'clara';
+    const isGoalie = kind === 'goalie';
+    const runSpeed = Math.hypot(o.vx || 0, o.vy || 0);
+    const baseMove = (runSpeed > 8 || ball.owner === 'rival' || kind === 'goalie' || kind === 'clara') ? 1 : 0.35;
+    const t = performance.now() / 1000;
+    const stride = Math.sin(t * (8.5 + baseMove * 4) + (o.x + o.y) * 0.025) * baseMove;
+    const lean = clamp((runSpeed || (kind === 'field' ? 80 : 45)) / 260, 0, 0.55);
+    const scale = isClara ? 1.22 : isGoalie ? 1.08 : 1;
+
+    const cx = o.x + dirX * lean * 8;
+    const cy = o.y + dirY * lean * 8;
+    const headX = cx + dirX * 2;
+    const headY = cy - 17 * scale + dirY * 2;
+    const torsoTop = { x: cx, y: cy - 5 * scale };
+    const hip = { x: cx - dirX * 2, y: cy + 14 * scale };
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Sombra dinámica.
+    ctx.fillStyle = 'rgba(0,0,0,.28)';
+    ctx.beginPath();
+    ctx.ellipse(o.x, o.y + 24 * scale, 14 * scale, 6 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Piernas animadas.
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 5 * scale;
+    const legSpread = 7 * scale;
+    const step = stride * 9 * scale;
+    const leftKnee = { x: hip.x + sideX * legSpread + dirX * step, y: hip.y + sideY * legSpread + dirY * step + 8 * scale };
+    const rightKnee = { x: hip.x - sideX * legSpread - dirX * step, y: hip.y - sideY * legSpread - dirY * step + 8 * scale };
+    const leftFoot = { x: leftKnee.x + dirX * step * .45 + sideX * 3, y: leftKnee.y + 10 * scale };
+    const rightFoot = { x: rightKnee.x - dirX * step * .45 - sideX * 3, y: rightKnee.y + 10 * scale };
+    ctx.beginPath();
+    ctx.moveTo(hip.x, hip.y); ctx.lineTo(leftKnee.x, leftKnee.y); ctx.lineTo(leftFoot.x, leftFoot.y);
+    ctx.moveTo(hip.x, hip.y); ctx.lineTo(rightKnee.x, rightKnee.y); ctx.lineTo(rightFoot.x, rightFoot.y);
+    ctx.stroke();
+
+    // Brazos animados en oposición a piernas. Clara levanta más los brazos.
+    const shoulder = { x: cx, y: cy + 1 * scale };
+    const armSwing = stride * 10 * scale;
+    const armUp = isClara ? -13 * scale : 0;
+    ctx.beginPath();
+    ctx.moveTo(shoulder.x, shoulder.y);
+    ctx.lineTo(shoulder.x + sideX * 10 * scale - dirX * armSwing, shoulder.y + sideY * 10 * scale - dirY * armSwing + 8 * scale + armUp);
+    ctx.moveTo(shoulder.x, shoulder.y);
+    ctx.lineTo(shoulder.x - sideX * 10 * scale + dirX * armSwing, shoulder.y - sideY * 10 * scale + dirY * armSwing + 8 * scale + armUp);
+    ctx.stroke();
+
+    // Cuerpo / jersey.
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 3 * scale;
+    ctx.beginPath();
+    ctx.rect(cx - 8 * scale, cy - 6 * scale, 16 * scale, 23 * scale);
+    ctx.fill();
+    ctx.stroke();
+
+    // Franja del jersey para que no parezcan bolitas con palitos.
+    ctx.fillStyle = 'rgba(255,255,255,.28)';
+    ctx.fillRect(cx - 6 * scale, cy + 1 * scale, 12 * scale, 3 * scale);
+
+    // Cabeza.
+    ctx.fillStyle = isAjolote ? '#d9a8ff' : '#f2c9a0';
+    ctx.beginPath();
+    ctx.arc(headX, headY, 8.5 * scale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 2.5 * scale;
+    ctx.stroke();
+
+    // Clara: cabello corto para que se lea como personaje femenino sin usar sprites.
+    if (isClara) {
+      ctx.fillStyle = '#2b1028';
+      ctx.beginPath();
+      ctx.arc(headX, headY - 1 * scale, 9.6 * scale, Math.PI * 0.92, Math.PI * 2.08);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(headX - sideX * 6 * scale, headY + 1 * scale, 4.2 * scale, 0, Math.PI * 2);
+      ctx.arc(headX + sideX * 6 * scale, headY + 1 * scale, 4.2 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#111';
+      ctx.lineWidth = 1.8 * scale;
+      ctx.beginPath();
+      ctx.arc(headX, headY - 1 * scale, 9.6 * scale, Math.PI * 0.95, Math.PI * 2.05);
+      ctx.stroke();
+    }
+
+    // Carita/dirección.
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(headX + dirX * 3 * scale + sideX * 2 * scale, headY + dirY * 3 * scale + sideY * 2 * scale, 1.5 * scale, 0, Math.PI * 2);
+    ctx.arc(headX + dirX * 3 * scale - sideX * 2 * scale, headY + dirY * 3 * scale - sideY * 2 * scale, 1.5 * scale, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ajolote: branquias moradas para que se entienda la maldición.
+    if (isAjolote) {
+      ctx.strokeStyle = '#ff7cff';
+      ctx.lineWidth = 3 * scale;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(headX + sideX * side * 8 * scale, headY);
+        ctx.lineTo(headX + sideX * side * 16 * scale - dirX * 2, headY + sideY * side * 16 * scale - dirY * 2);
+        ctx.moveTo(headX + sideX * side * 7 * scale, headY - 4 * scale);
+        ctx.lineTo(headX + sideX * side * 15 * scale - dirX * 2, headY - 9 * scale + sideY * side * 12 * scale);
+        ctx.moveTo(headX + sideX * side * 7 * scale, headY + 4 * scale);
+        ctx.lineTo(headX + sideX * side * 15 * scale - dirX * 2, headY + 9 * scale + sideY * side * 12 * scale);
+        ctx.stroke();
+      }
+    }
+
+    // Número/rol encima, discreto.
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = 'rgba(0,0,0,.65)';
+    ctx.lineWidth = 4;
+    ctx.font = `900 ${isClara ? 11 : 9}px system-ui`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.strokeText(label, o.x, o.y - 36 * scale);
+    ctx.fillText(label, o.x, o.y - 36 * scale);
+
+    ctx.restore();
   }
 
-  function drawPlayer() { drawCircleThing(player, state.ajoloteTimer > 0 ? 'AX' : 'HR', state.ajoloteTimer > 0 ? '#b95cff' : player.color); }
+  function drawPlayer() { drawCircleThing(player, state.ajoloteTimer > 0 ? 'AX' : 'HR', state.ajoloteTimer > 0 ? '#b95cff' : player.color, state.ajoloteTimer > 0 ? 'ajolote' : 'player'); }
   function drawRivals() { rivals.forEach((r,i)=>drawCircleThing(r, String(i+1), r.color)); }
-  function drawGoalie() { drawCircleThing(goalie, 'GK', goalie.color); }
+  function drawGoalie() { drawCircleThing(goalie, 'GK', goalie.color, 'goalie'); }
   function drawBall() { ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='#111'; ctx.lineWidth=3; ctx.stroke(); }
   function drawPossessionArrow() {
     if (ball.owner === 'rival' && rivals[ball.ownerIndex]) {
@@ -620,14 +793,22 @@
 
   function drawPickups() {
     for (const p of pickups) {
-      ctx.fillStyle = p.type === 'chick' ? '#ffd22e' : p.type === 'gold' ? '#fff05a' : p.type === 'salsa' ? '#ff4141' : '#b78cff';
-      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
-      ctx.fillStyle='#111'; ctx.font='900 13px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(p.type === 'salsa' ? 'S' : p.type === 'humo' ? 'H' : '🍗', p.x, p.y+1);
+      if (p.type === 'hiddenCoin') {
+        ctx.fillStyle = '#ff9f1c';
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.r+1,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle='#ffd22e'; ctx.lineWidth=3; ctx.stroke();
+        ctx.fillStyle='rgba(0,0,0,.18)'; ctx.beginPath(); ctx.arc(p.x,p.y,p.r-4,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#111'; ctx.font='900 9px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('HR', p.x, p.y+1);
+      } else {
+        ctx.fillStyle = p.type === 'chick' ? '#ffd22e' : p.type === 'gold' ? '#fff05a' : p.type === 'salsa' ? '#ff4141' : '#b78cff';
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
+        ctx.fillStyle='#111'; ctx.font='900 13px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(p.type === 'salsa' ? 'S' : '🍗', p.x, p.y+1);
+      }
     }
   }
   function drawClara() {
     if (!clara.active) return;
-    drawCircleThing(clara, 'CB', '#ff4bb8');
+    drawCircleThing(clara, 'CB', '#ff4bb8', 'clara');
     ctx.strokeStyle='rgba(255,75,184,.35)'; ctx.lineWidth=8; ctx.beginPath(); ctx.arc(clara.x,clara.y,clara.r+10,0,Math.PI*2); ctx.stroke();
   }
   function drawEffects() {
@@ -635,10 +816,17 @@
       ctx.fillStyle='rgba(112,34,180,.30)'; ctx.fillRect(0,0,W,H);
       ctx.strokeStyle='rgba(218,156,255,.55)'; ctx.lineWidth=8; ctx.strokeRect(fieldLeft()+4, fieldTop()+4, fieldRight()-fieldLeft()-8, fieldBottom()-fieldTop()-8);
     }
-    if (state.invincibleTimer > 0) { ctx.strokeStyle='rgba(255,255,255,.8)'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(player.x,player.y,player.r+10,0,Math.PI*2); ctx.stroke(); }
+    if (state.invincibleTimer > 0) { ctx.strokeStyle='rgba(255,159,28,.9)'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(player.x,player.y,player.r+12,0,Math.PI*2); ctx.stroke(); ctx.fillStyle='rgba(255,159,28,.18)'; ctx.beginPath(); ctx.arc(player.x,player.y,player.r+17,0,Math.PI*2); ctx.fill(); }
     ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(fieldLeft(), fieldBottom()+16, 120, 10);
     ctx.fillStyle= state.sprintEnergy > 25 ? '#21d46b' : '#ff4141'; ctx.fillRect(fieldLeft(), fieldBottom()+16, 120*(state.sprintEnergy/100),10);
     ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.lineWidth=1; ctx.strokeRect(fieldLeft(), fieldBottom()+16,120,10);
+
+    if (player.hasBall && state.shootCharge > 0) {
+      const w = 100 * clamp(state.shootCharge / state.maxShootCharge, 0, 1);
+      ctx.fillStyle='rgba(0,0,0,.45)'; ctx.fillRect(player.x - 50, player.y - player.r - 28, 100, 8);
+      ctx.fillStyle='#ffd22e'; ctx.fillRect(player.x - 50, player.y - player.r - 28, w, 8);
+      ctx.strokeStyle='rgba(255,255,255,.45)'; ctx.strokeRect(player.x - 50, player.y - player.r - 28, 100, 8);
+    }
   }
 
   function loop(now) {

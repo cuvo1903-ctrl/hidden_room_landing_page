@@ -36,6 +36,13 @@ canvas { width: 100%; height: 100%; display: block; border-radius: 18px; backgro
 .hud .scoreboard { background: rgba(0,0,0,.78); border: 2px solid var(--yellow); box-shadow: 0 0 24px rgba(255,210,46,.18); }
 .hud .scoreboard strong { font-size: clamp(2.2rem, 5vw, 4.2rem); letter-spacing: .04em; text-shadow: 3px 3px 0 #000; }
 .hud .timebox strong { font-size: clamp(1.75rem, 3vw, 2.7rem); color: #fff; }
+.hud .timebox strong.danger-time {
+  color: #ff2b2b;
+  text-shadow: 0 0 14px rgba(255,43,43,.85), 3px 3px 0 #000;
+  animation: dangerPulse .55s infinite alternate;
+}
+@keyframes dangerPulse { from { transform: scale(1); } to { transform: scale(1.12); } }
+
 .message { position: absolute; z-index: 6; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,.72); color: #fff; border: 2px solid var(--yellow); border-radius: 20px; padding: 14px 24px; font-size: clamp(1.4rem, 5vw, 3rem); font-weight: 1000; text-align: center; text-shadow: 3px 3px 0 #000; white-space: nowrap; animation: pop .18s ease-out; }
 @keyframes pop { from { transform: translate(-50%, -50%) scale(.75); opacity: .4; } }
 .touch-controls { display: none; position: absolute; inset: 0; pointer-events: none; z-index: 7; }
@@ -53,10 +60,17 @@ canvas { width: 100%; height: 100%; display: block; border-radius: 18px; backgro
 .game-panel.ajolote-mode .hud strong { color: #d7a4ff; }
 .game-panel.ajolote-mode .message { border-color: #b95cff; box-shadow: 0 0 32px rgba(185,92,255,.35); }
 
+.rotate-hint { display: none; }
+
 @media (pointer: coarse), (max-width: 760px) {
-  .shell { padding: 0; }
-  .game-panel { width: 100vw; height: var(--app-height, 100vh); aspect-ratio: auto; max-height: none; }
-  canvas { border-radius: 0; height: var(--app-height, 100vh); }
+  .shell { padding: 0; background: #05050a; }
+  .game-panel {
+    width: min(100vw, calc(var(--app-height, 100vh) * 1.7778));
+    height: min(var(--app-height, 100vh), calc(100vw * .5625));
+    aspect-ratio: 16 / 9;
+    max-height: none;
+  }
+  canvas { width: 100%; height: 100%; border-radius: 0; }
   .hud { top: max(8px, env(safe-area-inset-top)); grid-template-columns: 1fr .7fr .55fr .55fr; gap: 5px; }
   .hud div { padding: 6px 4px; border-radius: 10px; }
   .hud strong { font-size: .95rem; }
@@ -64,6 +78,25 @@ canvas { width: 100%; height: 100%; display: block; border-radius: 18px; backgro
   .hud .timebox strong { font-size: 1.35rem; }
   .hud span { font-size: .55rem; }
   .touch-controls { display: block; }
+}
+
+@media (pointer: coarse) and (orientation: portrait) {
+  .game-panel {
+    width: 100vh;
+    height: 100vw;
+    transform: rotate(90deg);
+    transform-origin: center center;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    margin: 0;
+    translate: -50% -50%;
+  }
+  canvas, .hud, .touch-controls, .message {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .rotate-hint { display: none !important; }
 }
 
 @media (max-width: 520px) {
@@ -78,6 +111,5 @@ canvas { width: 100%; height: 100%; display: block; border-radius: 18px; backgro
 }
 
 @supports (height: 100svh) {
-  body, .shell, .game-panel, canvas { min-height: 100svh; height: 100svh; }
-  .game-panel { max-height: 100svh; }
+  body, .shell { min-height: 100svh; height: 100svh; }
 }

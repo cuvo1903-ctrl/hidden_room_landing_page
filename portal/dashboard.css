@@ -470,6 +470,65 @@
   color: var(--white);
 }
 
+.db-membership-notices {
+  display: grid;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.db-membership-notice {
+  margin: 0;
+  padding: 12px 14px;
+  border: var(--border-subtle);
+  background: var(--surface);
+  color: var(--white-dim);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.db-membership-notice--success {
+  border-color: color-mix(in srgb, var(--green) 55%, transparent);
+  color: var(--green);
+}
+
+.db-membership-notice--warning,
+.db-membership-notice--danger {
+  border-color: color-mix(in srgb, var(--red) 60%, transparent);
+  color: var(--white);
+}
+
+.db-auth-audit-block {
+  margin-top: var(--space-xl);
+}
+
+.db-auth-audit-block__title {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--text-md);
+  color: var(--white);
+  font-weight: 400;
+}
+
+.db-auth-audit__ok,
+.db-auth-audit__flag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: var(--border-subtle);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+}
+
+.db-auth-audit__ok {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 55%, transparent);
+}
+
+.db-auth-audit__flag {
+  color: var(--white);
+  border-color: color-mix(in srgb, var(--red) 60%, transparent);
+}
+
 .db-modal {
   position: fixed;
   inset: 0;
