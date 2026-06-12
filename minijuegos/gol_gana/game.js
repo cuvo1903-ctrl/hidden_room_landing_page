@@ -1,3 +1,11 @@
+
+function getGolGanaJoystickVector() {
+  if (window.__golGanaJoystick && window.__golGanaJoystick.active) {
+    return { x: window.__golGanaJoystick.x || 0, y: window.__golGanaJoystick.y || 0 };
+  }
+  return null;
+}
+
 (() => {
   'use strict';
 
@@ -872,3 +880,179 @@
 
 // dynamicJoystickEnabled
 window.dynamicJoystickEnabled=true;
+
+
+
+/* === Dynamic Joystick Safari Patch === */
+(function () {
+  const isTouchDevice = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
+  if (!isTouchDevice) return;
+
+  const MAX_RADIUS = 48;
+  const DEAD_ZONE = 6;
+
+  let activeTouchId = null;
+  let startX = 0;
+  let startY = 0;
+  let joyX = 0;
+  let joyY = 0;
+
+  const root = document.createElement("div");
+  root.className = "dynamic-joystick";
+  root.innerHTML = '<div class="dynamic-joystick-knob"></div>';
+  document.body.appendChild(root);
+  const knob = root.querySelector(".dynamic-joystick-knob");
+
+  function setMovementVector(x, y) {
+    joyX = Math.abs(x) < 0.08 ? 0 : x;
+    joyY = Math.abs(y) < 0.08 ? 0 : y;
+
+    // Common control object names used by small canvas games.
+    window.__golGanaJoystick = { x: joyX, y: joyY, active: activeTouchId !== null };
+
+    if (window.input) {
+      window.input.x = joyX;
+      window.input.y = joyY;
+      window.input.joystickX = joyX;
+      window.input.joystickY = joyY;
+      window.input.left = joyX < -0.2;
+      window.input.right = joyX > 0.2;
+      window.input.up = joyY < -0.2;
+      window.input.down = joyY > 0.2;
+    }
+
+    if (window.controls) {
+      window.controls.x = joyX;
+      window.controls.y = joyY;
+      window.controls.joystickX = joyX;
+      window.controls.joystickY = joyY;
+      window.controls.left = joyX < -0.2;
+      window.controls.right = joyX > 0.2;
+      window.controls.up = joyY < -0.2;
+      window.controls.down = joyY > 0.2;
+    }
+
+    // Keyboard fallback used by many prototypes.
+    if (window.keys) {
+      window.keys.ArrowLeft = joyX < -0.2;
+      window.keys.ArrowRight = joyX > 0.2;
+      window.keys.ArrowUp = joyY < -0.2;
+      window.keys.ArrowDown = joyY > 0.2;
+      window.keys.a = joyX < -0.2;
+      window.keys.d = joyX > 0.2;
+      window.keys.w = joyY < -0.2;
+      window.keys.s = joyY > 0.2;
+    }
+  }
+
+  function shouldStartJoystick(touch) {
+    // Left side starts movement. Right side remains for shoot/sprint buttons.
+    return touch.clientX < window.innerWidth * 0.58;
+  }
+
+  function showJoystick(x, y) {
+    root.style.left = x + "px";
+    root.style.top = y + "px";
+    knob.style.transform = "translate(0px, 0px)";
+    root.classList.add("active");
+  }
+
+  function hideJoystick() {
+    root.classList.remove("active");
+    knob.style.transform = "translate(0px, 0px)";
+    activeTouchId = null;
+    setMovementVector(0, 0);
+  }
+
+  function updateJoystick(x, y) {
+    let dx = x - startX;
+    let dy = y - startY;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist > MAX_RADIUS) {
+      dx = (dx / dist) * MAX_RADIUS;
+      dy = (dy / dist) * MAX_RADIUS;
+    }
+
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+
+    if (Math.hypot(dx, dy) < DEAD_ZONE) {
+      setMovementVector(0, 0);
+    } else {
+      setMovementVector(dx / MAX_RADIUS, dy / MAX_RADIUS);
+    }
+  }
+
+  function onTouchStart(e) {
+    if (activeTouchId !== null) return;
+
+    for (const touch of e.changedTouches) {
+      if (!shouldStartJoystick(touch)) continue;
+
+      activeTouchId = touch.identifier;
+      startX = touch.clientX;
+      startY = touch.clientY;
+      showJoystick(startX, startY);
+      setMovementVector(0, 0);
+      e.preventDefault();
+      break;
+    }
+  }
+
+  function onTouchMove(e) {
+    if (activeTouchId === null) return;
+
+    for (const touch of e.changedTouches) {
+      if (touch.identifier !== activeTouchId) continue;
+      updateJoystick(touch.clientX, touch.clientY);
+      e.preventDefault();
+      break;
+    }
+  }
+
+  function onTouchEnd(e) {
+    if (activeTouchId === null) return;
+
+    for (const touch of e.changedTouches) {
+      if (touch.identifier !== activeTouchId) continue;
+      hideJoystick();
+      e.preventDefault();
+      break;
+    }
+  }
+
+  document.addEventListener("touchstart", onTouchStart, { passive: false });
+  document.addEventListener("touchmove", onTouchMove, { passive: false });
+  document.addEventListener("touchend", onTouchEnd, { passive: false });
+  document.addEventListener("touchcancel", onTouchEnd, { passive: false });
+
+  // Also support pointer events where available.
+  document.addEventListener("pointerdown", function (e) {
+    if (activeTouchId !== null || e.pointerType !== "touch") return;
+    if (e.clientX >= window.innerWidth * 0.58) return;
+    activeTouchId = e.pointerId;
+    startX = e.clientX;
+    startY = e.clientY;
+    showJoystick(startX, startY);
+    setMovementVector(0, 0);
+    e.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener("pointermove", function (e) {
+    if (activeTouchId !== e.pointerId || e.pointerType !== "touch") return;
+    updateJoystick(e.clientX, e.clientY);
+    e.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener("pointerup", function (e) {
+    if (activeTouchId !== e.pointerId || e.pointerType !== "touch") return;
+    hideJoystick();
+    e.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener("pointercancel", function (e) {
+    if (activeTouchId !== e.pointerId || e.pointerType !== "touch") return;
+    hideJoystick();
+    e.preventDefault();
+  }, { passive: false });
+})();
