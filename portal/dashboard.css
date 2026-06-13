@@ -439,6 +439,40 @@
   color: var(--white);
 }
 
+.db-table-wrap--membership .db-table th,
+.db-table-wrap--membership .db-table td,
+.db-table-wrap--membership .db-table code {
+  color: var(--white);
+}
+
+.db-table-wrap--membership .db-membership-row--debt td {
+  background: var(--red-ghost);
+  border-bottom-color: var(--red-dim);
+}
+
+.db-table-wrap--membership .db-membership-row--debt td:first-child {
+  border-left: 3px solid var(--red);
+}
+
+.db-table-wrap--membership .db-membership-row--credit td:first-child {
+  border-left: 3px solid var(--green);
+}
+
+.db-table-wrap--membership .db-table tbody .db-membership-cell--success,
+.db-table-wrap--membership .db-table tbody .db-membership-cell--success code {
+  color: var(--green);
+}
+
+.db-table-wrap--membership .db-table tbody .db-membership-cell--danger,
+.db-table-wrap--membership .db-table tbody .db-membership-cell--danger code {
+  color: var(--red);
+}
+
+.db-table-wrap--membership .db-table tbody .db-membership-cell--warning,
+.db-table-wrap--membership .db-table tbody .db-membership-cell--warning code {
+  color: var(--white-dim);
+}
+
 .db-table tbody tr:last-child td {
   border-bottom: none;
 }
@@ -495,6 +529,87 @@
 .db-membership-notice--danger {
   border-color: color-mix(in srgb, var(--red) 60%, transparent);
   color: var(--white);
+}
+
+.db-membership-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.db-membership-summary__item {
+  min-height: 78px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  border: var(--border-subtle);
+  background: var(--surface);
+  padding: var(--space-md);
+}
+
+.db-membership-summary__item span {
+  color: var(--white-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+}
+
+.db-membership-summary__item strong {
+  color: var(--white);
+  font-size: var(--text-md);
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.db-membership-summary__item--success {
+  border-color: color-mix(in srgb, var(--green) 45%, transparent);
+}
+
+.db-membership-summary__item--success strong {
+  color: var(--green);
+}
+
+.db-membership-summary__item--danger {
+  border-color: color-mix(in srgb, var(--red) 60%, transparent);
+  background: var(--red-ghost);
+}
+
+.db-membership-summary__item--danger strong {
+  color: var(--red);
+}
+
+.db-membership-summary__item--warning {
+  border-color: var(--white-faint);
+}
+
+.db-membership-summary__item--warning strong {
+  color: var(--white);
+}
+
+.db-membership-ops {
+  display: grid;
+  gap: var(--space-xl);
+}
+
+.db-membership-ops__block {
+  display: grid;
+  gap: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: var(--border-subtle);
+}
+
+.db-membership-ops__block:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.db-membership-ops__title {
+  margin: 0;
+  color: var(--white);
+  font-size: var(--text-md);
+  font-weight: 400;
 }
 
 .db-auth-audit-block {

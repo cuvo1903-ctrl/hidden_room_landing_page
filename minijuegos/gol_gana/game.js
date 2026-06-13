@@ -1,4 +1,17 @@
 
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+const supabase = createClient(
+  "https://rpcunbkstadgngqrjafp.supabase.co",
+  "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
+);
+
+const GAME_ID = 'gol-gana';
+const SCORE_TYPE = 'record';
+const LOCAL_BEST_KEY = 'gol_gana_record';
+const LOGIN_RETURN_KEY = 'hr_return_after_login';
+const LOCAL_BEST_SYNCED_KEY = `${LOCAL_BEST_KEY}_synced`;
+
 function getGolGanaJoystickVector() {
   if (window.__golGanaJoystick && window.__golGanaJoystick.active) {
     return { x: window.__golGanaJoystick.x || 0, y: window.__golGanaJoystick.y || 0 };
@@ -27,7 +40,8 @@ function getGolGanaJoystickVector() {
   const ui = {
     menu: $('menu'), gamePanel: $('gamePanel'), gameOver: $('gameOver'), howTo: $('howTo'), message: $('message'),
     scoreboard: $('scoreboardUI'), time: $('timeUI'), score: $('scoreUI'), chicks: $('chicksUI'),
-    finalGoals: $('finalGoals'), finalScore: $('finalScore'), finalWings: $('finalWings'), record: $('recordUI')
+    finalGoals: $('finalGoals'), finalScore: $('finalScore'), finalWings: $('finalWings'), record: $('recordUI'),
+    saveStatus: $('saveStatusUI'), saveScoreBtn: $('saveScoreBtn'), menuArt: $('menuArt')
   };
 
   let W = 960, H = 540;
@@ -59,11 +73,35 @@ function getGolGanaJoystickVector() {
   const rand = (a, b) => a + Math.random() * (b - a);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const COLORS = {
+    primary: '#F4652B',
+    yellow: '#F1E50E',
+    black: '#1C1C1B',
+    white: '#F8F8F8',
+    shadow: '#555759',
+    grass: '#7AA11A',
+    olive: '#565824',
+    asphalt: '#555759',
+    asphaltDark: '#38393A',
+    asphaltLight: '#6C6E70',
+    purple: '#6E35B7',
+    purpleDark: '#2D173F',
+    purpleGlow: '#C08CFF',
+    devil: '#E64A2E',
+    beige: '#EBDB9F',
+    brown: '#522C21',
+  };
 
   const state = {
     running: false,
     last: 0,
     timeLeft: 60,
+    best: Number(localStorage.getItem(LOCAL_BEST_KEY) || 0),
+    remoteBest: 0,
+    scoreRowId: null,
+    profile: null,
+    authUser: null,
+    saveStatus: '',
     score: 0,
     goals: 0,
     rivalGoals: 0,
@@ -74,6 +112,7 @@ function getGolGanaJoystickVector() {
     sprintEnergy: 100,
     comboTimer: 0,
     messageTimer: 0,
+    messageLockTimer: 0,
     messageText: '',
     warning20Shown: false,
     warning10Shown: false,
@@ -92,21 +131,35 @@ function getGolGanaJoystickVector() {
     tackleCooldown: 0
   };
 
-  const player = { x: 210, y: 270, r: 17, vx: 0, vy: 0, color: '#21d46b', hasBall: true, facing: { x: 1, y: 0 } };
+  const player = { x: 210, y: 270, r: 17, vx: 0, vy: 0, color: COLORS.primary, hasBall: true, facing: { x: 1, y: 0 } };
   const ball = { x: 232, y: 270, r: 9, vx: 0, vy: 0, owner: 'player', ownerIndex: -1, passTargetIndex: -1, passGrace: 0 };
   const rivals = [];
   const pickups = [];
   const clara = { active: false, x: -80, y: 0, r: 24, vx: 0, vy: 0 };
-  const goalie = { x: W - 62, y: H / 2, r: 18, speed: 82, color: '#b78cff', passCooldown: 0, targetY: H / 2, reaction: 0 };
+  const goalie = { x: W - 62, y: H / 2, r: 18, speed: 82, color: COLORS.beige, passCooldown: 0, targetY: H / 2, reaction: 0 };
+  const kairenSprite = new Image();
+  kairenSprite.src = '../../assets/img/kairen.webp';
+  const claraSprite = new Image();
+  claraSprite.src = '../../assets/sprites/clara.webp';
+  const ajoloteSprite = new Image();
+  ajoloteSprite.src = '../../assets/sprites/ajolote.webp';
+  const hiddenCoinSprite = new Image();
+  hiddenCoinSprite.src = '../../assets/img/IMG_1373.webp';
+  const fieldHrWhSprite = new Image();
+  fieldHrWhSprite.src = '../../assets/img/IMG_1372.webp';
+  const wingsSprite = new Image();
+  wingsSprite.src = '../../assets/sprites/alitas.webp';
+  const salsaSprite = new Image();
+  salsaSprite.src = '../../assets/sprites/salsa.webp';
 
   function resetMatch() {
     configureCanvas();
     player.x = W * 0.22; player.y = H / 2; player.vx = player.vy = 0; player.hasBall = true; player.facing = { x: 1, y: 0 };
     ball.x = player.x + 24; ball.y = player.y; ball.vx = ball.vy = 0; ball.owner = 'player'; ball.ownerIndex = -1; ball.passTargetIndex = -1; ball.passGrace = 0;
     rivals.length = 0;
-    rivals.push({ x: W * 0.63, y: H * 0.40, r: 17, color: '#ff4141', speed: 74, facing: {x:-1,y:0}, shootCooldown: 0, passCooldown: 0, receiveCooldown: 0, lane: -1 });
-    rivals.push({ x: W * 0.70, y: H * 0.60, r: 17, color: '#ff7a18', speed: 78, facing: {x:-1,y:0}, shootCooldown: 0, passCooldown: 0, receiveCooldown: 0, lane: 1 });
-    rivals.push({ x: W * 0.78, y: H * 0.50, r: 17, color: '#22a7ff', speed: 68, facing: {x:-1,y:0}, shootCooldown: 0, passCooldown: 0, receiveCooldown: 0, lane: 0 });
+    rivals.push({ x: W * 0.63, y: H * 0.40, r: 17, color: COLORS.devil, speed: 74, facing: {x:-1,y:0}, shootCooldown: 0, passCooldown: 0, receiveCooldown: 0, lane: -1 });
+    rivals.push({ x: W * 0.70, y: H * 0.60, r: 17, color: COLORS.brown, speed: 78, facing: {x:-1,y:0}, shootCooldown: 0, passCooldown: 0, receiveCooldown: 0, lane: 1 });
+    rivals.push({ x: W * 0.78, y: H * 0.50, r: 17, color: COLORS.shadow, speed: 68, facing: {x:-1,y:0}, shootCooldown: 0, passCooldown: 0, receiveCooldown: 0, lane: 0 });
     goalie.x = W - (62); goalie.y = H / 2; goalie.targetY = H / 2; goalie.reaction = 0; goalie.passCooldown = 0;
   }
 
@@ -114,7 +167,7 @@ function getGolGanaJoystickVector() {
     state.running = true;
     state.last = performance.now();
     state.timeLeft = 90;
-    state.score = 0; state.goals = 0; state.rivalGoals = 0; state.chicks = 0; state.difficulty = 1.0; state.rivalSpeedBonus = 1.0; state.stealCooldown = 0; state.sprintEnergy = 100; state.comboTimer = 0;
+    state.score = 0; state.goals = 0; state.rivalGoals = 0; state.chicks = 0; state.difficulty = 1.0; state.rivalSpeedBonus = 1.0; state.stealCooldown = 0; state.sprintEnergy = 100; state.comboTimer = 0; state.saveStatus = '';
     state.claraCooldown = 7; state.claraTimer = 0; state.ajoloteTimer = 0; state.warning20Shown = false; state.warning10Shown = false;
     state.multiplierTimer = 0; state.speedTimer = 0; state.invincibleTimer = 0; state.tackleCooldown = 0;
     pickups.length = 0;
@@ -125,7 +178,35 @@ function getGolGanaJoystickVector() {
   }
 
   function show(el, yes) { el.classList.toggle('hidden', !yes); }
-  function flash(text, seconds = 1.0) { state.messageText = text; state.messageTimer = seconds; ui.message.textContent = text; show(ui.message, true); }
+  function flash(text, seconds = 1.0, tone = '') {
+    if (state.messageLockTimer > 0 && tone !== 'purple') return;
+    state.messageText = text;
+    state.messageTimer = seconds;
+    state.messageLockTimer = tone === 'purple' ? seconds : 0;
+    ui.message.textContent = text;
+    ui.message.classList.toggle('message--purple', tone === 'purple');
+    show(ui.message, true);
+  }
+
+  function loadMenuArt() {
+    if (!ui.menuArt) return;
+    const candidates = ['webp', 'png', 'jpg', 'jpeg'].map((ext) => `../../assets/img/IMG_1372.${ext}`);
+    let index = 0;
+    const tryNext = () => {
+      if (index >= candidates.length) return;
+      const probe = new Image();
+      probe.onload = () => {
+        ui.menuArt.src = candidates[index];
+        ui.menuArt.hidden = false;
+      };
+      probe.onerror = () => {
+        index++;
+        tryNext();
+      };
+      probe.src = candidates[index];
+    };
+    tryNext();
+  }
 
   function spawnPickup() {
     const types = ['chick', 'chick', 'chick', 'chick', 'gold', 'salsa', 'hiddenCoin'];
@@ -172,6 +253,132 @@ function getGolGanaJoystickVector() {
     return 1 + 0.55 * (1 - Math.exp(-g / 3.0));
   }
 
+  async function loadScoreAccount() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    state.authUser = user;
+
+    let { data: profile, error } = await supabase
+      .from('users')
+      .select('id, user_id')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (!error && !profile?.user_id) {
+      const { data: ensuredUserId, error: ensureError } = await supabase.rpc('ensure_my_user_id');
+      if (!ensureError && ensuredUserId) {
+        const refreshed = await supabase
+          .from('users')
+          .select('id, user_id')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        profile = refreshed.data ?? { id: user.id, user_id: ensuredUserId };
+        error = refreshed.error;
+      } else if (ensureError) {
+        console.info('[GOL GANA] user_id ensure unavailable:', ensureError.message);
+      }
+    }
+
+    if (error || !profile?.user_id) {
+      console.info('[GOL GANA] profile unavailable:', error?.message);
+      return null;
+    }
+
+    state.profile = profile;
+    return profile;
+  }
+
+  async function loadRemoteBest() {
+    if (!state.profile?.user_id) return null;
+
+    const { data, error } = await supabase
+      .from('scores')
+      .select('id, amount')
+      .eq('user_id', state.profile.user_id)
+      .eq('game_id', GAME_ID)
+      .eq('type', SCORE_TYPE)
+      .order('amount', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.info('[GOL GANA] remote score unavailable:', error.message);
+      return null;
+    }
+
+    state.scoreRowId = data?.id ?? null;
+    state.remoteBest = Number(data?.amount ?? 0);
+    return state.remoteBest;
+  }
+
+  async function syncBestWithAccount() {
+    const profile = await loadScoreAccount();
+    if (!profile) return false;
+
+    const remoteBest = await loadRemoteBest();
+    if (remoteBest === null) return false;
+
+    return syncBestSources(remoteBest);
+  }
+
+  async function syncBestSources(remoteBest = state.remoteBest) {
+    const localBest = Number(localStorage.getItem(LOCAL_BEST_KEY) || state.best || 0);
+    const mergedBest = Math.max(localBest, remoteBest);
+
+    state.best = mergedBest;
+    localStorage.setItem(LOCAL_BEST_KEY, String(mergedBest));
+    if (ui.record) ui.record.textContent = Math.floor(mergedBest);
+
+    if (localBest > remoteBest) {
+      return saveBestToSupabase(localBest);
+    }
+
+    state.remoteBest = Number(remoteBest || 0);
+    return true;
+  }
+
+  async function saveBestToSupabase(amount = state.best) {
+    if (!state.profile?.user_id) return false;
+    if (Number(amount) <= Number(state.remoteBest || 0)) return true;
+
+    const payload = {
+      game_id: GAME_ID,
+      user_id: state.profile.user_id,
+      type: SCORE_TYPE,
+      amount: Number(amount),
+    };
+
+    const { data, error } = state.scoreRowId
+      ? await supabase
+          .from('scores')
+          .update({ amount: payload.amount })
+          .eq('id', state.scoreRowId)
+          .select('id, amount')
+          .single()
+      : await supabase
+          .from('scores')
+          .insert(payload)
+          .select('id, amount')
+          .single();
+
+    if (error) {
+      console.info('[GOL GANA] save score failed:', error.message);
+      return false;
+    }
+
+    state.scoreRowId = data?.id ?? state.scoreRowId;
+    state.remoteBest = Number(data?.amount ?? amount);
+    localStorage.setItem(LOCAL_BEST_SYNCED_KEY, String(state.remoteBest));
+    return true;
+  }
+
+  function goToLoginForScore() {
+    sessionStorage.setItem(LOGIN_RETURN_KEY, '../minijuegos/gol_gana/');
+    window.location.href = '../../portal/';
+  }
+
   function update(dt) {
     state.timeLeft -= dt;
     if (!state.warning20Shown && state.timeLeft <= 20 && state.timeLeft > 10) {
@@ -184,9 +391,12 @@ function getGolGanaJoystickVector() {
     }
     if (state.timeLeft <= 0) return endGame();
 
-    for (const k of ['messageTimer','claraCooldown','claraTimer','ajoloteTimer','multiplierTimer','speedTimer','invincibleTimer','stealCooldown','comboTimer','tackleCooldown']) state[k] = Math.max(0, state[k] - dt);
+    for (const k of ['messageTimer','messageLockTimer','claraCooldown','claraTimer','ajoloteTimer','multiplierTimer','speedTimer','invincibleTimer','stealCooldown','comboTimer','tackleCooldown']) state[k] = Math.max(0, state[k] - dt);
     ball.passGrace = Math.max(0, ball.passGrace - dt);
-    if (state.messageTimer <= 0) show(ui.message, false);
+    if (state.messageTimer <= 0) {
+      show(ui.message, false);
+      ui.message.classList.remove('message--purple');
+    }
 
     const v = inputVector();
     const wantsSprint = keys.has('shift') || state.touchSprint;
@@ -272,7 +482,7 @@ function getGolGanaJoystickVector() {
     state.rivalGoals++;
     // El rival NO sube la dificultad; solo castiga puntos/tiempo.
     state.score = Math.max(0, state.score - 120);
-    state.timeLeft = Math.max(8, state.timeLeft - 3);
+    state.timeLeft = Math.max(0, state.timeLeft - 3);
     flash('¡GOL RIVAL!', .95);
     resetMatch();
   }
@@ -589,7 +799,7 @@ function getGolGanaJoystickVector() {
     if (dist(player, clara) < player.r + clara.r && state.invincibleTimer <= 0) {
       state.ajoloteTimer = 6; clara.active = false; player.hasBall = false; ball.owner = null; ball.ownerIndex = -1;
       ball.vx = -player.facing.x * 180; ball.vy = -player.facing.y * 180;
-      flash('HAS SIDO AJOLOTIZADO', 1.1);
+      flash('HAS SIDO AJOLOTIZADO', 2, 'purple');
     }
   }
 
@@ -613,13 +823,70 @@ function getGolGanaJoystickVector() {
     if (!won) {
       final = tied ? Math.floor(final * 0.75) : Math.floor(final * 0.5);
     }
-    const record = Math.max(final, Number(localStorage.getItem('gol_gana_record') || 0));
-    localStorage.setItem('gol_gana_record', record);
+    const record = Math.max(final, Number(localStorage.getItem(LOCAL_BEST_KEY) || 0));
+    localStorage.setItem(LOCAL_BEST_KEY, String(record));
+    state.best = record;
+    state.saveStatus = '';
     ui.finalGoals.textContent = `GOL GANA ${state.goals} - ${state.rivalGoals} RIVALES`;
     ui.finalScore.textContent = final;
     if (ui.finalWings) ui.finalWings.textContent = state.chicks;
     ui.record.textContent = record;
+    if (ui.saveStatus) ui.saveStatus.textContent = state.profile ? 'guardando record...' : 'inicia sesión para registrar tu puntaje';
+    ui.saveScoreBtn?.classList.toggle('hidden', Boolean(state.profile));
     ui.gamePanel.classList.remove('ajolote-mode');
+    saveGameOverScore();
+  }
+
+  async function saveGameOverScore() {
+    if (!state.profile) {
+      await loadScoreAccount();
+      if (state.profile) await loadRemoteBest();
+    }
+
+    if (!state.profile) {
+      state.saveStatus = 'inicia sesión para registrar tu puntaje';
+      if (ui.saveStatus) ui.saveStatus.textContent = state.saveStatus;
+      ui.saveScoreBtn?.classList.remove('hidden');
+      return;
+    }
+
+    const localBest = Number(localStorage.getItem(LOCAL_BEST_KEY) || state.best || 0);
+    const remoteBest = Number(state.remoteBest || 0);
+
+    ui.saveScoreBtn?.classList.add('hidden');
+
+    if (remoteBest > localBest) {
+      state.best = remoteBest;
+      localStorage.setItem(LOCAL_BEST_KEY, String(remoteBest));
+      if (ui.record) ui.record.textContent = Math.floor(remoteBest);
+      state.saveStatus = 'record sincronizado con tu cuenta';
+      if (ui.saveStatus) ui.saveStatus.textContent = state.saveStatus;
+      return;
+    }
+
+    if (localBest <= remoteBest) {
+      state.best = remoteBest;
+      localStorage.setItem(LOCAL_BEST_KEY, String(remoteBest));
+      if (ui.record) ui.record.textContent = Math.floor(remoteBest);
+      state.saveStatus = 'record sincronizado con tu cuenta';
+      if (ui.saveStatus) ui.saveStatus.textContent = state.saveStatus;
+      return;
+    }
+
+    state.saveStatus = 'guardando record...';
+    if (ui.saveStatus) ui.saveStatus.textContent = state.saveStatus;
+
+    state.best = localBest;
+    if (ui.record) ui.record.textContent = Math.floor(localBest);
+
+    const saved = await saveBestToSupabase(localBest);
+    state.saveStatus = saved
+      ? 'nuevo record guardado'
+      : 'no se pudo guardar el record';
+
+    if (ui.saveStatus && !ui.gameOver.classList.contains('hidden')) {
+      ui.saveStatus.textContent = state.saveStatus;
+    }
   }
 
   function draw() {
@@ -628,25 +895,65 @@ function getGolGanaJoystickVector() {
   }
 
   function drawField() {
-    ctx.fillStyle = state.ajoloteTimer > 0 ? '#24123a' : '#272a28'; ctx.fillRect(0,0,W,H);
-    ctx.fillStyle = state.ajoloteTimer > 0 ? '#301849' : '#202320'; ctx.fillRect(fieldLeft(), fieldTop(), fieldRight()-fieldLeft(), fieldBottom()-fieldTop());
-    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3; ctx.strokeRect(fieldLeft(), fieldTop(), fieldRight()-fieldLeft(), fieldBottom()-fieldTop());
+    ctx.fillStyle = state.ajoloteTimer > 0 ? COLORS.purpleDark : COLORS.black; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = state.ajoloteTimer > 0 ? '#493062' : COLORS.asphalt; ctx.fillRect(fieldLeft(), fieldTop(), fieldRight()-fieldLeft(), fieldBottom()-fieldTop());
+    ctx.fillStyle = state.ajoloteTimer > 0 ? 'rgba(192,140,255,.08)' : 'rgba(28,28,27,.12)';
+    for (let y = fieldTop(); y < fieldBottom(); y += 34) {
+      ctx.fillRect(fieldLeft(), y, fieldRight() - fieldLeft(), 14);
+    }
+    ctx.strokeStyle = state.ajoloteTimer > 0 ? 'rgba(192,140,255,.18)' : 'rgba(28,28,27,.20)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 18; i++) {
+      const x = rand(fieldLeft() + 22, fieldRight() - 80);
+      const y = rand(fieldTop() + 28, fieldBottom() - 28);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + rand(20, 70), y + rand(-18, 18));
+      ctx.lineTo(x + rand(54, 116), y + rand(-8, 28));
+      ctx.stroke();
+    }
+    if (fieldHrWhSprite.complete && fieldHrWhSprite.naturalWidth) {
+      const fieldW = fieldRight() - fieldLeft();
+      const fieldH = fieldBottom() - fieldTop();
+      const maxW = fieldW * 0.72;
+      const maxH = fieldH * 0.58;
+      const ratio = fieldHrWhSprite.naturalWidth / fieldHrWhSprite.naturalHeight;
+      let drawW = maxW;
+      let drawH = drawW / ratio;
+      if (drawH > maxH) {
+        drawH = maxH;
+        drawW = drawH * ratio;
+      }
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(fieldLeft(), fieldTop(), fieldW, fieldH);
+      ctx.clip();
+      ctx.globalAlpha = state.ajoloteTimer > 0 ? 0.24 : 0.30;
+      ctx.filter = 'grayscale(1) contrast(1.1)';
+      ctx.translate(W / 2, H / 2 + 10);
+      ctx.rotate(-0.04);
+      ctx.drawImage(fieldHrWhSprite, -drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.restore();
+      ctx.filter = 'none';
+    }
+    ctx.strokeStyle = state.ajoloteTimer > 0 ? 'rgba(248,248,248,.72)' : 'rgba(248,248,248,.68)'; ctx.lineWidth = 3; ctx.strokeRect(fieldLeft(), fieldTop(), fieldRight()-fieldLeft(), fieldBottom()-fieldTop());
     ctx.beginPath(); ctx.moveTo(W/2,fieldTop()); ctx.lineTo(W/2,fieldBottom()); ctx.stroke();
     ctx.beginPath(); ctx.arc(W/2,H/2,58,0,Math.PI*2); ctx.stroke();
     ctx.strokeRect(fieldLeft(), H/2 - 112, 95, 224); ctx.strokeRect(fieldRight() - (95), H/2 - 112, 95, 224);
-    ctx.fillStyle = 'rgba(255,210,46,.12)'; ctx.fillRect(fieldLeft(),fieldTop(),fieldRight()-fieldLeft(),20);
-    ctx.fillStyle = '#ffd22e'; ctx.font = isPortraitGame() ? '900 16px system-ui' : '900 22px system-ui'; ctx.textAlign='center'; ctx.fillText('HIDDEN ROOM x TLALPAN WINGS HOUSE', W/2, fieldTop()+36);
-    ctx.font = '900 16px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.13)';
+    ctx.fillStyle = 'rgba(244,101,43,.16)'; ctx.fillRect(fieldLeft(),fieldTop(),fieldRight()-fieldLeft(),20);
+    ctx.fillStyle = COLORS.yellow; ctx.font = isPortraitGame() ? '900 16px system-ui' : '900 22px system-ui'; ctx.textAlign='center'; ctx.fillText('HIDDEN ROOM x TLALPAN WINGS HOUSE', W/2, fieldTop()+36);
+    ctx.font = '900 16px system-ui'; ctx.fillStyle = 'rgba(241,229,14,.28)';
     ctx.fillText('GOL GANA', W/2, fieldBottom()-28);
-    ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(28,28,27,.10)'; ctx.lineWidth = 1;
     for (let i=0;i<18;i++) { ctx.beginPath(); ctx.moveTo(rand(fieldLeft()+20,fieldRight()-20), rand(fieldTop()+35,fieldBottom()-35)); ctx.lineTo(rand(fieldLeft()+20,fieldRight()-20), rand(fieldTop()+35,fieldBottom()-35)); ctx.stroke(); }
   }
 
   function drawGoals() {
     ctx.lineWidth = 7;
-    ctx.strokeStyle = '#ff4141'; ctx.strokeRect(fieldLeft()-30, goalTop(), 30, goalBottom()-goalTop());
-    ctx.strokeStyle = '#21d46b'; ctx.strokeRect(fieldRight(), goalTop(), 30, goalBottom()-goalTop());
-    ctx.fillStyle = '#21d46b'; ctx.font = '900 18px system-ui'; ctx.textAlign='center'; ctx.fillText('GOL', fieldRight()+15, goalTop()-16);
+    ctx.strokeStyle = COLORS.devil; ctx.strokeRect(fieldLeft()-30, goalTop(), 30, goalBottom()-goalTop());
+    ctx.strokeStyle = COLORS.devil; ctx.strokeRect(fieldRight(), goalTop(), 30, goalBottom()-goalTop());
+    ctx.fillStyle = COLORS.yellow; ctx.font = '900 18px system-ui'; ctx.textAlign='center'; ctx.fillText('GOL', fieldRight()+15, goalTop()-16);
   }
 
   function drawCircleThing(o, label, color, kind = 'field') {
@@ -772,8 +1079,8 @@ function getGolGanaJoystickVector() {
     }
 
     // Número/rol encima, discreto.
-    ctx.fillStyle = '#fff';
-    ctx.strokeStyle = 'rgba(0,0,0,.65)';
+    ctx.fillStyle = COLORS.white;
+    ctx.strokeStyle = 'rgba(28,28,27,.65)';
     ctx.lineWidth = 4;
     ctx.font = `900 ${isClara ? 11 : 9}px system-ui`;
     ctx.textAlign = 'center';
@@ -784,14 +1091,174 @@ function getGolGanaJoystickVector() {
     ctx.restore();
   }
 
-  function drawPlayer() { drawCircleThing(player, state.ajoloteTimer > 0 ? 'AX' : 'HR', state.ajoloteTimer > 0 ? '#b95cff' : player.color, state.ajoloteTimer > 0 ? 'ajolote' : 'player'); }
+  function drawAjolotePlayer() {
+    if (ajoloteSprite.complete && ajoloteSprite.naturalWidth) {
+      const runSpeed = Math.hypot(player.vx || 0, player.vy || 0);
+      const t = performance.now() / 1000;
+      const bob = Math.sin(t * (runSpeed > 10 ? 9 : 3)) * (runSpeed > 10 ? 3 : 1.4);
+      const facingLeft = player.facing.x < -0.05;
+      const lean = clamp((player.vx || 0) / 420, -0.18, 0.18);
+
+      ctx.save();
+      ctx.translate(player.x, player.y + 8 + bob);
+      ctx.rotate(lean);
+      ctx.scale(facingLeft ? -1 : 1, 1);
+      ctx.fillStyle = 'rgba(0,0,0,.30)';
+      ctx.beginPath();
+      ctx.ellipse(0, 27 - bob, 22, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowColor = COLORS.purpleGlow;
+      ctx.shadowBlur = 12;
+      ctx.drawImage(ajoloteSprite, -31, -34, 62, 62);
+      ctx.restore();
+
+      ctx.save();
+      ctx.fillStyle = COLORS.white;
+      ctx.strokeStyle = 'rgba(28,28,27,.70)';
+      ctx.lineWidth = 4;
+      ctx.font = '900 9px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.strokeText('AX', player.x, player.y - 36);
+      ctx.fillText('AX', player.x, player.y - 36);
+      ctx.restore();
+      return;
+    }
+
+    const runSpeed = Math.hypot(player.vx || 0, player.vy || 0);
+    const t = performance.now() / 1000;
+    const bob = Math.sin(t * (runSpeed > 10 ? 9 : 3)) * (runSpeed > 10 ? 3 : 1.4);
+    const facingLeft = player.facing.x < -0.05;
+    const lean = clamp((player.vx || 0) / 420, -0.18, 0.18);
+
+    ctx.save();
+    ctx.translate(player.x, player.y + 5 + bob);
+    ctx.rotate(lean);
+    ctx.scale(facingLeft ? -1 : 1, 1);
+
+    ctx.fillStyle = 'rgba(0,0,0,.30)';
+    ctx.beginPath();
+    ctx.ellipse(0, 26 - bob, 20, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = COLORS.black;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    ctx.fillStyle = COLORS.beige;
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 18, 24, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#f3c0a1';
+    ctx.beginPath();
+    ctx.ellipse(0, -18, 20, 15, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = COLORS.devil;
+    ctx.lineWidth = 4;
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(side * 15, -22);
+      ctx.lineTo(side * 30, -32 + Math.sin(t * 7) * 2);
+      ctx.moveTo(side * 16, -17);
+      ctx.lineTo(side * 32, -18 + Math.cos(t * 6) * 2);
+      ctx.moveTo(side * 14, -12);
+      ctx.lineTo(side * 28, -5 + Math.sin(t * 5) * 2);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = COLORS.black;
+    ctx.lineWidth = 4;
+    const step = Math.sin(t * 10) * 5;
+    ctx.beginPath();
+    ctx.moveTo(-8, 15); ctx.lineTo(-14 - step, 28);
+    ctx.moveTo(8, 15); ctx.lineTo(14 + step, 28);
+    ctx.moveTo(-13, 1); ctx.lineTo(-24, 10 + step * .25);
+    ctx.moveTo(13, 1); ctx.lineTo(24, 10 - step * .25);
+    ctx.stroke();
+
+    ctx.fillStyle = COLORS.black;
+    ctx.beginPath();
+    ctx.arc(7, -21, 2.2, 0, Math.PI * 2);
+    ctx.arc(-7, -21, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = COLORS.black;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, -15, 7, 0.15, Math.PI - 0.15);
+    ctx.stroke();
+
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = COLORS.white;
+    ctx.strokeStyle = 'rgba(28,28,27,.70)';
+    ctx.lineWidth = 4;
+    ctx.font = '900 9px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.strokeText('AX', player.x, player.y - 36);
+    ctx.fillText('AX', player.x, player.y - 36);
+    ctx.restore();
+  }
+
+  function drawPlayer() {
+    if (state.ajoloteTimer > 0) {
+      drawAjolotePlayer();
+      return;
+    }
+
+    if (!kairenSprite.complete || !kairenSprite.naturalWidth) {
+      drawCircleThing(player, 'HR', player.color, 'player');
+      return;
+    }
+
+    const runSpeed = Math.hypot(player.vx || 0, player.vy || 0);
+    const moving = runSpeed > 12;
+    const t = performance.now() / 1000;
+    const gait = moving ? Math.sin(t * 13) : Math.sin(t * 3.2);
+    const bob = moving ? gait * 4 : gait * 1.8;
+    const squash = moving ? Math.abs(gait) * 0.08 : 0.025;
+    const facingLeft = player.facing.x < -0.05;
+    const lean = clamp((player.vx || 0) / 360, -0.22, 0.22);
+    const w = 48;
+    const h = 68;
+
+    ctx.save();
+    ctx.translate(player.x, player.y + 10 + bob);
+    ctx.rotate(lean);
+    ctx.scale((facingLeft ? -1 : 1) * (1 + squash * 0.45), 1 - squash);
+
+    ctx.fillStyle = 'rgba(0,0,0,.30)';
+    ctx.beginPath();
+    ctx.ellipse(0, h * 0.33 - bob, 18, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.drawImage(kairenSprite, -w / 2, -h / 2, w, h);
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = 'rgba(0,0,0,.65)';
+    ctx.lineWidth = 4;
+    ctx.font = '900 9px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.strokeText('HR', player.x, player.y - 36);
+    ctx.fillText('HR', player.x, player.y - 36);
+    ctx.restore();
+  }
   function drawRivals() { rivals.forEach((r,i)=>drawCircleThing(r, String(i+1), r.color)); }
   function drawGoalie() { drawCircleThing(goalie, 'GK', goalie.color, 'goalie'); }
-  function drawBall() { ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='#111'; ctx.lineWidth=3; ctx.stroke(); }
+  function drawBall() { ctx.fillStyle=COLORS.white; ctx.beginPath(); ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2); ctx.fill(); ctx.strokeStyle=COLORS.black; ctx.lineWidth=3; ctx.stroke(); }
   function drawPossessionArrow() {
     if (ball.owner === 'rival' && rivals[ball.ownerIndex]) {
       const r = rivals[ball.ownerIndex];
-      ctx.fillStyle = '#ffd22e';
+      ctx.fillStyle = COLORS.yellow;
       ctx.beginPath();
       ctx.moveTo(r.x, r.y - r.r - 18);
       ctx.lineTo(r.x - 9, r.y - r.r - 5);
@@ -804,37 +1271,103 @@ function getGolGanaJoystickVector() {
   function drawPickups() {
     for (const p of pickups) {
       if (p.type === 'hiddenCoin') {
-        ctx.fillStyle = '#ff9f1c';
-        ctx.beginPath(); ctx.arc(p.x,p.y,p.r+1,0,Math.PI*2); ctx.fill();
-        ctx.strokeStyle='#ffd22e'; ctx.lineWidth=3; ctx.stroke();
-        ctx.fillStyle='rgba(0,0,0,.18)'; ctx.beginPath(); ctx.arc(p.x,p.y,p.r-4,0,Math.PI*2); ctx.fill();
-        ctx.fillStyle='#111'; ctx.font='900 9px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('HR', p.x, p.y+1);
+        if (hiddenCoinSprite.complete && hiddenCoinSprite.naturalWidth) {
+          const size = p.r * 3.1;
+          const ratio = hiddenCoinSprite.naturalWidth / hiddenCoinSprite.naturalHeight;
+          let drawW = size;
+          let drawH = size;
+          if (ratio >= 1) drawH = size / ratio;
+          else drawW = size * ratio;
+          ctx.save();
+          ctx.drawImage(hiddenCoinSprite, p.x - drawW / 2, p.y - drawH / 2, drawW, drawH);
+          ctx.restore();
+          ctx.strokeStyle=COLORS.yellow; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(p.x,p.y,p.r+5,0,Math.PI*2); ctx.stroke();
+        } else {
+          ctx.fillStyle = COLORS.primary;
+          ctx.beginPath(); ctx.arc(p.x,p.y,p.r+1,0,Math.PI*2); ctx.fill();
+          ctx.strokeStyle=COLORS.yellow; ctx.lineWidth=3; ctx.stroke();
+          ctx.fillStyle='rgba(0,0,0,.18)'; ctx.beginPath(); ctx.arc(p.x,p.y,p.r-4,0,Math.PI*2); ctx.fill();
+          ctx.fillStyle=COLORS.black; ctx.font='900 9px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('HR', p.x, p.y+1);
+        }
+      } else if ((p.type === 'chick' || p.type === 'gold') && wingsSprite.complete && wingsSprite.naturalWidth) {
+        const size = p.type === 'gold' ? p.r * 3.4 : p.r * 3;
+        const ratio = wingsSprite.naturalWidth / wingsSprite.naturalHeight;
+        let drawW = size;
+        let drawH = size;
+        if (ratio >= 1) drawH = size / ratio;
+        else drawW = size * ratio;
+        ctx.save();
+        if (p.type === 'gold') {
+          ctx.shadowColor = COLORS.yellow;
+          ctx.shadowBlur = 12;
+        }
+        ctx.drawImage(wingsSprite, p.x - drawW / 2, p.y - drawH / 2, drawW, drawH);
+        ctx.restore();
+      } else if (p.type === 'salsa' && salsaSprite.complete && salsaSprite.naturalWidth) {
+        const size = p.r * 3.2;
+        const ratio = salsaSprite.naturalWidth / salsaSprite.naturalHeight;
+        let drawW = size;
+        let drawH = size;
+        if (ratio >= 1) drawH = size / ratio;
+        else drawW = size * ratio;
+        ctx.drawImage(salsaSprite, p.x - drawW / 2, p.y - drawH / 2, drawW, drawH);
       } else {
-        ctx.fillStyle = p.type === 'chick' ? '#ffd22e' : p.type === 'gold' ? '#fff05a' : p.type === 'salsa' ? '#ff4141' : '#b78cff';
-        ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill(); ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
-        ctx.fillStyle='#111'; ctx.font='900 13px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(p.type === 'salsa' ? 'S' : '🍗', p.x, p.y+1);
+        ctx.fillStyle = p.type === 'chick' ? COLORS.yellow : p.type === 'gold' ? COLORS.beige : p.type === 'salsa' ? COLORS.devil : COLORS.primary;
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill(); ctx.strokeStyle=COLORS.white; ctx.lineWidth=2; ctx.stroke();
+        ctx.fillStyle=COLORS.black; ctx.font='900 13px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(p.type === 'salsa' ? 'S' : 'W', p.x, p.y+1);
       }
     }
   }
   function drawClara() {
     if (!clara.active) return;
-    drawCircleThing(clara, 'CB', '#ff4bb8', 'clara');
-    ctx.strokeStyle='rgba(255,75,184,.35)'; ctx.lineWidth=8; ctx.beginPath(); ctx.arc(clara.x,clara.y,clara.r+10,0,Math.PI*2); ctx.stroke();
+    if (claraSprite.complete && claraSprite.naturalWidth) {
+      const t = performance.now() / 1000;
+      const bob = Math.sin(t * 8) * 3;
+      const facingLeft = clara.vx < 0;
+      const spriteH = 72;
+      const spriteW = spriteH * (claraSprite.naturalWidth / claraSprite.naturalHeight);
+
+      ctx.save();
+      ctx.translate(clara.x, clara.y + bob);
+      ctx.scale(facingLeft ? -1 : 1, 1);
+      ctx.fillStyle = 'rgba(0,0,0,.28)';
+      ctx.beginPath();
+      ctx.ellipse(0, 28 - bob, 22, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowColor = 'rgba(192,140,255,.72)';
+      ctx.shadowBlur = 10;
+      ctx.drawImage(claraSprite, -spriteW / 2, -spriteH / 2 - 2, spriteW, spriteH);
+      ctx.restore();
+
+      ctx.strokeStyle='rgba(192,140,255,.62)';
+      ctx.lineWidth=8;
+      ctx.beginPath();
+      ctx.arc(clara.x, clara.y, clara.r+10,0,Math.PI*2);
+      ctx.stroke();
+      return;
+    }
+    drawCircleThing(clara, 'CB', COLORS.devil, 'clara');
+    ctx.strokeStyle='rgba(192,140,255,.62)'; ctx.lineWidth=8; ctx.beginPath(); ctx.arc(clara.x,clara.y,clara.r+10,0,Math.PI*2); ctx.stroke();
   }
   function drawEffects() {
     if (state.ajoloteTimer > 0) {
-      ctx.fillStyle='rgba(112,34,180,.30)'; ctx.fillRect(0,0,W,H);
-      ctx.strokeStyle='rgba(218,156,255,.55)'; ctx.lineWidth=8; ctx.strokeRect(fieldLeft()+4, fieldTop()+4, fieldRight()-fieldLeft()-8, fieldBottom()-fieldTop()-8);
+      ctx.fillStyle='rgba(80,35,130,.36)';
+      ctx.fillRect(0,0,W,H);
+      ctx.fillStyle='rgba(192,140,255,.12)';
+      ctx.fillRect(fieldLeft(),fieldTop(),fieldRight()-fieldLeft(),fieldBottom()-fieldTop());
+      ctx.strokeStyle='rgba(192,140,255,.76)';
+      ctx.lineWidth=8;
+      ctx.strokeRect(fieldLeft()+4, fieldTop()+4, fieldRight()-fieldLeft()-8, fieldBottom()-fieldTop()-8);
     }
-    if (state.invincibleTimer > 0) { ctx.strokeStyle='rgba(255,159,28,.9)'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(player.x,player.y,player.r+12,0,Math.PI*2); ctx.stroke(); ctx.fillStyle='rgba(255,159,28,.18)'; ctx.beginPath(); ctx.arc(player.x,player.y,player.r+17,0,Math.PI*2); ctx.fill(); }
+    if (state.invincibleTimer > 0) { ctx.strokeStyle='rgba(244,101,43,.9)'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(player.x,player.y,player.r+12,0,Math.PI*2); ctx.stroke(); ctx.fillStyle='rgba(244,101,43,.18)'; ctx.beginPath(); ctx.arc(player.x,player.y,player.r+17,0,Math.PI*2); ctx.fill(); }
     ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(fieldLeft(), fieldBottom()+16, 120, 10);
-    ctx.fillStyle= state.sprintEnergy > 25 ? '#21d46b' : '#ff4141'; ctx.fillRect(fieldLeft(), fieldBottom()+16, 120*(state.sprintEnergy/100),10);
+    ctx.fillStyle= state.sprintEnergy > 25 ? COLORS.yellow : COLORS.devil; ctx.fillRect(fieldLeft(), fieldBottom()+16, 120*(state.sprintEnergy/100),10);
     ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.lineWidth=1; ctx.strokeRect(fieldLeft(), fieldBottom()+16,120,10);
 
     if (player.hasBall && state.shootCharge > 0) {
       const w = 100 * clamp(state.shootCharge / state.maxShootCharge, 0, 1);
       ctx.fillStyle='rgba(0,0,0,.45)'; ctx.fillRect(player.x - 50, player.y - player.r - 28, 100, 8);
-      ctx.fillStyle='#ffd22e'; ctx.fillRect(player.x - 50, player.y - player.r - 28, w, 8);
+      ctx.fillStyle=COLORS.yellow; ctx.fillRect(player.x - 50, player.y - player.r - 28, w, 8);
       ctx.strokeStyle='rgba(255,255,255,.45)'; ctx.strokeRect(player.x - 50, player.y - player.r - 28, 100, 8);
     }
   }
@@ -852,6 +1385,7 @@ function getGolGanaJoystickVector() {
 
   $('playBtn').addEventListener('click', newGame);
   $('retryBtn').addEventListener('click', newGame);
+  ui.saveScoreBtn?.addEventListener('click', goToLoginForScore);
   $('howBtn').addEventListener('click', () => ui.howTo.classList.toggle('hidden'));
 
   // Controles tactiles: movimiento por joystick dinamico, botones fijos para tiro/sprint.
@@ -861,6 +1395,12 @@ function getGolGanaJoystickVector() {
   $('sprintTouch').addEventListener('touchstart', e => { state.touchSprint = true; e.preventDefault(); }, {passive:false});
   $('sprintTouch').addEventListener('touchend', e => { state.touchSprint = false; e.preventDefault(); }, {passive:false});
   $('sprintTouch').addEventListener('touchcancel', e => { state.touchSprint = false; e.preventDefault(); }, {passive:false});
+
+  if (ui.record) ui.record.textContent = Math.floor(state.best);
+  loadMenuArt();
+  syncBestWithAccount().catch((error) => {
+    console.info('[GOL GANA] score sync skipped:', error);
+  });
 })();
 
 

@@ -1,78 +1,167 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="es">
 <head>
-  <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-VNHC1Z3FXZ"></script>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="description" content="La Casa del Under">
-  <meta property="og:title" content="Hidden Room">
-  <meta property="og:description" content="La Casa del Under">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Minijuegos de Hidden Room">
+  <meta property="og:title" content="Minijuegos | Hidden Room">
+  <meta property="og:description" content="Arcade de Hidden Room">
   <meta property="og:image" content="https://hiddenroom.mx/assets/img/social_preview.webp">
   <meta property="og:url" content="https://hiddenroom.mx/minijuegos/">
   <meta property="og:type" content="website">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Hidden Room">
-  <meta name="twitter:description" content="La Casa del Under">
-  <meta name="twitter:image" content="https://hiddenroom.mx/assets/img/social_preview.webp">
-  <title>Hidden Room</title>
-  <link rel="icon" type="image/webp" href="/assets/img/orange_logo.webp">
+  <title>Minijuegos | Hidden Room</title>
+  <link rel="icon" type="image/webp" href="../assets/img/orange_logo.webp">
   <link rel="stylesheet" href="../styles.css">
-  <link rel="stylesheet" href="game.css">
+  <style>
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background:
+        linear-gradient(rgba(0, 0, 0, .42), rgba(0, 0, 0, .78)),
+        url("../assets/img/background.webp") center / cover fixed;
+      color: #fff;
+    }
+
+    .games-shell {
+      width: min(1040px, calc(100% - 32px));
+      min-height: 100vh;
+      margin: 0 auto;
+      display: grid;
+      align-content: center;
+      gap: 28px;
+      padding: 64px 0;
+    }
+
+    .games-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .games-logo {
+      width: clamp(96px, 16vw, 150px);
+      height: auto;
+    }
+
+    .games-home {
+      color: #fff;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      text-decoration: none;
+    }
+
+    .games-heading {
+      display: grid;
+      gap: 10px;
+    }
+
+    .games-heading h1 {
+      margin: 0;
+      font-size: clamp(3rem, 9vw, 7.5rem);
+      line-height: .86;
+      text-transform: uppercase;
+    }
+
+    .games-heading p {
+      max-width: 560px;
+      margin: 0;
+      color: rgba(255, 255, 255, .78);
+      font-size: clamp(1rem, 2vw, 1.2rem);
+    }
+
+    .games-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .game-card {
+      min-height: 220px;
+      display: grid;
+      align-content: end;
+      gap: 12px;
+      padding: 24px;
+      border: 1px solid rgba(255, 255, 255, .16);
+      border-radius: 8px;
+      color: #fff;
+      text-decoration: none;
+      background:
+        linear-gradient(180deg, rgba(0, 0, 0, .08), rgba(0, 0, 0, .82)),
+        var(--game-bg) center / cover;
+      box-shadow: 0 18px 54px rgba(0, 0, 0, .34);
+      transition: transform .18s ease, border-color .18s ease;
+    }
+
+    .game-card:hover,
+    .game-card:focus-visible {
+      transform: translateY(-3px);
+      border-color: rgba(255, 122, 24, .8);
+      outline: none;
+    }
+
+    .game-card h2 {
+      margin: 0;
+      font-size: clamp(2rem, 5vw, 4rem);
+      line-height: .9;
+      text-transform: uppercase;
+    }
+
+    .game-card p {
+      margin: 0;
+      color: rgba(255, 255, 255, .82);
+      font-weight: 700;
+    }
+
+    @media (max-width: 720px) {
+      .games-shell {
+        width: min(100% - 24px, 520px);
+        padding: 28px 0;
+        align-content: start;
+      }
+
+      .games-top {
+        align-items: flex-start;
+      }
+
+      .games-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .game-card {
+        min-height: 180px;
+      }
+    }
+  </style>
 </head>
 <body>
+  <main class="games-shell">
+    <nav class="games-top" aria-label="Navegacion de minijuegos">
+      <a href="../" aria-label="Volver a Hidden Room">
+        <img class="games-logo" src="../assets/img/white_logo.webp" alt="Hidden Room">
+      </a>
+      <a class="games-home" href="../">Inicio</a>
+    </nav>
 
-<div id="wrapper">
-  <canvas id="gameCanvas"></canvas>
-  <div id="scanlines"></div>
-  <a class="game-home-link" href="../" aria-label="Volver a Hidden Room">
-    <img src="../assets/img/white_logo.webp" alt="Hidden Room">
-  </a>
+    <header class="games-heading">
+      <h1>Minijuegos</h1>
+      <p>Elige tu partida.</p>
+    </header>
 
-  <!-- HUD -->
-  <div id="hud">
-    <div id="score-display">
-      PUNTOS <span id="scoreVal">0</span><br>
-      RECORD &nbsp;<span id="bestVal">0</span>
-    </div>
-    <div id="lives-display">
-      VIDAS <span id="livesVal">///</span>
-    </div>
-  </div>
+    <section class="games-grid" aria-label="Lista de juegos">
+      <a class="game-card" href="./flappy_ñero/" style="--game-bg: url('../assets/img/background.webp')">
+        <h2>Flappy &Ntilde;ero</h2>
+        <p>Corre, salta y junta MAFIA.</p>
+      </a>
 
-  <!-- Coupon toast -->
-  <div id="coupon-toast"></div>
+      <a class="game-card" href="./gol_gana/" style="--game-bg: url('../assets/img/IMG_1372.webp')">
+        <h2>Gol Gana</h2>
+        <p>Retita arcade por alitas.</p>
+      </a>
+    </section>
+  </main>
 
-  <!-- Start screen -->
-  <div class="screen" id="startScreen">
-    <div class="screen-label">hidden room presenta</div>
-    <div class="screen-title">FLAPPY ÑERO (beta)</div>
-    <div class="screen-sub">salva a los DEM00NZ de las calles del edomex y recoge todas las MAFIA q puedas T.T.<br>consigue cupones para hidden :*.</div>
-    <button class="btn" id="startBtn">SÁLELE BEBÉ</button>
-    <div class="screen-control-hint">
-      picale / espacio / ↑ &nbsp;para saltar
-    </div>
-  </div>
-
-  <!-- Game over screen -->
-  <div class="screen hidden" id="gameOverScreen">
-    <div class="screen-label">chingó a su madre</div>
-    <div class="screen-title">te moriste</div>
-    <div class="screen-stat">puntos &nbsp;<strong id="goScore">0</strong></div>
-    <div class="screen-stat">record &nbsp;&nbsp;<strong id="goBest">0</strong></div>
-    <div class="screen-stat screen-stat--coupon" id="goCoupons"></div>
-    <div class="screen-stat" id="goSaveStatus"></div>
-    <button class="btn hidden" id="saveScoreBtn">GUARDAR PUNTAJE</button>
-    <button class="btn" id="restartBtn">vuelve a jugar</button>
-    <a class="btn" href="../">volver al inicio</a>
-  </div>
-
-  <div id="tap-hint">activa tu audio pa mejor experiencia</div>
-</div>
-
-<script src="../site.js"></script>
-<script type="module" src="endless_edomex.js"></script>
+  <script src="../site.js"></script>
 </body>
 </html>

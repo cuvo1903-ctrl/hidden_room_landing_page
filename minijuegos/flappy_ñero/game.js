@@ -84,21 +84,21 @@ const CONFIG = {
 ---------------------------------------------------------------- */
 const ASSETS = {
   // PLAYER_SPRITE — replace null with loaded HTMLImageElement
-  PLAYER_SPRITE: (() => { const img = new Image(); img.src = '../assets/img/kairen.webp'; return img; })(),
+  PLAYER_SPRITE: (() => { const img = new Image(); img.src = '../../assets/img/kairen.webp'; return img; })(),
 
   // Obstacle sprites
-  DOG_OBSTACLE:     (() => { const img = new Image(); img.src = '../assets/sprites/tsuru.webp';    return img; })(),
-  POLICE_OBSTACLE:  (() => { const img = new Image(); img.src = '../assets/sprites/patrulla.webp'; return img; })(),
-  POTHOLE_OBSTACLE: (() => { const img = new Image(); img.src = '../assets/sprites/grava.webp';    return img; })(),
-  MARKET_OBSTACLE:  (() => { const img = new Image(); img.src = '../assets/sprites/bote.webp';     return img; })(),
-  CONE_OBSTACLE:    (() => { const img = new Image(); img.src = '../assets/sprites/poste.webp';    return img; })(),
+  DOG_OBSTACLE:     (() => { const img = new Image(); img.src = '../../assets/sprites/tsuru.webp';    return img; })(),
+  POLICE_OBSTACLE:  (() => { const img = new Image(); img.src = '../../assets/sprites/patrulla.webp'; return img; })(),
+  POTHOLE_OBSTACLE: (() => { const img = new Image(); img.src = '../../assets/sprites/grava.webp';    return img; })(),
+  MARKET_OBSTACLE:  (() => { const img = new Image(); img.src = '../../assets/sprites/bote.webp';     return img; })(),
+  CONE_OBSTACLE:    (() => { const img = new Image(); img.src = '../../assets/sprites/poste.webp';    return img; })(),
 
   // Collectibles
   COUPON_ITEM:        null,
-  COIN_ITEM: (() => { const img = new Image(); img.src = '../assets/sprites/mafia.webp'; return img; })(),
+  COIN_ITEM: (() => { const img = new Image(); img.src = '../../assets/sprites/mafia.webp'; return img; })(),
 
   // Background layers (far → near)
-  STREET_BG_FAR:  (() => { const img = new Image(); img.src = '../assets/img/background.webp'; return img; })(),
+  STREET_BG_FAR:  (() => { const img = new Image(); img.src = '../../assets/img/background.webp'; return img; })(),
   STREET_BG_MID:  null,
   STREET_BG_NEAR: null,
   STREET_BG_DECO: null,
@@ -109,13 +109,13 @@ const ASSETS = {
    All sounds are preloaded. SoundSystem.play() handles iOS unlock.
 ---------------------------------------------------------------- */
 const SOUNDS = {
-  awb:       '../assets/sounds/awb.mp3',       // coupon collected
-  game_over: '../assets/sounds/game_over.mp3', // player loses
-  intro:     '../assets/sounds/intro.mp3',     // page open
-  jump:      '../assets/sounds/touch_game.mp3',// jump
-  xeso:      '../assets/sounds/xeso.mp3',      // hit patrulla
-  hit:       '../assets/sounds/hit.mp3',       // hit any other obstacle
-  point:     '../assets/sounds/point.mp3',     // regular collectible picked up
+  awb:       '../../assets/sounds/awb.mp3',       // coupon collected
+  game_over: '../../assets/sounds/game_over.mp3', // player loses
+  intro:     '../../assets/sounds/intro.mp3',     // page open
+  jump:      '../../assets/sounds/touch_game.mp3',// jump
+  xeso:      '../../assets/sounds/xeso.mp3',      // hit patrulla
+  hit:       '../../assets/sounds/hit.mp3',       // hit any other obstacle
+  point:     '../../assets/sounds/point.mp3',     // regular collectible picked up
 };
 
 const SoundSystem = (() => {
@@ -383,8 +383,8 @@ async function saveBestToSupabase(amount = GS.best) {
 }
 
 function goToLoginForScore() {
-  sessionStorage.setItem(LOGIN_RETURN_KEY, '../minijuegos/');
-  window.location.href = '../portal/';
+  sessionStorage.setItem(LOGIN_RETURN_KEY, '../minijuegos/flappy_ñero/');
+  window.location.href = '../../portal/';
 }
 
 /* ----------------------------------------------------------------

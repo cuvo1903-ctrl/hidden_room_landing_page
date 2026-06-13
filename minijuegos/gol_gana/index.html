@@ -5,14 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>GOL GANA | Hidden Room x Tlalpan Wings House</title>
   <meta name="description" content="Retita arcade de Hidden Room x Tlalpan Wings House." />
+  <meta property="og:title" content="GOL GANA | Hidden Room">
+  <meta property="og:description" content="Retita arcade de Hidden Room x Tlalpan Wings House.">
+  <meta property="og:image" content="https://hiddenroom.mx/assets/img/social_preview.webp">
+  <meta property="og:url" content="https://hiddenroom.mx/minijuegos/gol_gana/">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="GOL GANA | Hidden Room">
+  <meta name="twitter:description" content="Retita arcade de Hidden Room x Tlalpan Wings House.">
+  <meta name="twitter:image" content="https://hiddenroom.mx/assets/img/social_preview.webp">
+  <link rel="icon" type="image/webp" href="/assets/img/orange_logo.webp">
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
   <main class="shell">
     <section id="menu" class="panel menu-panel">
       <p class="eyebrow">Hidden Room x Tlalpan Wings House</p>
+      <img class="menu-art" id="menuArt" alt="Hidden Room x Tlalpan Wings House" hidden>
       <h1>GOL GANA</h1>
-      <p class="tagline">Retita de a alitas.</p>
+      <p class="tagline">¡GANA UN PAQUETE JUNTA PARA ESTE 20 DE JUNIO!</p>
       <div class="menu-actions">
         <button id="playBtn" class="primary-btn">Jugar</button>
         <button id="howBtn" class="ghost-btn">Cómo jugar</button>
@@ -20,6 +31,10 @@
       <div id="howTo" class="how hidden">
         <p><strong>PC:</strong> WASD/flechas para moverte, mantén Espacio para cargar tiro, Shift para sprint.</p>
         <p><strong>Móvil:</strong> juega en horizontal. Joystick, mantén ⚽ para cargar tiro y ⚡ para sprint.</p>
+        <p><strong>Alitas:</strong> suman puntos y combo. Las doradas dan 3 alitas, puntos extra y velocidad temporal.</p>
+        <p><strong>Salsas:</strong> activan x2 por unos segundos para subir más rápido tu puntaje.</p>
+        <p><strong>Hidden coins:</strong> dan 100 puntos e invencibilidad temporal.</p>
+        <p><strong>Resultado:</strong> si ganas conservas tu puntaje; si empatas cuenta el 75%; si pierdes cuenta el 50%.</p>
         <p>Mete goles, junta alitas y evita que Clara te ajolotifique.</p>
       </div>
     </section>
@@ -52,9 +67,12 @@
       <p class="final-score"><span id="finalGoals">0 - 0</span></p>
       <p class="final-detail"><span id="finalScore">0</span> puntos · <span id="finalWings">0</span> alitas</p>
       <p class="record">Récord local: <strong id="recordUI">0</strong></p>
+      <p class="record" id="saveStatusUI"></p>
+      <button id="saveScoreBtn" class="primary-btn hidden">Iniciar sesión</button>
       <button id="retryBtn" class="primary-btn">Reintentar</button>
+      <a class="ghost-btn" href="../">Volver a minijuegos</a>
     </section>
   </main>
-  <script src="./game.js" defer></script>
+  <script type="module" src="./game.js"></script>
 </body>
 </html>

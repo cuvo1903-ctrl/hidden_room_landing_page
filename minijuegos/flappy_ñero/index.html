@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-VNHC1Z3FXZ"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="La Casa del Under">
+  <meta property="og:title" content="Hidden Room">
+  <meta property="og:description" content="La Casa del Under">
+  <meta property="og:image" content="https://hiddenroom.mx/assets/img/social_preview.webp">
+  <meta property="og:url" content="https://hiddenroom.mx/minijuegos/">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Hidden Room">
+  <meta name="twitter:description" content="La Casa del Under">
+  <meta name="twitter:image" content="https://hiddenroom.mx/assets/img/social_preview.webp">
+  <title>Hidden Room</title>
+  <link rel="icon" type="image/webp" href="/assets/img/orange_logo.webp">
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<div id="wrapper">
+  <canvas id="gameCanvas"></canvas>
+  <a class="game-home-link" href="../" aria-label="Volver a minijuegos">
+    <img src="../../assets/img/white_logo.webp" alt="Hidden Room">
+  </a>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="score-display">
+      PUNTOS <span id="scoreVal">0</span><br>
+      RECORD &nbsp;<span id="bestVal">0</span>
+    </div>
+    <div id="lives-display">
+      VIDAS <span id="livesVal">///</span>
+    </div>
+  </div>
+
+  <!-- Coupon toast -->
+  <div id="coupon-toast"></div>
+
+  <!-- Start screen -->
+  <div class="screen" id="startScreen">
+    <div class="screen-label">hidden room presenta</div>
+    <div class="screen-title">FLAPPY ÑERO (beta)</div>
+    <div class="screen-sub">salva a los DEM00NZ de las calles del edomex y recoge todas las MAFIA q puedas T.T.<br>consigue cupones para hidden :*.</div>
+    <button class="btn" id="startBtn">SÁLELE BEBÉ</button>
+    <div class="screen-control-hint">
+      picale / espacio / ↑ &nbsp;para saltar
+    </div>
+  </div>
+
+  <!-- Game over screen -->
+  <div class="screen hidden" id="gameOverScreen">
+    <div class="screen-label">chingó a su madre</div>
+    <div class="screen-title">te moriste</div>
+    <div class="screen-stat">puntos &nbsp;<strong id="goScore">0</strong></div>
+    <div class="screen-stat">record &nbsp;&nbsp;<strong id="goBest">0</strong></div>
+    <div class="screen-stat screen-stat--coupon" id="goCoupons"></div>
+    <div class="screen-stat" id="goSaveStatus"></div>
+    <button class="btn hidden" id="saveScoreBtn">GUARDAR PUNTAJE</button>
+    <button class="btn" id="restartBtn">vuelve a jugar</button>
+    <a class="btn" href="../">volver a minijuegos</a>
+  </div>
+
+  <div id="tap-hint">activa tu audio pa mejor experiencia</div>
+</div>
+
+<script src="../../site.js"></script>
+<script type="module" src="./game.js"></script>
+</body>
+</html>
