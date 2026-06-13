@@ -3,13 +3,6 @@
 <head>
   <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-VNHC1Z3FXZ"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-
-  gtag('config', 'G-VNHC1Z3FXZ');
-</script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -58,7 +51,7 @@
     <div class="screen-title">FLAPPY ÑERO (beta)</div>
     <div class="screen-sub">salva a los DEM00NZ de las calles del edomex y recoge todas las MAFIA q puedas T.T.<br>consigue cupones para hidden :*.</div>
     <button class="btn" id="startBtn">SÁLELE BEBÉ</button>
-    <div style="margin-top:20px;font-size:10px;letter-spacing:0.2em;color:var(--muted);">
+    <div class="screen-control-hint">
       picale / espacio / ↑ &nbsp;para saltar
     </div>
   </div>
@@ -69,7 +62,7 @@
     <div class="screen-title">te moriste</div>
     <div class="screen-stat">puntos &nbsp;<strong id="goScore">0</strong></div>
     <div class="screen-stat">record &nbsp;&nbsp;<strong id="goBest">0</strong></div>
-    <div class="screen-stat" id="goCoupons" style="color:var(--coupon)"></div>
+    <div class="screen-stat screen-stat--coupon" id="goCoupons"></div>
     <div class="screen-stat" id="goSaveStatus"></div>
     <button class="btn hidden" id="saveScoreBtn">GUARDAR PUNTAJE</button>
     <button class="btn" id="restartBtn">vuelve a jugar</button>

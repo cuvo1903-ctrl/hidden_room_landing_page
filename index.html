@@ -3,12 +3,6 @@
 <head>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-VNHC1Z3FXZ"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-VNHC1Z3FXZ');
-  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="La Casa del Under">
@@ -122,8 +116,8 @@
       <img src="assets/img/hr_gente.jpg" alt="Dem00nz">
       <img src="assets/img/hr_gente2.jpg" alt="Streetwear">
     </div>
-    <button class="gallery-btn prev" onclick="slideGallery(-1)">&#8592;</button>
-    <button class="gallery-btn next" onclick="slideGallery(1)">&#8594;</button>
+    <button class="gallery-btn prev" data-gallery-dir="-1">&#8592;</button>
+    <button class="gallery-btn next" data-gallery-dir="1">&#8594;</button>
   </div>
 </section>
 

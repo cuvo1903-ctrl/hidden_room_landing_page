@@ -380,25 +380,5 @@
     sections are replaced via innerHTML. This delegation re-implements the hover
     effect on document so it survives every re-render.
   -->
-  <script defer>
-    (function () {
-      const ring = document.getElementById('cursorRing');
-      if (!ring) return;
-
-      document.addEventListener('mouseenter', (e) => {
-        if (e.target?.closest?.('a, button, [role="button"], .event-row')) {
-          ring.style.scale       = '1.5';
-          ring.style.borderColor = 'rgba(219,1,0,0.8)';
-        }
-      }, true);
-
-      document.addEventListener('mouseleave', (e) => {
-        if (e.target?.closest?.('a, button, [role="button"], .event-row')) {
-          ring.style.scale       = '1';
-          ring.style.borderColor = 'rgba(219,1,0,0.5)';
-        }
-      }, true);
-    })();
-  </script>
 </body>
 </html>

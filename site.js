@@ -1,5 +1,13 @@
 const SITE_STATUS = "Sitio en Construcción";
 const SITE_VERSION = "V. 0.3.9";
+const GA_MEASUREMENT_ID = "G-VNHC1Z3FXZ";
+
+function initAnalytics() {
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = window.gtag || function gtag(){ window.dataLayer.push(arguments); };
+  window.gtag('js', new Date());
+  window.gtag('config', GA_MEASUREMENT_ID);
+}
 
 function cleanIndexURL() {
   const { pathname, search, hash } = window.location;
@@ -22,6 +30,7 @@ function hydrateCanonicalMeta() {
 
 cleanIndexURL();
 hydrateCanonicalMeta();
+initAnalytics();
 
 document.querySelectorAll(".site-status").forEach(el => {
   el.textContent = SITE_STATUS;
@@ -67,21 +76,23 @@ if (cursor && ring) {
 
   animRing();
 
-  document.querySelectorAll(
-    'a, button, input, .event-row'
-  ).forEach(el => {
+  function isCursorTarget(target) {
+    return target?.closest?.('a, button, input, [role="button"], .event-row');
+  }
 
-    el.addEventListener('mouseenter', () => {
+  document.addEventListener('mouseenter', (event) => {
+    if (isCursorTarget(event.target)) {
       ring.style.borderColor = 'rgba(219,1,0,0.8)';
       ring.style.scale = "1.5";
-    });
+    }
+  }, true);
 
-    el.addEventListener('mouseleave', () => {
+  document.addEventListener('mouseleave', (event) => {
+    if (isCursorTarget(event.target)) {
       ring.style.borderColor = 'rgba(219,1,0,0.5)';
       ring.style.scale = "1";
-    });
-
-  });
+    }
+  }, true);
 
 }
 
@@ -146,5 +157,11 @@ if (track) {
     track.style.transform =
       `translateX(-${galleryIndex * 100}%)`;
   };
+
+  document.querySelectorAll('[data-gallery-dir]').forEach((button) => {
+    button.addEventListener('click', () => {
+      window.slideGallery(Number(button.dataset.galleryDir || 0));
+    });
+  });
 
 }

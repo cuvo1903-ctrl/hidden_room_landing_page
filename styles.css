@@ -1205,6 +1205,15 @@ footer {
 }
 .screen-stat strong { color: var(--white); font-weight: 400; }
 
+.screen-stat--coupon { color: var(--coupon); }
+
+.screen-control-hint {
+  margin-top: 20px;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+}
+
 
 /* ================================================================
    23. MINIGAME BUTTON (.btn)
