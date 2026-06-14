@@ -221,7 +221,7 @@ window.addEventListener('resize', () => {
   if (_resizeTimer) clearTimeout(_resizeTimer);
   _resizeTimer = setTimeout(() => {
     resizeCanvas();
-    if (GS.running) Renderer.drawBackground();
+    if (!GS.running) Renderer.drawBackground();
   }, 100);
 });
 resizeCanvas();
@@ -831,9 +831,7 @@ const ObstaclePool = (() => {
     for (let i = 0; i < MAX_OBSTACLES; i++) {
       const o = _pool[i];
       if (!o.active) continue;
-      ctx.save();
       o.type.draw(ctx, o.x | 0, o.y | 0, o.w, o.h);
-      ctx.restore();
     }
   }
 
@@ -846,7 +844,7 @@ const ObstaclePool = (() => {
     return active;
   }
 
-  return { init, update, draw, getAll };
+  return { init, update, draw, getAll, pool: _pool };
 })();
 
 /* ----------------------------------------------------------------
@@ -967,7 +965,7 @@ const CollectiblePool = (() => {
     return active;
   }
 
-  return { init, update, draw, getAll };
+  return { init, update, draw, getAll, pool: _pool };
 })();
 
 /* ----------------------------------------------------------------
@@ -991,9 +989,10 @@ const Collision = {
 
     // Obstacle collision
     if (!GS.invincible) {
-      const obs = ObstaclePool.getAll();
+      const obs = ObstaclePool.pool;
       for (let i = 0; i < obs.length; i++) {
         const o  = obs[i];
+        if (!o.active) continue;
         const ox = o.x + 4, oy = o.y + 4, ow = o.w - 8, oh = o.h - 8;
         if (this.aabb(px, py, pw, phh, ox, oy, ow, oh)) {
           SoundSystem.play(o.type.id === 'POLICE_OBSTACLE' ? 'xeso' : 'hit');
@@ -1004,9 +1003,10 @@ const Collision = {
     }
 
     // Collectible collision
-    const items = CollectiblePool.getAll();
+    const items = CollectiblePool.pool;
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
+      if (!it.active || it.collected) continue;
       if (this.aabb(px, py, pw, phh, it.x, it.y, it.w, it.h)) {
         it.collected = true;
         if (it.type === 'COUPON') {
@@ -1210,6 +1210,9 @@ const Screens = {
    GAME LIFECYCLE
 ---------------------------------------------------------------- */
 function startGame() {
+  if (GS.running) return;
+  stopStaticLoop();
+
   GS.running       = true;
   GS.over          = false;
   GS.score         = 0;
@@ -1315,10 +1318,10 @@ async function saveGameOverScore() {
    GAME LOOP
    - dt is capped at 50 ms to prevent physics tunnelling after
      tab-backgrounding / resumed frames.
-   - The static-frame loop for the start screen is unified here so
-     there is never more than one rAF loop running at a time.
+   - The static start screen is throttled so it does not burn a full
+     animation loop before the player starts.
 ---------------------------------------------------------------- */
-let _loopId = null; // tracks the rAF ID for the static start-screen loop
+let _loopId = null; // tracks the timeout ID for the static start-screen loop
 
 function loop(timestamp) {
   if (!GS.running) return;
@@ -1342,7 +1345,13 @@ function loop(timestamp) {
 function staticLoop() {
   if (GS.running) return; // hand off once the game starts
   Background.draw();
-  _loopId = requestAnimationFrame(staticLoop);
+  _loopId = window.setTimeout(staticLoop, 250);
+}
+
+function stopStaticLoop() {
+  if (_loopId === null) return;
+  window.clearTimeout(_loopId);
+  _loopId = null;
 }
 
 /* ----------------------------------------------------------------
@@ -1406,8 +1415,8 @@ const Input = {
 /* ----------------------------------------------------------------
    BOOT
    - Input, Background and static draw loop initialised once.
-   - A single rAF drives the start-screen animation; the game loop
-     takes over when the player starts.
+   - The menu render is throttled; the game loop takes over when the
+     player starts.
 ---------------------------------------------------------------- */
 Input.init();
 Background.init();

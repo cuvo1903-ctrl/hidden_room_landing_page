@@ -152,6 +152,50 @@ function getGolGanaJoystickVector() {
   const salsaSprite = new Image();
   salsaSprite.src = '../../assets/sprites/salsa.webp';
 
+  const asphaltMarks = [
+    { x: .16, y: .26, w: 88, h: 18, a: -.18, c: 'rgba(28,28,27,.13)' },
+    { x: .30, y: .73, w: 132, h: 20, a: .09, c: 'rgba(16,16,15,.11)' },
+    { x: .55, y: .30, w: 116, h: 15, a: .12, c: 'rgba(248,248,248,.055)' },
+    { x: .73, y: .68, w: 150, h: 22, a: -.08, c: 'rgba(28,28,27,.12)' },
+    { x: .45, y: .52, w: 92, h: 14, a: -.26, c: 'rgba(244,101,43,.055)' },
+    { x: .84, y: .36, w: 82, h: 12, a: .22, c: 'rgba(241,229,14,.045)' },
+  ];
+  const asphaltCracks = [
+    [[.10,.22],[.17,.25],[.22,.23],[.27,.29]],
+    [[.36,.18],[.40,.22],[.46,.20],[.52,.25],[.56,.24]],
+    [[.64,.77],[.69,.73],[.76,.76],[.82,.72]],
+    [[.18,.82],[.25,.79],[.31,.83]],
+    [[.77,.19],[.82,.23],[.88,.21]],
+    [[.46,.66],[.51,.69],[.58,.67]],
+  ];
+  const tireMarks = [
+    { x: .23, y: .43, r: 74, a: -.44 },
+    { x: .70, y: .56, r: 92, a: .34 },
+    { x: .50, y: .36, r: 62, a: .08 },
+  ];
+  const paintScratches = [
+    { x1: .13, y1: .35, x2: .21, y2: .32 },
+    { x1: .24, y1: .59, x2: .33, y2: .62 },
+    { x1: .38, y1: .28, x2: .48, y2: .31 },
+    { x1: .58, y1: .48, x2: .68, y2: .46 },
+    { x1: .78, y1: .62, x2: .89, y2: .58 },
+    { x1: .18, y1: .72, x2: .28, y2: .75 },
+    { x1: .44, y1: .81, x2: .55, y2: .78 },
+    { x1: .66, y1: .24, x2: .76, y2: .27 },
+  ];
+  const edgeDecor = [
+    { kind: 'table', x: 118, y: 30, s: .95 },
+    { kind: 'cups', x: 246, y: 36, s: .8 },
+    { kind: 'speaker', x: 382, y: 37, s: .82 },
+    { kind: 'lights', x: 560, y: 36, s: 1 },
+    { kind: 'crowd', x: 725, y: 34, s: .85 },
+    { kind: 'table', x: 844, y: 510, s: .9 },
+    { kind: 'cups', x: 666, y: 506, s: .76 },
+    { kind: 'speaker', x: 116, y: 510, s: .72 },
+    { kind: 'crowd', x: 426, y: 508, s: .8 },
+    { kind: 'lights', x: 282, y: 508, s: .9 },
+  ];
+
   function resetMatch() {
     configureCanvas();
     player.x = W * 0.22; player.y = H / 2; player.vx = player.vy = 0; player.hasBall = true; player.facing = { x: 1, y: 0 };
@@ -891,30 +935,171 @@ function getGolGanaJoystickVector() {
 
   function draw() {
     ctx.clearRect(0,0,W,H);
-    drawField(); drawPickups(); drawGoals(); drawRivals(); drawGoalie(); drawPlayer(); drawBall(); drawPossessionArrow(); drawClara(); drawEffects();
+    drawField(); drawPickups(); drawGoals(); drawRivals(); drawGoalie(); drawPlayer(); drawBall(); drawPossessionArrow(); drawClara(); drawEffects(); drawVignette();
+  }
+
+  function drawStreetDecor() {
+    for (const item of edgeDecor) {
+      ctx.save();
+      ctx.translate(item.x, item.y);
+      ctx.scale(item.s, item.s);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      if (item.kind === 'table') {
+        ctx.fillStyle = 'rgba(0,0,0,.28)';
+        ctx.beginPath(); ctx.ellipse(0, 18, 42, 8, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#522C21';
+        ctx.strokeStyle = 'rgba(28,28,27,.85)';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.rect(-34, -8, 68, 22); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = COLORS.primary;
+        ctx.beginPath(); ctx.arc(-17, 2, 7, 0, Math.PI * 2); ctx.arc(12, 3, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = COLORS.yellow;
+        ctx.fillRect(-4, -1, 16, 5);
+      } else if (item.kind === 'cups') {
+        ctx.fillStyle = 'rgba(0,0,0,.22)';
+        ctx.beginPath(); ctx.ellipse(0, 17, 34, 6, 0, 0, Math.PI * 2); ctx.fill();
+        for (const x of [-18, 0, 17]) {
+          ctx.fillStyle = x === 0 ? 'rgba(241,229,14,.82)' : 'rgba(248,248,248,.78)';
+          ctx.strokeStyle = 'rgba(28,28,27,.72)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(x - 6, -6); ctx.lineTo(x + 6, -6); ctx.lineTo(x + 4, 12); ctx.lineTo(x - 4, 12);
+          ctx.closePath(); ctx.fill(); ctx.stroke();
+        }
+      } else if (item.kind === 'speaker') {
+        ctx.fillStyle = 'rgba(0,0,0,.30)';
+        ctx.beginPath(); ctx.ellipse(0, 22, 26, 7, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#1C1C1B';
+        ctx.strokeStyle = 'rgba(244,101,43,.62)';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.rect(-18, -20, 36, 42); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle = 'rgba(248,248,248,.28)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, -7, 9, 0, Math.PI * 2); ctx.arc(0, 12, 6, 0, Math.PI * 2); ctx.stroke();
+      } else if (item.kind === 'lights') {
+        ctx.strokeStyle = 'rgba(248,248,248,.28)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-52, -7); ctx.quadraticCurveTo(0, 13, 52, -8); ctx.stroke();
+        for (let i = -2; i <= 2; i++) {
+          const x = i * 24;
+          const y = Math.abs(i) === 2 ? -5 : 2;
+          ctx.fillStyle = i % 2 ? 'rgba(244,101,43,.86)' : 'rgba(241,229,14,.82)';
+          ctx.shadowColor = ctx.fillStyle;
+          ctx.shadowBlur = 12;
+          ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+        }
+      } else if (item.kind === 'crowd') {
+        ctx.fillStyle = 'rgba(0,0,0,.34)';
+        ctx.beginPath(); ctx.ellipse(0, 23, 42, 8, 0, 0, Math.PI * 2); ctx.fill();
+        for (const x of [-30, -12, 8, 26]) {
+          ctx.fillStyle = 'rgba(28,28,27,.86)';
+          ctx.beginPath(); ctx.rect(x - 5, -1, 10, 27); ctx.fill();
+          ctx.beginPath(); ctx.arc(x, -8, 7, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = x < 0 ? COLORS.primary : COLORS.yellow;
+          ctx.globalAlpha = .72;
+          ctx.fillRect(x - 5, 4, 10, 5);
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      ctx.restore();
+    }
+  }
+
+  function drawPavementTexture(fieldW, fieldH) {
+    const isPurple = state.ajoloteTimer > 0;
+    ctx.fillStyle = isPurple ? '#493062' : COLORS.asphalt;
+    ctx.fillRect(fieldLeft(), fieldTop(), fieldW, fieldH);
+
+    const pavement = ctx.createLinearGradient(fieldLeft(), fieldTop(), fieldRight(), fieldBottom());
+    pavement.addColorStop(0, isPurple ? 'rgba(255,255,255,.04)' : 'rgba(255,255,255,.08)');
+    pavement.addColorStop(.48, isPurple ? 'rgba(192,140,255,.055)' : 'rgba(244,101,43,.035)');
+    pavement.addColorStop(1, 'rgba(0,0,0,.18)');
+    ctx.fillStyle = pavement;
+    ctx.fillRect(fieldLeft(), fieldTop(), fieldW, fieldH);
+
+    ctx.fillStyle = isPurple ? 'rgba(192,140,255,.07)' : 'rgba(28,28,27,.09)';
+    for (let y = fieldTop() + 8; y < fieldBottom(); y += 34) {
+      ctx.fillRect(fieldLeft(), y, fieldW, 14);
+    }
+
+    for (const mark of asphaltMarks) {
+      ctx.save();
+      ctx.translate(fieldLeft() + fieldW * mark.x, fieldTop() + fieldH * mark.y);
+      ctx.rotate(mark.a);
+      ctx.fillStyle = isPurple ? 'rgba(192,140,255,.06)' : mark.c;
+      ctx.beginPath(); ctx.ellipse(0, 0, mark.w, mark.h, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.strokeStyle = isPurple ? 'rgba(192,140,255,.18)' : 'rgba(20,20,19,.18)';
+    ctx.lineWidth = 2;
+    for (const crack of asphaltCracks) {
+      ctx.beginPath();
+      crack.forEach(([px, py], index) => {
+        const x = fieldLeft() + fieldW * px;
+        const y = fieldTop() + fieldH * py;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = isPurple ? 'rgba(28,28,27,.20)' : 'rgba(18,18,17,.15)';
+    ctx.lineWidth = 7;
+    for (const tire of tireMarks) {
+      ctx.save();
+      ctx.translate(fieldLeft() + fieldW * tire.x, fieldTop() + fieldH * tire.y);
+      ctx.rotate(tire.a);
+      ctx.beginPath();
+      ctx.arc(0, 0, tire.r, Math.PI * .08, Math.PI * .88);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(14, 10, tire.r + 5, Math.PI * .12, Math.PI * .80);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawFloorStencil() {
+    ctx.save();
+    ctx.translate(W / 2, H / 2 + 78);
+    ctx.rotate(-0.035);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '1000 52px Impact, Haettenschweiler, Arial Black, system-ui';
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = state.ajoloteTimer > 0 ? .14 : .20;
+    ctx.strokeStyle = 'rgba(28,28,27,.70)';
+    ctx.strokeText('GOL GANA', 0, 0);
+    ctx.fillStyle = 'rgba(241,229,14,.52)';
+    ctx.fillText('GOL GANA', 0, 0);
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.globalAlpha = .18;
+    for (let i = 0; i < 16; i++) {
+      ctx.fillRect(-150 + i * 19, -23 + ((i * 11) % 37), 22, 4);
+    }
+    ctx.restore();
+  }
+
+  function drawVignette() {
+    const glow = ctx.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, 520);
+    glow.addColorStop(0, 'rgba(255,244,190,.085)');
+    glow.addColorStop(.48, 'rgba(255,244,190,.025)');
+    glow.addColorStop(1, 'rgba(0,0,0,.38)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
   }
 
   function drawField() {
-    ctx.fillStyle = state.ajoloteTimer > 0 ? COLORS.purpleDark : COLORS.black; ctx.fillRect(0,0,W,H);
-    ctx.fillStyle = state.ajoloteTimer > 0 ? '#493062' : COLORS.asphalt; ctx.fillRect(fieldLeft(), fieldTop(), fieldRight()-fieldLeft(), fieldBottom()-fieldTop());
-    ctx.fillStyle = state.ajoloteTimer > 0 ? 'rgba(192,140,255,.08)' : 'rgba(28,28,27,.12)';
-    for (let y = fieldTop(); y < fieldBottom(); y += 34) {
-      ctx.fillRect(fieldLeft(), y, fieldRight() - fieldLeft(), 14);
-    }
-    ctx.strokeStyle = state.ajoloteTimer > 0 ? 'rgba(192,140,255,.18)' : 'rgba(28,28,27,.20)';
-    ctx.lineWidth = 2;
-    for (let i = 0; i < 18; i++) {
-      const x = rand(fieldLeft() + 22, fieldRight() - 80);
-      const y = rand(fieldTop() + 28, fieldBottom() - 28);
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + rand(20, 70), y + rand(-18, 18));
-      ctx.lineTo(x + rand(54, 116), y + rand(-8, 28));
-      ctx.stroke();
-    }
+    ctx.fillStyle = state.ajoloteTimer > 0 ? COLORS.purpleDark : '#151514'; ctx.fillRect(0,0,W,H);
+    drawStreetDecor();
+    const fieldW = fieldRight() - fieldLeft();
+    const fieldH = fieldBottom() - fieldTop();
+    drawPavementTexture(fieldW, fieldH);
     if (fieldHrWhSprite.complete && fieldHrWhSprite.naturalWidth) {
-      const fieldW = fieldRight() - fieldLeft();
-      const fieldH = fieldBottom() - fieldTop();
       const maxW = fieldW * 0.72;
       const maxH = fieldH * 0.58;
       const ratio = fieldHrWhSprite.naturalWidth / fieldHrWhSprite.naturalHeight;
@@ -937,6 +1122,7 @@ function getGolGanaJoystickVector() {
       ctx.restore();
       ctx.filter = 'none';
     }
+    drawFloorStencil();
     ctx.strokeStyle = state.ajoloteTimer > 0 ? 'rgba(248,248,248,.72)' : 'rgba(248,248,248,.68)'; ctx.lineWidth = 3; ctx.strokeRect(fieldLeft(), fieldTop(), fieldRight()-fieldLeft(), fieldBottom()-fieldTop());
     ctx.beginPath(); ctx.moveTo(W/2,fieldTop()); ctx.lineTo(W/2,fieldBottom()); ctx.stroke();
     ctx.beginPath(); ctx.arc(W/2,H/2,58,0,Math.PI*2); ctx.stroke();
@@ -946,13 +1132,49 @@ function getGolGanaJoystickVector() {
     ctx.font = '900 16px system-ui'; ctx.fillStyle = 'rgba(241,229,14,.28)';
     ctx.fillText('GOL GANA', W/2, fieldBottom()-28);
     ctx.strokeStyle = 'rgba(28,28,27,.10)'; ctx.lineWidth = 1;
-    for (let i=0;i<18;i++) { ctx.beginPath(); ctx.moveTo(rand(fieldLeft()+20,fieldRight()-20), rand(fieldTop()+35,fieldBottom()-35)); ctx.lineTo(rand(fieldLeft()+20,fieldRight()-20), rand(fieldTop()+35,fieldBottom()-35)); ctx.stroke(); }
+    for (const scratch of paintScratches) {
+      ctx.beginPath();
+      ctx.moveTo(fieldLeft() + fieldW * scratch.x1, fieldTop() + fieldH * scratch.y1);
+      ctx.lineTo(fieldLeft() + fieldW * scratch.x2, fieldTop() + fieldH * scratch.y2);
+      ctx.stroke();
+    }
   }
 
   function drawGoals() {
-    ctx.lineWidth = 7;
-    ctx.strokeStyle = COLORS.devil; ctx.strokeRect(fieldLeft()-30, goalTop(), 30, goalBottom()-goalTop());
-    ctx.strokeStyle = COLORS.devil; ctx.strokeRect(fieldRight(), goalTop(), 30, goalBottom()-goalTop());
+    const drawGoal = (x, side) => {
+      const y = goalTop();
+      const h = goalBottom() - goalTop();
+      const w = 30;
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,.30)';
+      ctx.fillRect(x + side * 3, y + 6, w, h);
+      ctx.strokeStyle = 'rgba(248,248,248,.34)';
+      ctx.lineWidth = 1.4;
+      for (let gy = y + 13; gy < y + h; gy += 13) {
+        ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x + side * w, gy + side * 2); ctx.stroke();
+      }
+      for (let gx = 6; gx < w; gx += 8) {
+        ctx.beginPath(); ctx.moveTo(x + side * gx, y); ctx.lineTo(x + side * gx, y + h); ctx.stroke();
+      }
+      const metal = ctx.createLinearGradient(x, y, x + side * w, y);
+      metal.addColorStop(0, '#B7B0A5');
+      metal.addColorStop(.45, '#59534C');
+      metal.addColorStop(1, '#D0C7B7');
+      ctx.strokeStyle = metal;
+      ctx.lineWidth = 7;
+      ctx.strokeRect(side > 0 ? x : x - w, y, w, h);
+      ctx.strokeStyle = 'rgba(180,72,38,.58)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(side > 0 ? x + 6 : x - 6, y + 18);
+      ctx.lineTo(side > 0 ? x + 6 : x - 6, y + 46);
+      ctx.moveTo(side > 0 ? x + 22 : x - 22, y + h - 34);
+      ctx.lineTo(side > 0 ? x + 22 : x - 22, y + h - 12);
+      ctx.stroke();
+      ctx.restore();
+    };
+    drawGoal(fieldLeft() - 30, 1);
+    drawGoal(fieldRight() + 30, -1);
     ctx.fillStyle = COLORS.yellow; ctx.font = '900 18px system-ui'; ctx.textAlign='center'; ctx.fillText('GOL', fieldRight()+15, goalTop()-16);
   }
 
@@ -1254,7 +1476,32 @@ function getGolGanaJoystickVector() {
   }
   function drawRivals() { rivals.forEach((r,i)=>drawCircleThing(r, String(i+1), r.color)); }
   function drawGoalie() { drawCircleThing(goalie, 'GK', goalie.color, 'goalie'); }
-  function drawBall() { ctx.fillStyle=COLORS.white; ctx.beginPath(); ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2); ctx.fill(); ctx.strokeStyle=COLORS.black; ctx.lineWidth=3; ctx.stroke(); }
+  function drawBall() {
+    const speed = Math.hypot(ball.vx || 0, ball.vy || 0);
+    if (speed > 420 && !ball.owner) {
+      const dx = (ball.vx / speed) || 0;
+      const dy = (ball.vy / speed) || 0;
+      for (let i = 3; i >= 1; i--) {
+        ctx.fillStyle = `rgba(241,229,14,${0.07 * i})`;
+        ctx.beginPath();
+        ctx.ellipse(ball.x - dx * i * 13, ball.y - dy * i * 13, ball.r + i * 3, ball.r * .72, Math.atan2(dy, dx), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.fillStyle = 'rgba(0,0,0,.28)';
+    ctx.beginPath(); ctx.ellipse(ball.x + 2, ball.y + 12, ball.r + 5, 4, 0, 0, Math.PI * 2); ctx.fill();
+
+    const shine = ctx.createRadialGradient(ball.x - 4, ball.y - 5, 2, ball.x, ball.y, ball.r + 4);
+    shine.addColorStop(0, '#FFFFFF');
+    shine.addColorStop(.52, COLORS.white);
+    shine.addColorStop(1, '#B8B8B8');
+    ctx.fillStyle = shine;
+    ctx.beginPath(); ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=COLORS.black; ctx.lineWidth=3; ctx.stroke();
+    ctx.strokeStyle='rgba(28,28,27,.34)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(ball.x - 2, ball.y - 1, ball.r * .48, 0, Math.PI * 2); ctx.stroke();
+  }
   function drawPossessionArrow() {
     if (ball.owner === 'rival' && rivals[ball.ownerIndex]) {
       const r = rivals[ball.ownerIndex];
@@ -1271,6 +1518,13 @@ function getGolGanaJoystickVector() {
   function drawPickups() {
     for (const p of pickups) {
       if (p.type === 'hiddenCoin') {
+        const pulse = 1 + Math.sin(performance.now() / 160) * .08;
+        ctx.save();
+        ctx.shadowColor = 'rgba(244,101,43,.95)';
+        ctx.shadowBlur = 18;
+        ctx.fillStyle = 'rgba(244,101,43,.24)';
+        ctx.beginPath(); ctx.arc(p.x, p.y, (p.r + 9) * pulse, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
         if (hiddenCoinSprite.complete && hiddenCoinSprite.naturalWidth) {
           const size = p.r * 3.1;
           const ratio = hiddenCoinSprite.naturalWidth / hiddenCoinSprite.naturalHeight;
@@ -1279,9 +1533,11 @@ function getGolGanaJoystickVector() {
           if (ratio >= 1) drawH = size / ratio;
           else drawW = size * ratio;
           ctx.save();
+          ctx.shadowColor = 'rgba(244,101,43,.82)';
+          ctx.shadowBlur = 12;
           ctx.drawImage(hiddenCoinSprite, p.x - drawW / 2, p.y - drawH / 2, drawW, drawH);
           ctx.restore();
-          ctx.strokeStyle=COLORS.yellow; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(p.x,p.y,p.r+5,0,Math.PI*2); ctx.stroke();
+          ctx.strokeStyle=COLORS.yellow; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(p.x,p.y,(p.r+5) * pulse,0,Math.PI*2); ctx.stroke();
         } else {
           ctx.fillStyle = COLORS.primary;
           ctx.beginPath(); ctx.arc(p.x,p.y,p.r+1,0,Math.PI*2); ctx.fill();
