@@ -152,6 +152,82 @@ function getGolGanaJoystickVector() {
   const salsaSprite = new Image();
   salsaSprite.src = '../../assets/sprites/salsa.webp';
 
+  const SOUNDS = {
+    awb: '../../assets/sounds/awb.mp3',
+    intro: '../../assets/sounds/intro gol gana.mp3',
+    kick: '../../assets/sounds/kick.mp3',
+    whistle: '../../assets/sounds/silbato.mp3',
+  };
+
+  const SoundSystem = (() => {
+    const POOL_SIZE = 3;
+    const pools = {};
+    const cursors = {};
+    let unlocked = false;
+    let introRequested = false;
+    let introPlayed = false;
+
+    function buildPool(key) {
+      if (pools[key]) return;
+      const src = SOUNDS[key];
+      if (!src) return;
+      pools[key] = Array.from({ length: POOL_SIZE }, () => {
+        const audio = new Audio(src);
+        audio.preload = 'auto';
+        return audio;
+      });
+      cursors[key] = 0;
+    }
+
+    function play(key, volume = 1) {
+      buildPool(key);
+      const pool = pools[key];
+      if (!pool) return false;
+      try {
+        const index = cursors[key] || 0;
+        const audio = pool[index];
+        cursors[key] = (index + 1) % pool.length;
+        audio.volume = volume;
+        audio.currentTime = 0;
+        const playback = audio.play();
+        if (key === 'intro' && playback && typeof playback.then === 'function') {
+          playback
+            .then(() => { introPlayed = true; })
+            .catch(() => { if (introRequested) introPlayed = false; });
+        } else if (playback && typeof playback.catch === 'function') {
+          playback.catch(() => {});
+        } else if (key === 'intro') {
+          introPlayed = true;
+        }
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
+
+    return {
+      preload() {
+        Object.keys(SOUNDS).forEach(buildPool);
+      },
+      unlock() {
+        if (!unlocked) {
+          unlocked = true;
+          this.preload();
+        }
+        if (introRequested && !introPlayed) {
+          play('intro', 0.78);
+        }
+      },
+      requestIntro() {
+        introRequested = true;
+        if (!introPlayed) {
+          play('intro', 0.78);
+        }
+      },
+      play,
+    };
+  })();
+
   const asphaltMarks = [
     { x: .16, y: .26, w: 88, h: 18, a: -.18, c: 'rgba(28,28,27,.13)' },
     { x: .30, y: .73, w: 132, h: 20, a: .09, c: 'rgba(16,16,15,.11)' },
@@ -272,6 +348,7 @@ function getGolGanaJoystickVector() {
 
   function shoot(powerRatio = 0.45) {
     if (!player.hasBall) return;
+    SoundSystem.play('kick', 0.75);
     powerRatio = clamp(powerRatio, 0.25, 1);
     const crooked = state.ajoloteTimer > 0 ? rand(-0.55, 0.55) : rand(-0.05, 0.05);
     const fx = player.facing.x * Math.cos(crooked) - player.facing.y * Math.sin(crooked);
@@ -511,6 +588,7 @@ function getGolGanaJoystickVector() {
   }
 
   function goal() {
+    SoundSystem.play('awb', 0.82);
     state.goals++;
     state.difficulty = currentDifficultyFromGoals();
     state.rivalSpeedBonus = currentRivalSpeedBonusFromGoals();
@@ -523,6 +601,7 @@ function getGolGanaJoystickVector() {
   }
 
   function rivalGoal() {
+    SoundSystem.play('whistle', 0.82);
     state.rivalGoals++;
     // El rival NO sube la dificultad; solo castiga puntos/tiempo.
     state.score = Math.max(0, state.score - 120);
@@ -859,6 +938,7 @@ function getGolGanaJoystickVector() {
   }
 
   function endGame() {
+    SoundSystem.play('whistle', 0.86);
     state.running = false;
     show(ui.gamePanel, false); show(ui.gameOver, true);
     let final = Math.floor(state.score);
@@ -1639,21 +1719,31 @@ function getGolGanaJoystickVector() {
   window.addEventListener('keydown', (e) => { keys.add(e.key.toLowerCase()); if ([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(e.key.toLowerCase())) e.preventDefault(); });
   window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 
-  $('playBtn').addEventListener('click', newGame);
-  $('retryBtn').addEventListener('click', newGame);
+  function unlockSounds() {
+    SoundSystem.unlock();
+  }
+
+  document.addEventListener('pointerdown', unlockSounds, { once: true, passive: true });
+  document.addEventListener('touchstart', unlockSounds, { once: true, passive: true });
+  document.addEventListener('keydown', unlockSounds, { once: true });
+
+  $('playBtn').addEventListener('click', () => { unlockSounds(); newGame(); });
+  $('retryBtn').addEventListener('click', () => { unlockSounds(); newGame(); });
   ui.saveScoreBtn?.addEventListener('click', goToLoginForScore);
-  $('howBtn').addEventListener('click', () => ui.howTo.classList.toggle('hidden'));
+  $('howBtn').addEventListener('click', () => { unlockSounds(); ui.howTo.classList.toggle('hidden'); });
 
   // Controles tactiles: movimiento por joystick dinamico, botones fijos para tiro/sprint.
-  $('shootTouch').addEventListener('touchstart', e => { state.touchShoot = true; e.preventDefault(); }, {passive:false});
+  $('shootTouch').addEventListener('touchstart', e => { unlockSounds(); state.touchShoot = true; e.preventDefault(); }, {passive:false});
   $('shootTouch').addEventListener('touchend', e => { state.touchShoot = false; e.preventDefault(); }, {passive:false});
   $('shootTouch').addEventListener('touchcancel', e => { state.touchShoot = false; e.preventDefault(); }, {passive:false});
-  $('sprintTouch').addEventListener('touchstart', e => { state.touchSprint = true; e.preventDefault(); }, {passive:false});
+  $('sprintTouch').addEventListener('touchstart', e => { unlockSounds(); state.touchSprint = true; e.preventDefault(); }, {passive:false});
   $('sprintTouch').addEventListener('touchend', e => { state.touchSprint = false; e.preventDefault(); }, {passive:false});
   $('sprintTouch').addEventListener('touchcancel', e => { state.touchSprint = false; e.preventDefault(); }, {passive:false});
 
   if (ui.record) ui.record.textContent = Math.floor(state.best);
   loadMenuArt();
+  SoundSystem.preload();
+  SoundSystem.requestIntro();
   syncBestWithAccount().catch((error) => {
     console.info('[GOL GANA] score sync skipped:', error);
   });
