@@ -490,7 +490,7 @@ const TABLE_EDITOR_CONFIG = {
     primaryKey: null,
     select: 'user_id, username, semana, fecha_de_sesion, estado, fecha_de_saldo, saldo, notas',
     defaultSort: { field: 'fecha_esperada', direction: 'desc' },
-    lockedFields: ['user_id', 'username', 'display_name', 'email', 'semana', 'fecha_esperada', 'fecha_de_sesion', 'estado', 'estado_operativo', 'fecha_de_saldo', 'saldo', 'notas'],
+    lockedFields: ['user_id', 'username', 'display_name', 'email', 'semana', 'periodo', 'fecha_esperada', 'fecha_de_sesion', 'sesiones_usadas', 'estado', 'estado_operativo', 'fecha_de_saldo', 'saldo', 'notas'],
     editableFields: [],
     hiddenColumns: ['membership_id', 'display_name', 'email'],
     readOnly: true,
@@ -498,8 +498,10 @@ const TABLE_EDITOR_CONFIG = {
       user_id: 'User ID',
       username: 'Username',
       semana: 'Semana',
+      periodo: 'Periodo',
       fecha_esperada: 'Fecha esperada',
       fecha_de_sesion: 'Fecha de sesion',
+      sesiones_usadas: 'Sesiones usadas',
       estado: 'Estado',
       estado_operativo: 'Membresia',
       fecha_de_saldo: 'Fecha de saldo',
@@ -1838,13 +1840,6 @@ async function renderClientMembership() {
   const visibleMembershipRows = sortRowsByColumn(membershipRows, 'fecha_esperada', 'desc');
   const membershipNotices = renderMembershipNotices(membershipRows);
   const membershipSummary = renderMembershipSummary(membershipRows);
-  const rows = visibleMembershipRows.length
-    ? visibleMembershipRows.map(renderMembershipDashboardRow).join('')
-    : `
-      <tr class="db-table__empty-row">
-        <td colspan="8" class="db-empty">Sin datos de membresía.</td>
-      </tr>
-    `;
 
   return `
     <section class="db-section" aria-labelledby="title-membership">
@@ -1854,23 +1849,7 @@ async function renderClientMembership() {
       </header>
       ${membershipNotices}
       ${membershipSummary}
-      <div class="db-table-wrap db-table-wrap--membership">
-        <table class="db-table" aria-label="Membresía">
-          <thead>
-            <tr>
-              <th scope="col">Semana</th>
-              <th scope="col">Fecha esperada</th>
-              <th scope="col">Fecha de sesión</th>
-              <th scope="col">Estado</th>
-              <th scope="col">Membresía</th>
-              <th scope="col">Fecha de saldo</th>
-              <th scope="col">Adeudo / crédito</th>
-              <th scope="col">Notas</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
+      ${renderMembershipDashboardTable(visibleMembershipRows)}
       ${renderMembershipSyncFooter()}
     </section>
   `;
@@ -3785,6 +3764,9 @@ async function renderAdminTableEditor() {
       hidden: Boolean(searchQuery) && !rowMatchesSearch(row, columns, searchQuery),
     })).join('')
     : `<tr class="db-table__empty-row"><td colspan="99" class="db-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin filas disponibles.'}</td></tr>`;
+  const membershipDashboardTable = isMembershipDashboard
+    ? renderMembershipDashboardTable(visibleData)
+    : '';
 
   return sectionShell('ERP', 'BB.DD', 'title-admin-table-editor', `
     <div class="db-toolbar">
@@ -3796,12 +3778,13 @@ async function renderAdminTableEditor() {
       </label>
       ${searchControl}
       ${config.readOnly ? '' : '<button class="db-btn-secondary" type="button" data-action="admin-table-save-all">GUARDAR</button>'}
-      ${isMembershipDashboard && !membershipDashboardHasUser ? '' : `<button class="db-btn-secondary" type="button" data-action="export-admin-pdf" data-table-label="${escapeAttr(config.label)}">Exportar PDF</button>`}
+      ${isMembershipDashboard ? '' : `<button class="db-btn-secondary" type="button" data-action="export-admin-pdf" data-table-label="${escapeAttr(config.label)}">Exportar PDF</button>`}
     </div>
     ${tableName === 'users' ? '<p class="db-empty">El campo email se guarda a través de Auth (Edge Function). El cambio se aplica al confirmar el correo.</p>' : ''}
     ${membershipDashboardContext}
     ${isMembershipDashboard && !membershipDashboardHasUser ? '<p class="db-empty">Selecciona un usuario para consultar su dashboard de membresía.</p>' : `
-    <div class="db-table-wrap ${isMembershipDashboard ? 'db-table-wrap--membership' : ''}">
+    ${isMembershipDashboard ? membershipDashboardTable : `
+    <div class="db-table-wrap">
       <table class="db-table db-table--editor" aria-label="Editor de ${escapeAttr(config.label)}">
         <thead>
           <tr>
@@ -3812,6 +3795,7 @@ async function renderAdminTableEditor() {
         <tbody id="js-admin-table-body">${rows}</tbody>
       </table>
     </div>
+    `}
     ${isMembershipDashboard ? renderMembershipSyncFooter() : ''}
     `}
   `);
@@ -3903,6 +3887,8 @@ function adminTableCellValue(tableName, field, row) {
   if (tableName === 'membership_dashboard') {
     if (field === 'saldo') return formatMembershipRowBalance(row);
     if (field === 'fecha_esperada' || field === 'fecha_de_sesion' || field === 'fecha_de_saldo') return formatDateOnly(row[field]);
+    if (field === 'sesiones_usadas') return row.sesiones_usadas || '-';
+    if (field === 'periodo') return row.periodo || '-';
   }
 
   return row[field] ?? '';
@@ -3940,17 +3926,50 @@ function membershipCellClass(field, row) {
   return tone === 'neutral' ? '' : ` db-membership-cell--${tone}`;
 }
 
+function renderMembershipDashboardTable(rows = []) {
+  const body = rows.length
+    ? rows.map(renderMembershipDashboardRow).join('')
+    : `
+      <tr class="db-table__empty-row">
+        <td colspan="6" class="db-empty">Sin datos de membresía.</td>
+      </tr>
+    `;
+
+  return `
+    <div class="db-table-wrap db-table-wrap--membership">
+      <table class="db-table" aria-label="Membresía">
+        <thead>
+          <tr>
+            <th scope="col">Semana</th>
+            <th scope="col">Periodo</th>
+            <th scope="col">Estado</th>
+            <th scope="col">Saldo</th>
+            <th scope="col">Fecha de saldo</th>
+            <th scope="col">Notas</th>
+          </tr>
+        </thead>
+        <tbody id="js-admin-table-body">${body}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 function renderMembershipDashboardRow(row) {
+  const sessionText = row.sesiones_usadas
+    ? `Sesiones: ${row.sesiones_usadas}`
+    : 'Sin sesión registrada';
+  const notes = [sessionText, row.notas && row.notas !== '-' ? row.notas : '']
+    .filter(Boolean)
+    .join(' · ');
+
   return `
     <tr class="db-membership-row db-membership-row--${escapeAttr(membershipRowTone(row))}">
       <td>${escapeHTML(String(row.semana ?? '-'))}</td>
-      <td>${escapeHTML(formatDateOnly(row.fecha_esperada))}</td>
-      <td>${escapeHTML(formatDateOnly(row.fecha_de_sesion))}</td>
+      <td>${escapeHTML(row.periodo ?? '-')}</td>
       <td class="${escapeAttr(membershipCellClass('estado', row).trim())}">${escapeHTML(row.estado ?? '-')}</td>
-      <td class="${escapeAttr(membershipCellClass('estado_operativo', row).trim())}">${escapeHTML(row.estado_operativo ?? '-')}</td>
-      <td>${escapeHTML(formatDateOnly(row.fecha_de_saldo))}</td>
       <td class="${escapeAttr(membershipCellClass('saldo', row).trim())}">${formatMembershipRowBalance(row)}</td>
-      <td>${escapeHTML(row.notas ?? '-')}</td>
+      <td>${escapeHTML(formatDateOnly(row.fecha_de_saldo))}</td>
+      <td>${escapeHTML(notes || '-')}</td>
     </tr>
   `;
 }
@@ -4145,6 +4164,20 @@ function addDaysToDateOnly(value, days) {
   return date.toISOString().slice(0, 10);
 }
 
+function getWeekStartMonday(value) {
+  const date = dateOnlyToLocalDate(value);
+  if (!date) return null;
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  return date.toISOString().slice(0, 10);
+}
+
+function getWeekEndSunday(value) {
+  const start = getWeekStartMonday(value);
+  return start ? addDaysToDateOnly(start, 6) : null;
+}
+
 function membershipIdOf(row) {
   return row?.membership_id ?? row?.membershipId ?? null;
 }
@@ -4161,39 +4194,53 @@ function membershipEndDate(membership, today = todayDateInputValue()) {
 }
 
 function generateMembershipWeeks(membership, today = todayDateInputValue()) {
-  const startDate = formatDateOnly(membership.start_date);
-  const endDate = membershipEndDate(membership, today);
+  const startDate = getWeekStartMonday(membership.start_date);
+  const endDate = getWeekEndSunday(membershipEndDate(membership, today));
   if (!dateOnlyToLocalDate(startDate) || compareDateOnly(startDate, endDate) > 0) return [];
 
   const weeks = [];
-  let expectedDate = startDate;
+  let weekStart = startDate;
   let index = 1;
 
-  while (expectedDate && compareDateOnly(expectedDate, endDate) <= 0) {
+  while (weekStart && compareDateOnly(weekStart, endDate) <= 0) {
     weeks.push({
       membership,
       semana: index,
-      fecha_esperada: expectedDate,
-      week_end: addDaysToDateOnly(expectedDate, 6),
+      fecha_esperada: weekStart,
+      week_end: getWeekEndSunday(weekStart),
       weekly_price: Number(membership.weekly_price ?? MEMBERSHIP_WEEKLY_COST) || MEMBERSHIP_WEEKLY_COST,
     });
-    expectedDate = addDaysToDateOnly(startDate, index * 7);
+    weekStart = addDaysToDateOnly(startDate, index * 7);
     index += 1;
   }
 
   return weeks;
 }
 
-function sessionForMembershipWeek(week, sessions = []) {
-  const candidates = sessions.filter((session) => {
+function sessionsForMembershipWeek(week, sessions = []) {
+  return sessions.filter((session) => {
     if (!rowMatchesMembership(session, week.membership)) return false;
     if (!(isMembershipValue(session.type) || isMembershipValue(session.concept))) return false;
     const sessionDate = formatDateOnly(session.session_date);
     return compareDateOnly(sessionDate, week.fecha_esperada) >= 0
       && compareDateOnly(sessionDate, week.week_end) <= 0;
+  }).sort((a, b) => compareDateOnly(a.session_date, b.session_date) || String(a.id ?? '').localeCompare(String(b.id ?? '')));
+}
+
+function membershipSessionNotes(sessions = [], membershipNotes = '') {
+  const sessionNotes = sessions.map((session) => {
+    const date = formatDateOnly(session.session_date);
+    const detail = [session.notes, session.concept, session.status]
+      .filter(Boolean)
+      .join(' · ');
+    return detail ? `${date}: ${detail}` : date;
   });
 
-  return candidates.sort((a, b) => compareDateOnly(a.session_date, b.session_date) || String(a.id ?? '').localeCompare(String(b.id ?? '')))[0] ?? null;
+  return [...sessionNotes, membershipNotes].filter(Boolean).join(' · ') || '-';
+}
+
+function membershipWeekObligation(week, sessions = []) {
+  return week.weekly_price;
 }
 
 function buildLegacyMembershipsFromSessions(sessions = []) {
@@ -4205,20 +4252,25 @@ function buildLegacyMembershipsFromSessions(sessions = []) {
       const userId = String(session.user_id ?? '').trim();
       if (!userId) return;
       const current = grouped.get(userId);
-      if (!current || compareDateOnly(session.session_date, current.start_date) < 0) {
+      const sessionDate = formatDateOnly(session.session_date);
+      if (!current) {
         grouped.set(userId, {
           id: `legacy-${userId}`,
           user_id: userId,
           username: session.username ?? null,
           status: 'active',
-          start_date: formatDateOnly(session.session_date),
-          end_date: null,
+          start_date: sessionDate,
+          end_date: sessionDate,
           weekly_price: MEMBERSHIP_WEEKLY_COST,
           sessions_per_week: 1,
           notes: 'Membresía histórica sin registro en public.memberships.',
           legacy: true,
         });
+        return;
       }
+
+      if (compareDateOnly(sessionDate, current.start_date) < 0) current.start_date = sessionDate;
+      if (compareDateOnly(sessionDate, current.end_date) > 0) current.end_date = sessionDate;
     });
 
   return [...grouped.values()];
@@ -4250,13 +4302,26 @@ function buildMembershipRows(memberships = [], sessions = [], transactions = [])
     .slice()
     .sort((a, b) => compareDateOnly(a.start_date, b.start_date) || String(a.id ?? '').localeCompare(String(b.id ?? '')))
     .forEach((membership) => {
-      const weeks = generateMembershipWeeks(membership, today);
+      const membershipSessionRows = membershipSessions.filter((session) => rowMatchesMembership(session, membership));
+      const latestSessionDate = membershipSessionRows.reduce((latest, session) => {
+        const sessionDate = formatDateOnly(session.session_date);
+        return !latest || compareDateOnly(sessionDate, latest) > 0 ? sessionDate : latest;
+      }, null);
+      const generationEndDate = latestSessionDate && compareDateOnly(latestSessionDate, today) > 0
+        ? latestSessionDate
+        : today;
+      const weeks = generateMembershipWeeks(membership, generationEndDate);
       const payments = membershipPayments.filter((tx) => rowMatchesMembership(tx, membership));
       let paymentIndex = 0;
       let availableCredit = 0;
       let availableCreditDate = null;
 
       weeks.forEach((week) => {
+        const weekSessions = sessionsForMembershipWeek(week, membershipSessionRows);
+        const firstSession = weekSessions[0] ?? null;
+        const usedSessionDates = [...new Set(weekSessions.map((session) => formatDateOnly(session.session_date)))];
+        const weekObligation = membershipWeekObligation(week, weekSessions);
+
         while (paymentIndex < payments.length && compareDateOnly(payments[paymentIndex].date, week.fecha_esperada) <= 0) {
           availableCredit += payments[paymentIndex].amount;
           availableCreditDate = payments[paymentIndex].date;
@@ -4264,16 +4329,15 @@ function buildMembershipRows(memberships = [], sessions = [], transactions = [])
         }
 
         let coveringPayment = null;
-        while (availableCredit < week.weekly_price && paymentIndex < payments.length) {
+        while (availableCredit < weekObligation && paymentIndex < payments.length) {
           availableCredit += payments[paymentIndex].amount;
           coveringPayment = payments[paymentIndex];
           availableCreditDate = payments[paymentIndex].date;
           paymentIndex += 1;
         }
 
-        const covered = availableCredit >= week.weekly_price;
+        const covered = availableCredit >= weekObligation;
         const fechaSaldo = covered ? (coveringPayment?.date ?? availableCreditDate ?? week.fecha_esperada) : null;
-        const session = sessionForMembershipWeek(week, membershipSessions);
         let estado = 'PENDIENTE';
         let saldo = null;
 
@@ -4282,12 +4346,12 @@ function buildMembershipRows(memberships = [], sessions = [], transactions = [])
           else if (fechaSaldo === week.fecha_esperada) estado = 'CORRIENTE';
           else estado = 'ATRASADO';
 
-          availableCredit -= week.weekly_price;
+          availableCredit -= weekObligation;
           saldo = availableCredit > 0 ? availableCredit : null;
           if (availableCredit <= 0) availableCreditDate = null;
         } else if (compareDateOnly(week.fecha_esperada, today) <= 0) {
           estado = 'ATRASADO';
-          saldo = availableCredit - week.weekly_price;
+          saldo = availableCredit - weekObligation;
           availableCredit = 0;
           availableCreditDate = null;
         }
@@ -4299,13 +4363,17 @@ function buildMembershipRows(memberships = [], sessions = [], transactions = [])
           user_id: membership.user_id,
           username: membership.username,
           semana: week.semana,
+          periodo: `${formatDateOnly(week.fecha_esperada)} a ${formatDateOnly(week.week_end)}`,
           fecha_esperada: week.fecha_esperada,
-          fecha_de_sesion: session ? formatDateOnly(session.session_date) : null,
+          obligacion: weekObligation,
+          fecha_de_sesion: firstSession ? formatDateOnly(firstSession.session_date) : null,
+          sesiones_usadas: usedSessionDates.join(', '),
+          sesiones_usadas_lista: usedSessionDates,
           estado,
           estado_operativo: String(membership.status ?? 'active').toUpperCase(),
           fecha_de_saldo: fechaSaldo,
           saldo,
-          notas: [session?.notes || session?.status, membership.notes].filter(Boolean).join(' · ') || '-',
+          notas: membershipSessionNotes(weekSessions, membership.notes),
         });
       });
     });
