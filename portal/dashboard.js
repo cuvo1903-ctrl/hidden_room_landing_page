@@ -34,8 +34,10 @@ const PROFILE_UPDATE_WHATSAPP = '5210000000000';
 const SHARE_LOGIN_WHATSAPP_FALLBACK = '5210000000000';
 const MEMBERSHIP_SUPPORT_WHATSAPP = '5215542881737';
 const LOCAL_SCORE_SYNC_KEYS = ['dem00nz_best', 'gol_gana_record'];
-const NOTIFICATIONS_ENABLED = false;
+const NOTIFICATIONS_ENABLED = true;
 const ACTIVE_SECTION_STORAGE_KEY = 'hr_dashboard_active_section';
+const ADMIN_TABLE_STORAGE_KEY = 'hr_dashboard_admin_table';
+const DASHBOARD_PREFS_STORAGE_KEY = 'hr_dashboard_prefs';
 const MEMBERSHIP_CANONICAL = 'MEMBRESÍA';
 const MEMBERSHIP_WEEKLY_COST = 500;
 const ERP_TYPE_OPTIONS = ['INGRESO', 'EGRESO'];
@@ -544,6 +546,16 @@ const TABLE_EDITOR_CONFIG = {
     lockedFields: ['id', 'created_at'],
     editableFields: ['event_id', 'user_id', 'participation_percent', 'role', 'notes'],
     hiddenColumns: ['id'],
+    hidden: true,
+  },
+  participants: {
+    label: 'Participantes',
+    primaryKey: 'id',
+    select: 'id, user_id, role, status, notes, created_at',
+    defaultSort: { field: 'created_at', direction: 'desc' },
+    lockedFields: ['id', 'created_at'],
+    editableFields: ['user_id', 'role', 'status', 'notes'],
+    hiddenColumns: ['id'],
   },
 };
 
@@ -666,8 +678,90 @@ function sortRowsByColumn(rows, field, direction = 'asc') {
   return sortTableEditorRows(rows ?? [], field, direction);
 }
 
+function readDashboardPrefs() {
+  try {
+    return JSON.parse(localStorage.getItem(DASHBOARD_PREFS_STORAGE_KEY) || '{}') || {};
+  } catch {
+    return {};
+  }
+}
+
+function writeDashboardPrefs(patch = {}) {
+  try {
+    localStorage.setItem(DASHBOARD_PREFS_STORAGE_KEY, JSON.stringify({
+      ...readDashboardPrefs(),
+      ...patch,
+    }));
+  } catch {
+    // localStorage can fail in private or restricted contexts; memory still works.
+  }
+}
+
+function persistedDataValue(key, fallback = '') {
+  if (state.data[key] !== undefined) return state.data[key];
+  const stored = readDashboardPrefs()[key];
+  return stored !== undefined ? stored : fallback;
+}
+
+function setPersistedDataValue(key, value) {
+  state.data[key] = value;
+  writeDashboardPrefs({ [key]: value });
+  return value;
+}
+
+function tableSearchStorageKey(inputOrId) {
+  if (!inputOrId) return '';
+  if (typeof inputOrId === 'string') return inputOrId;
+  return inputOrId.dataset.adminTableName || inputOrId.dataset.tableTarget || '';
+}
+
+function tableSearchFor(inputOrId) {
+  const key = tableSearchStorageKey(inputOrId);
+  if (!key) return '';
+  if (state.data.tableSearches?.[key] !== undefined) return state.data.tableSearches[key];
+  return readDashboardPrefs().tableSearches?.[key] ?? '';
+}
+
+function setTableSearch(inputOrId, query) {
+  const key = tableSearchStorageKey(inputOrId);
+  if (!key) return;
+  state.data.tableSearches = {
+    ...(state.data.tableSearches ?? {}),
+    [key]: query,
+  };
+  writeDashboardPrefs({
+    tableSearches: {
+      ...(readDashboardPrefs().tableSearches ?? {}),
+      [key]: query,
+    },
+  });
+}
+
 function adminTableSearchFor(tableName) {
-  return state.data.adminTableSearches?.[tableName] ?? '';
+  return state.data.adminTableSearches?.[tableName] ?? tableSearchFor(tableName);
+}
+
+function normalizeAdminTableName(tableName) {
+  return TABLE_EDITOR_CONFIG[tableName] ? tableName : 'users';
+}
+
+function readStoredAdminTableName() {
+  try {
+    return normalizeAdminTableName(localStorage.getItem(ADMIN_TABLE_STORAGE_KEY));
+  } catch {
+    return 'users';
+  }
+}
+
+function setAdminTableName(tableName) {
+  const normalized = normalizeAdminTableName(tableName);
+  state.data.adminTableName = normalized;
+  try {
+    localStorage.setItem(ADMIN_TABLE_STORAGE_KEY, normalized);
+  } catch {
+    // Ignore storage failures; in-memory state still updates.
+  }
+  return normalized;
 }
 
 function setAdminTableSearch(tableName, query) {
@@ -675,6 +769,7 @@ function setAdminTableSearch(tableName, query) {
     ...(state.data.adminTableSearches ?? {}),
     [tableName]: query,
   };
+  setTableSearch(tableName, query);
 }
 
 function isSessionStaleError(error) {
@@ -688,10 +783,19 @@ function isSessionStaleError(error) {
   return /jwt|token|expired|permission denied|row-level security|rls|invalid claim|not authorized|unauthorized/.test(text);
 }
 
-function persistAdminTableSearchFromDOM(tableName = state.data.adminTableName || 'users') {
+function persistAdminTableSearchFromDOM(tableName = state.data.adminTableName || readStoredAdminTableName()) {
   const input = [...document.querySelectorAll('[data-table-search]')]
     .find((item) => item.dataset.adminTableName === tableName);
   if (input) setAdminTableSearch(tableName, input.value.trim());
+}
+
+function restorePersistedTableSearches(root = document) {
+  root.querySelectorAll('[data-table-search]').forEach((input) => {
+    const query = tableSearchFor(input);
+    if (!query) return;
+    input.value = query;
+    filterTableRows(input);
+  });
 }
 
 function rowMatchesSearch(row, columns, query) {
@@ -1104,6 +1208,7 @@ async function renderSection(sectionKey) {
     if (state.renderToken !== renderToken) return;
     wrap.innerHTML = `${renderSessionStaleBanner()}${html}`;
     enhancePasswordToggles(wrap);
+    restorePersistedTableSearches(wrap);
   } catch (error) {
     if (state.renderToken !== renderToken) return;
     console.error('[HR] renderSection:', error);
@@ -1113,6 +1218,7 @@ async function renderSection(sectionKey) {
       <p class="db-empty db-empty--error">Error al cargar este modulo.</p>
     `);
     enhancePasswordToggles(wrap);
+    restorePersistedTableSearches(wrap);
   } finally {
     if (state.renderToken === renderToken && skeleton) skeleton.hidden = true;
   }
@@ -1549,6 +1655,38 @@ function buildQuickActions(roles) {
       <span class="db-quick-action__arrow" aria-hidden="true">-></span>
     </button>
   `).join('');
+}
+
+async function createUserNotification(userId, message, type = 'info') {
+  const targetUserId = String(userId ?? '').trim();
+  if (!targetUserId || !message) return false;
+
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .insert({
+        user_id: targetUserId,
+        message,
+        type,
+        read: false,
+      });
+
+    if (error) {
+      console.info('[HR] notification insert skipped:', error.message);
+      if (/schema cache|could not find the table|404/i.test(error.message)) {
+        setState({ notificationsAvailable: false });
+      }
+      return false;
+    }
+
+    if (String(state.user?.user_id ?? '') === targetUserId || String(state.user?.id ?? '') === targetUserId) {
+      await loadAndRenderNotifications();
+    }
+    return true;
+  } catch (error) {
+    console.info('[HR] notification insert unavailable:', error);
+    return false;
+  }
 }
 
 function renderLoadingBlock(label = 'Cargando') {
@@ -2073,11 +2211,12 @@ async function renderCollabFinance() {
     `);
   }
 
-  if (state.data.collabFinanceEventId && !events.some((event) => String(event.id ?? event.event_id) === String(state.data.collabFinanceEventId))) {
-    state.data.collabFinanceEventId = '';
+  const storedCollabEventId = persistedDataValue('collabFinanceEventId', '');
+  if (storedCollabEventId && !events.some((event) => String(event.id ?? event.event_id) === String(storedCollabEventId))) {
+    setPersistedDataValue('collabFinanceEventId', '');
   }
-  const eventId = state.data.collabFinanceEventId || String(events[0].id ?? events[0].event_id);
-  state.data.collabFinanceEventId = eventId;
+  const eventId = persistedDataValue('collabFinanceEventId', '') || String(events[0].id ?? events[0].event_id);
+  setPersistedDataValue('collabFinanceEventId', eventId);
   const selectedEvent = events.find((event) => String(event.id ?? event.event_id) === String(eventId));
   const permissions = eventAccessFor(selectedEvent);
   const { data, error } = await fetchCollabFinanceTransactions(filters, eventId, events);
@@ -2158,7 +2297,10 @@ async function renderCollabTasks() {
 
   state.data.users = uniqueUsers(users);
   state.data.events = events ?? [];
-  if (!state.data.scrumEventId && (events ?? []).length) state.data.scrumEventId = String(events[0].id);
+  if (state.data.scrumEventId === undefined) {
+    state.data.scrumEventId = persistedDataValue('scrumEventId', '');
+  }
+  if (!state.data.scrumEventId && (events ?? []).length) setPersistedDataValue('scrumEventId', String(events[0].id));
 
   let taskQuery = supabase
     .from('tasks')
@@ -2439,11 +2581,11 @@ async function renderErpFinance() {
   if (filters.scope === 'events') {
     if (filters.eventId && !events.some((event) => String(event.id) === String(filters.eventId))) {
       filters.eventId = '';
-      state.data.financeEventId = '';
+      setPersistedDataValue('financeEventId', '');
     }
     if (!filters.eventId && events.length) {
       filters.eventId = String(events[0].id);
-      state.data.financeEventId = filters.eventId;
+      setPersistedDataValue('financeEventId', filters.eventId);
     }
 
     const selectedEvent = events.find((event) => String(event.id) === String(filters.eventId));
@@ -2465,14 +2607,14 @@ async function renderErpFinance() {
       ${selectedEvent ? renderEventInfo(selectedEvent) : '<p class="db-empty">Sin eventos disponibles.</p>'}
       ${selectedEvent ? renderEventSummaryCards(selectedEvent) : ''}
       ${selectedEvent ? renderEventRightsChart(selectedEvent, data ?? []) : ''}
-      ${selectedEvent ? renderEventInternalInvestors(data ?? []) : ''}
+      ${selectedEvent ? renderEventInternalInvestors(selectedEvent, data ?? []) : ''}
       ${renderEventFinanceTransactionsTable(data ?? [], { canEdit: true })}
     `);
   }
 
   if (filters.scope === 'events' && filters.eventId && !events.some((event) => normalizeEventKey(event.event_key) === normalizeEventKey(filters.eventId))) {
     filters.eventId = '';
-    state.data.financeEventId = '';
+    setPersistedDataValue('financeEventId', '');
   }
   const { data, error } = await fetchFinanceTransactions(filters, events);
 
@@ -2501,7 +2643,7 @@ async function renderErpOps() {
   const events = await ensureFinanceEventsLoaded();
   const participants = await fetchAllEventParticipants();
   const memberships = await fetchMembershipOptionsForOps();
-  const activeForm = state.data.erpOpsForm || 'transaction';
+  const activeForm = persistedDataValue('erpOpsForm', 'transaction');
   const opsForms = {
     transaction: {
       label: 'Finanzas',
@@ -2530,10 +2672,7 @@ async function renderErpOps() {
             <label class="db-field"><span>Promo</span><input name="promo" /></label>
           </div>
           <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
-          <div class="db-form__actions">
-            <button class="btn-primary" type="submit">Crear sesion</button>
-            <button class="db-btn-secondary" type="button" data-action="operation-receipt">Compartir o descargar comprobante</button>
-          </div>
+          ${renderOperationCreateActions('CREAR')}
         </form>
       `,
     },
@@ -2547,10 +2686,7 @@ async function renderErpOps() {
           <label class="db-field"><span>Ruta storage</span><input name="storage_path" required /></label>
           <label class="db-field"><span>Tipo</span><select name="type">${ERP_TYPE_OPTIONS.map((type) => optionHTML(type, type, '')).join('')}</select></label>
           <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
-          <div class="db-form__actions">
-            <button class="btn-primary" type="submit">Crear descarga</button>
-            <button class="db-btn-secondary" type="button" data-action="operation-receipt">Compartir o descargar comprobante</button>
-          </div>
+          ${renderOperationCreateActions('CREAR')}
         </form>
       `,
     },
@@ -2561,10 +2697,7 @@ async function renderErpOps() {
           ${renderErpUserPicker('user_id', 'Usuario')}
           ${renderUserAutofillFields()}
           <label class="db-field"><span>Contrato</span><input name="contract" required placeholder="URL o ruta" /></label>
-          <div class="db-form__actions">
-            <button class="btn-primary" type="submit">Crear contrato</button>
-            <button class="db-btn-secondary" type="button" data-action="operation-receipt">Compartir o descargar comprobante</button>
-          </div>
+          ${renderOperationCreateActions('CREAR')}
         </form>
       `,
     },
@@ -2614,7 +2747,7 @@ async function renderErpOps() {
     },
     eventParticipant: {
       label: 'Nuevo participante',
-      html: renderEventParticipantForm(events),
+      html: renderEventParticipantForm(),
     },
     membership: {
       label: 'Membresías',
@@ -2677,16 +2810,13 @@ async function renderErpOps() {
   `);
 }
 
-function renderEventParticipantForm(events = []) {
+function renderEventParticipantForm() {
   return `
     <form class="db-form" data-form="event-participant-create">
-      <label class="db-field"><span>Evento</span><select name="event_id" required>${events.map((event) => optionHTML(String(event.id ?? event.event_id), eventLabel(event), '')).join('')}</select></label>
       ${renderErpUserPicker('user_id', 'Usuario / participante')}
       ${renderUserAutofillFields()}
-      <div class="db-form__row">
-        <label class="db-field"><span>Rol en evento</span><input name="role" placeholder="Inversor, proveedor, venue..." /></label>
-        <label class="db-field"><span>Participación %</span><input name="participation_percent" type="number" step="0.01" min="0" max="100" /></label>
-      </div>
+      <label class="db-field"><span>Rol general</span><input name="role" placeholder="Inversor, proveedor, venue..." /></label>
+      <label class="db-field"><span>Status</span><select name="status">${['active', 'inactive'].map((status) => optionHTML(status, status, 'active')).join('')}</select></label>
       <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
       <button class="btn-primary" type="submit">Crear participante</button>
     </form>
@@ -2744,6 +2874,7 @@ function renderMembershipOpsForm(memberships = []) {
       <section class="db-membership-ops__block">
         <h2 class="db-membership-ops__title">Entrega de material</h2>
           <form class="db-form" data-form="membership-delivery">
+            <input type="hidden" name="note_scope" value="delivery" />
             <label class="db-field">
               <span>Membresía</span>
               <select name="membership_id">
@@ -2780,6 +2911,15 @@ function renderMembershipOpsForm(memberships = []) {
   `;
 }
 
+function renderOperationCreateActions(createLabel = 'CREAR') {
+  return `
+    <div class="db-form__actions">
+      <button class="btn-primary" type="submit" data-operation-action="create-share">CREAR y COMPARTIR COMPROBANTE</button>
+      <button class="db-btn-secondary" type="submit" data-operation-action="create">${escapeHTML(createLabel)}</button>
+    </div>
+  `;
+}
+
 function renderTransactionForm(formName) {
   const today = todayDateInputValue();
   return `
@@ -2801,10 +2941,7 @@ function renderTransactionForm(formName) {
         <label class="db-field"><span>ID transaccion</span><input name="id_trans" /></label>
       </div>
       <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
-      <div class="db-form__actions">
-        <button class="btn-primary" type="submit">Crear transaccion</button>
-        <button class="db-btn-secondary" type="button" data-action="operation-receipt">Compartir o descargar comprobante</button>
-      </div>
+      ${renderOperationCreateActions('CREAR')}
     </form>
   `;
 }
@@ -2812,20 +2949,20 @@ function renderTransactionForm(formName) {
 function getFinanceFilters() {
   const now = new Date();
   return {
-    month: state.data.financeMonth ?? '',
-    year: state.data.financeYear ?? String(now.getFullYear()),
-    type: state.data.financeType ?? 'ambos',
-    scope: state.data.financeScope ?? 'studio',
-    studio: state.data.financeStudio ?? 'IXT',
-    eventId: state.data.financeEventId ?? '',
+    month: persistedDataValue('financeMonth', ''),
+    year: persistedDataValue('financeYear', String(now.getFullYear())),
+    type: persistedDataValue('financeType', 'ambos'),
+    scope: persistedDataValue('financeScope', 'studio'),
+    studio: persistedDataValue('financeStudio', 'IXT'),
+    eventId: persistedDataValue('financeEventId', ''),
   };
 }
 
 function getEventFinanceFilters(filters = getFinanceFilters()) {
   return {
     ...filters,
-    month: state.data.financeMonth ?? '',
-    year: state.data.financeYear ?? '',
+    month: persistedDataValue('financeMonth', ''),
+    year: persistedDataValue('financeYear', ''),
   };
 }
 
@@ -3072,7 +3209,7 @@ function renderEventRightsChart(event, transactions = []) {
   `;
 }
 
-function internalInvestorRows(transactions = []) {
+function internalInvestorRows(transactions = [], totalCost = 0) {
   const totals = new Map();
 
   (transactions ?? [])
@@ -3084,11 +3221,10 @@ function internalInvestorRows(transactions = []) {
       totals.set(investorId, current);
     });
 
-  const grandTotal = [...totals.values()].reduce((sum, item) => sum + item.total, 0);
   return [...totals.values()]
     .map((item) => ({
       ...item,
-      percent: grandTotal > 0 ? (item.total / grandTotal) * 100 : 0,
+      percent: Number(totalCost) > 0 ? (item.total / Number(totalCost)) * 100 : 0,
     }))
     .sort((a, b) => b.total - a.total);
 }
@@ -3106,8 +3242,9 @@ function investorPieGradient(investors = []) {
   }).join(', ');
 }
 
-function renderEventInternalInvestors(transactions = []) {
-  const investors = internalInvestorRows(transactions);
+function renderEventInternalInvestors(event, transactions = []) {
+  const rightsTotals = eventRightsTotals(event, transactions);
+  const investors = internalInvestorRows(transactions, rightsTotals.totalCost);
   const total = investors.reduce((sum, investor) => sum + investor.total, 0);
   const colors = ['var(--red)', 'var(--teal)', '#f0ece4', '#9b5cff', '#f4b860', '#55a6ff', '#6ddf8d'];
   const pieGradient = investorPieGradient(investors);
@@ -3130,21 +3267,22 @@ function renderEventInternalInvestors(transactions = []) {
 
   return `
     <article class="db-card db-event-investors">
-      <header class="db-card__header"><span class="section-label">Inversores internos</span></header>
+      <header class="db-card__header"><span class="section-label">Inversores internos sobre costo total</span></header>
       <div class="db-card__inner">
         <div class="db-event-investors__summary">
           <div class="db-pie-chart db-investor-pie" style="background:conic-gradient(${pieGradient})" aria-label="Distribucion de inversion interna"></div>
           <div class="db-event-investors__legend">${legend}</div>
           ${renderStatCard('Inversión interna total', money(total))}
+          ${renderStatCard('Costo total del evento', money(rightsTotals.totalCost))}
         </div>
         <div class="db-table-wrap">
-          <table class="db-table" aria-label="Porcentaje de inversión por participante">
+          <table class="db-table" aria-label="Porcentaje de inversión sobre costo total por participante">
             <thead>
               <tr>
                 <th scope="col">Participante</th>
                 <th scope="col">Inversión</th>
-                <th scope="col">%</th>
-                <th scope="col">Participación</th>
+                <th scope="col">% costo total</th>
+                <th scope="col">Cobertura</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -3424,12 +3562,13 @@ async function renderErpPermissions() {
   const rows = (users ?? []).length
     ? users.map(renderPermissionUserRow).join('')
     : `<tr class="db-table__empty-row"><td colspan="6" class="db-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin usuarios registrados.'}</td></tr>`;
+  const permissionSearch = tableSearchFor('js-permissions-table-body');
 
   return sectionShell('ERP', 'Permisos', 'title-erp-permissions', `
     <div class="db-toolbar">
       <label class="db-field db-field--compact db-field--search">
         <span>Buscar</span>
-        <input data-table-search data-table-target="js-permissions-table-body" data-table-count="js-permissions-table-count" placeholder="Buscar por nombre, usuario, rol o permiso" />
+        <input data-table-search data-table-target="js-permissions-table-body" data-table-count="js-permissions-table-count" placeholder="Buscar por nombre, usuario, rol o permiso" value="${escapeAttr(permissionSearch)}" />
         <small id="js-permissions-table-count" class="db-field__hint">${(users ?? []).length} filas visibles</small>
       </label>
     </div>
@@ -3485,7 +3624,7 @@ async function renderErpAuthAudit() {
     + Number(totals.duplicate_user_ids ?? 0);
 
   return sectionShell('ERP', 'Auth / Registros', 'title-erp-auth-audit', `
-    ${renderAuthAuditFilterBar(state.data.authAuditFilter ?? 'all')}
+    ${renderAuthAuditFilterBar(persistedDataValue('authAuditFilter', 'all'))}
     <div class="db-grid db-grid--3col">
       ${renderStatCard('Auth users', String(totals.auth_users ?? 0))}
       ${renderStatCard('Perfiles public.users', String(totals.public_profiles ?? 0))}
@@ -3522,16 +3661,17 @@ function renderAuthAuditFilterBar(activeFilter = 'all') {
 
 function authAuditBlockAttrs(groups = []) {
   const groupText = groups.join(' ');
-  const activeFilter = state.data.authAuditFilter ?? 'all';
+  const activeFilter = persistedDataValue('authAuditFilter', 'all');
   const hidden = activeFilter !== 'all' && !groups.includes(activeFilter);
   return `data-auth-audit-groups="${escapeAttr(groupText)}"${hidden ? ' hidden' : ''}`;
 }
 
 function renderAuditTableSearch(tableId, rowCount, label = 'Buscar') {
+  const searchQuery = tableSearchFor(tableId);
   return `
     <label class="db-field db-field--compact db-field--search">
       <span>${escapeHTML(label)}</span>
-      <input data-table-search data-table-target="${escapeAttr(tableId)}" data-table-count="${escapeAttr(`${tableId}-count`)}" placeholder="Buscar por email, User ID, perfil o estado" />
+      <input data-table-search data-table-target="${escapeAttr(tableId)}" data-table-count="${escapeAttr(`${tableId}-count`)}" placeholder="Buscar por email, User ID, perfil o estado" value="${escapeAttr(searchQuery)}" />
       <small id="${escapeAttr(`${tableId}-count`)}" class="db-field__hint">${rowCount} filas visibles</small>
     </label>
   `;
@@ -3766,7 +3906,7 @@ async function renderAdminTableEditor() {
     `);
   }
 
-  const tableName = state.data.adminTableName || 'users';
+  const tableName = state.data.adminTableName || setAdminTableName(readStoredAdminTableName());
   const config = TABLE_EDITOR_CONFIG[tableName] || TABLE_EDITOR_CONFIG.users;
   let data = [];
 
@@ -4027,17 +4167,13 @@ function formatMembershipSessionDates(row) {
 
 function renderMembershipDashboardRow(row, delivery = null, options = {}) {
   const sessionDates = formatMembershipSessionDates(row);
-  const sessionText = sessionDates
-    ? `Sesiones: ${sessionDates}`
-    : 'Sin sesión registrada';
-  const deliveryNote = delivery?.status ? `Entrega: ${delivery.status}` : '';
-  const baseNotes = membershipEditableDeliveryNotes(row, delivery, { fallback: row.notas });
-  const displayNotes = [sessionText, deliveryNote, baseNotes && baseNotes !== '-' ? baseNotes : '']
-    .filter(Boolean)
-    .join(' · ');
+  const displayNotes = row.notas && row.notas !== '-' ? row.notas : '-';
   const deliveryFormId = membershipDeliveryFormId(row);
   const sessionNotesFormId = membershipSessionNotesFormId(row);
   const cycleNumber = Math.floor((Number(row.semana ?? 1) - 1) / 4) + 1;
+  const deliveredAtText = delivery?.deliveredAt
+    ? formatDisplayDateOnly(delivery.deliveredAt)
+    : 'No entregado';
 
   return `
     <tr class="db-membership-row db-membership-row--${escapeAttr(membershipRowTone(row))}">
@@ -4047,7 +4183,7 @@ function renderMembershipDashboardRow(row, delivery = null, options = {}) {
       <td class="${escapeAttr(membershipCellClass('saldo', row).trim())}">${formatMembershipRowBalance(row)}</td>
       <td>${escapeHTML(formatDisplayDateOnly(row.fecha_de_saldo))}</td>
       <td>${escapeHTML(formatDisplayDateOnly(delivery?.estimatedDelivery))}</td>
-      <td>${options.canEditMaterialDelivery ? renderMembershipDeliveryDateInput(row, delivery, deliveryFormId, cycleNumber) : escapeHTML(formatDisplayDateOnly(delivery?.deliveredAt))}</td>
+      <td>${options.canEditMaterialDelivery ? renderMembershipDeliveryDateInput(row, delivery, deliveryFormId, cycleNumber, deliveredAtText) : escapeHTML(deliveredAtText)}</td>
       <td>${options.canEditMaterialDelivery ? renderMembershipSessionNotesInput(row, sessionNotesFormId) : escapeHTML(displayNotes || '-')}</td>
     </tr>
   `;
@@ -4075,13 +4211,15 @@ function membershipSessionNotesFormId(row) {
     .join('-');
 }
 
-function renderMembershipDeliveryDateInput(row, delivery, formId, cycleNumber) {
+function renderMembershipDeliveryDateInput(row, delivery, formId, cycleNumber, deliveredAtText) {
+  const isDelivered = Boolean(delivery?.deliveredAt);
   return `
     <form class="db-membership-delivery-form" id="${formId}" data-form="membership-delivery" data-stay-section="admin-table-editor">
       <input type="hidden" name="membership_id" value="${escapeAttr(row.membership_id ?? '')}" />
       <input type="hidden" name="user_id" value="${escapeAttr(row.user_id ?? '')}" />
       <input type="hidden" name="cycle_number" value="${escapeAttr(String(cycleNumber))}" />
       <input type="hidden" name="delivered_at_original" value="${escapeAttr(delivery?.deliveredAt ?? '')}" />
+      <span class="db-membership-delivery-status db-membership-delivery-status--${isDelivered ? 'done' : 'pending'}">${escapeHTML(deliveredAtText)}</span>
       <input class="db-table-input db-table-input--compact db-membership-editable-cell" name="delivered_at" type="date" value="${escapeAttr(delivery?.deliveredAt ?? '')}" aria-label="Fecha real de entrega" />
     </form>
   `;
@@ -4090,7 +4228,7 @@ function renderMembershipDeliveryDateInput(row, delivery, formId, cycleNumber) {
 function renderMembershipSessionNotesInput(row, formId) {
   const sessionId = row.session_id ? String(row.session_id) : '';
   const notes = row.session_notes ?? '';
-  if (!sessionId) return escapeHTML(row.notas || 'Sin sesión registrada');
+  if (!sessionId) return '-';
 
   return `
     <div class="db-membership-delivery-edit">
@@ -4102,14 +4240,6 @@ function renderMembershipSessionNotesInput(row, formId) {
     </div>
   `;
 }
-
-function membershipEditableDeliveryNotes(row, delivery, options = {}) {
-  const explicitNotes = delivery?.deliveryNotes ?? row.material_delivery_notes;
-  if (explicitNotes !== null && explicitNotes !== undefined) return String(explicitNotes);
-  const fallback = options.fallback ?? row?.notas;
-  return fallback && fallback !== '-' ? String(fallback) : '';
-}
-
 
 /* -- RENDER HELPER ------------------------------------------ */
 /**
@@ -4382,16 +4512,17 @@ function sessionsForMembershipWeek(week, sessions = []) {
   }).sort((a, b) => compareDateOnly(a.session_date, b.session_date) || String(a.id ?? '').localeCompare(String(b.id ?? '')));
 }
 
-function membershipSessionNotes(sessions = [], membershipNotes = '') {
-  const sessionNotes = sessions.map((session) => {
-    const date = formatDisplayDateOnly(session.session_date);
-    const detail = [session.notes, session.concept, session.status]
-      .filter(Boolean)
-      .join(' · ');
-    return detail ? `${date}: ${detail}` : date;
-  });
+function membershipSessionNotes(sessions = []) {
+  const notes = sessions
+    .map((session) => ({
+      date: formatDisplayDateOnly(session.session_date),
+      notes: String(session.notes ?? '').trim(),
+    }))
+    .filter((session) => session.notes);
 
-  return [...sessionNotes, membershipNotes].filter(Boolean).join(' · ') || '-';
+  if (!notes.length) return '-';
+  if (notes.length === 1) return notes[0].notes;
+  return notes.map((session) => `${session.date}: ${session.notes}`).join(' · ');
 }
 
 function membershipWeekObligation(week, sessions = []) {
@@ -4536,7 +4667,7 @@ function buildMembershipRows(memberships = [], sessions = [], transactions = [],
           fecha_de_saldo: fechaSaldo,
           saldo,
           saldo_tipo,
-          notas: membershipSessionNotes(weekSessions, membership.notes),
+          notas: membershipSessionNotes(weekSessions),
         });
       });
     });
@@ -5041,12 +5172,13 @@ async function fetchAllEventParticipants() {
   if (Array.isArray(state.data.eventParticipantsAll)) return state.data.eventParticipantsAll;
 
   const { data, error } = await supabase
-    .from('event_participations')
-    .select('id, event_id, user_id, participation_percent, role, notes')
+    .from('participants')
+    .select('id, user_id, role, status, notes')
+    .eq('status', 'active')
     .order('user_id', { ascending: true });
 
   if (error) {
-    console.info('[HR] event participants unavailable:', error.message);
+    console.info('[HR] participants unavailable:', error.message);
     state.data.eventParticipantsAll = [];
     return [];
   }
@@ -5056,28 +5188,7 @@ async function fetchAllEventParticipants() {
 }
 
 async function fetchParticipantsForEvent(eventId) {
-  const all = await fetchAllEventParticipants();
-  if (!eventId) return all;
-
-  const cacheKey = String(eventId);
-  state.data.eventParticipantsByEvent ??= {};
-  if (Array.isArray(state.data.eventParticipantsByEvent[cacheKey])) {
-    return state.data.eventParticipantsByEvent[cacheKey];
-  }
-
-  const { data, error } = await supabase
-    .from('event_participations')
-    .select('id, event_id, user_id, participation_percent, role, notes')
-    .eq('event_id', eventId);
-
-  if (error) {
-    console.info('[HR] event participations unavailable:', error.message);
-    state.data.eventParticipantsByEvent[cacheKey] = all;
-    return all;
-  }
-
-  state.data.eventParticipantsByEvent[cacheKey] = data ?? [];
-  return state.data.eventParticipantsByEvent[cacheKey];
+  return fetchAllEventParticipants();
 }
 
 function normalizeEventFinanceOptions(events = []) {
@@ -5120,16 +5231,19 @@ async function fetchPartnerContractsForCurrentUser() {
     .order('created_at', { ascending: false });
 }
 
-async function insertRow(table, payload, successMessage) {
-  const { error } = await supabase.from(table).insert(payload);
+async function insertRow(table, payload, successMessage, options = {}) {
+  const request = options.returning
+    ? supabase.from(table).insert(payload).select(options.returning).maybeSingle()
+    : supabase.from(table).insert(payload);
+  const { data, error } = await request;
   if (error) {
     console.error(`[HR] ${table} insert:`, error);
     showToast('No se pudo guardar. Revisa permisos/RLS.', 'error');
-    return false;
+    return { ok: false, data: null };
   }
 
   showToast(successMessage, 'success');
-  return true;
+  return { ok: true, data };
 }
 
 async function handleTaskCreate(form) {
@@ -5138,8 +5252,8 @@ async function handleTaskCreate(form) {
   payload.created_by = state.user?.user_id ?? null;
   if (payload.due_date) payload.due_date = formatDateOnly(payload.due_date);
 
-  const ok = await insertRow('tasks', payload, 'Tarea creada.');
-  if (ok) {
+  const result = await insertRow('tasks', payload, 'Tarea creada.');
+  if (result.ok) {
     form.reset();
     navigate('collab-tasks');
   }
@@ -5196,6 +5310,8 @@ async function handleTaskDelete(taskId) {
 async function handleErpForm(form) {
   const type = form.dataset.form;
   const values = formValues(form);
+  const operationAction = form.dataset.operationAction || 'create';
+  const shouldShareReceipt = operationAction === 'create-share';
 
   if (type === 'user-merge') {
     await handleAdminUserMerge(form, values);
@@ -5290,17 +5406,23 @@ async function handleErpForm(form) {
   const config = map[type];
   if (!config) return;
 
-  const ok = await insertRow(config[0], config[1], config[2]);
-  if (ok) {
+  const result = await insertRow(config[0], config[1], config[2], { returning: 'id' });
+  if (result.ok) {
     if (type === 'event-create') {
       // Fuerza a que los selectores y permisos usen el evento recién creado.
       state.data.financeEvents = null;
       state.data.collabFinanceEvents = null;
       state.data.permissionEvents = null;
-    } else {
-      await handleOperationReceipt(form, { silent: true });
+    } else if (shouldShareReceipt) {
+      await createUserNotification(
+        operationPayload.user_id,
+        operationNotificationMessage(type, operationPayload),
+        'success'
+      );
+      await handleOperationReceipt(form);
     }
     form.reset();
+    delete form.dataset.operationAction;
   }
 }
 
@@ -5399,7 +5521,7 @@ async function saveMembershipDeliveryValues(values = {}) {
     cycle_number: cycleNumber,
     delivered_at: deliveredAt,
   };
-  if (Object.prototype.hasOwnProperty.call(values, 'notes')) {
+  if (values.note_scope === 'delivery' && Object.prototype.hasOwnProperty.call(values, 'notes')) {
     payload.notes = String(values.notes ?? '').trim() || null;
   }
 
@@ -5535,35 +5657,31 @@ async function handleEventParticipantCreate(form, values = formValues(form)) {
   }
 
   const userId = String(values.user_id ?? '').trim();
-  const eventId = String(values.event_id ?? '').trim();
-  if (!userId || !eventId) {
-    showToast('Selecciona evento y usuario participante.', 'error');
+  if (!userId) {
+    showToast('Selecciona un usuario participante.', 'error');
     return;
   }
 
-  const percent = values.participation_percent == null ? null : Number(values.participation_percent);
   const participationPayload = {
-    event_id: eventId,
     user_id: userId,
-    participation_percent: Number.isFinite(percent) ? percent : null,
     role: values.role ?? null,
+    status: values.status ?? 'active',
     notes: values.notes ?? null,
   };
 
   const { error: participationError } = await supabase
-    .from('event_participations')
-    .upsert(participationPayload, { onConflict: 'event_id,user_id' });
+    .from('participants')
+    .upsert(participationPayload, { onConflict: 'user_id' });
 
   if (participationError) {
-    console.error('[HR] event participation insert:', participationError);
-    showToast('No se pudo guardar el participante del evento.', 'error');
+    console.error('[HR] participant upsert:', participationError);
+    showToast('No se pudo guardar el participante.', 'error');
     return;
   } else {
-    showToast('Participante vinculado al evento.', 'success');
+    showToast('Participante guardado.', 'success');
   }
 
   state.data.eventParticipantsAll = null;
-  state.data.eventParticipantsByEvent = {};
   form.reset();
   navigate('erp-ops');
 }
@@ -5616,8 +5734,8 @@ async function handleEventMovementCreate(form, values = formValues(form)) {
     'M.A.I.': signedHiddenRoomShare,
   };
 
-  const ok = await insertRow('hr_transactions', payload, 'Movimiento financiero creado.');
-  if (ok) {
+  const result = await insertRow('hr_transactions', payload, 'Movimiento financiero creado.');
+  if (result.ok) {
     form.reset();
     state.data.financeEvents = null;
     state.data.collabFinanceEvents = null;
@@ -5702,6 +5820,21 @@ function operationReceiptTitle(formType) {
     'contract-create': 'Comprobante de contrato',
   };
   return labels[formType] ?? 'Comprobante de operacion';
+}
+
+function operationNotificationMessage(formType, values = {}) {
+  const labels = {
+    'transaction-create': 'Se registró una transacción en tu cuenta.',
+    'session-create': 'Se registró una sesión en tu cuenta.',
+    'download-create': 'Se agregó una descarga a tu cuenta.',
+    'contract-create': 'Se agregó un contrato a tu cuenta.',
+  };
+  const base = labels[formType] ?? 'Se registró una operación en tu cuenta.';
+  const amount = values.amount ? ` Monto: ${money(values.amount)}.` : '';
+  const date = values.date || values.session_date
+    ? ` Fecha: ${formatDisplayDateOnly(values.date || values.session_date)}.`
+    : '';
+  return `${base}${amount}${date}`;
 }
 
 function operationReceiptRows(form) {
@@ -6007,13 +6140,13 @@ async function handlePermissionAdd(form) {
     return;
   }
 
-  const ok = await insertRow(
+  const result = await insertRow(
     'user_permissions',
     { user_id: userUuid, permission_key: permissionKey },
     'Permiso agregado.'
   );
 
-  if (ok) navigate('erp-permissions');
+  if (result.ok) navigate('erp-permissions');
 }
 
 async function handlePermissionRemove(permissionId) {
@@ -6072,13 +6205,14 @@ function renderEventPermissionsEditor(user) {
       `;
     }).join('')
     : '<tr class="db-table__empty-row"><td colspan="5" class="db-empty">Sin eventos disponibles.</td></tr>';
+  const eventPermissionSearch = tableSearchFor('js-event-permissions-body');
 
   return `
     <section class="db-event-permissions">
       <h3>Permisos por Evento</h3>
       <label class="db-field">
         <span>Buscar eventos</span>
-        <input data-table-search data-table-target="js-event-permissions-body" data-table-count="js-event-permissions-count" placeholder="Buscar evento" />
+        <input data-table-search data-table-target="js-event-permissions-body" data-table-count="js-event-permissions-count" placeholder="Buscar evento" value="${escapeAttr(eventPermissionSearch)}" />
         <small id="js-event-permissions-count" class="db-field__hint">${events.length} eventos visibles</small>
       </label>
       <div class="db-table-wrap db-event-permissions__table-wrap">
@@ -6463,7 +6597,7 @@ function collectAdminTableFormChange(form, config) {
 async function handleAdminTableSaveAll() {
   if (!requireAdminMutation()) return;
 
-  const tableName = state.data.adminTableName || 'users';
+  const tableName = state.data.adminTableName || setAdminTableName(readStoredAdminTableName());
   persistAdminTableSearchFromDOM(tableName);
   if (tableName === 'membership_dashboard') {
     await handleMembershipDashboardSaveAll();
@@ -6745,7 +6879,7 @@ async function handleAdminPdfExport(tableLabel = 'Tabla administrativa') {
     return;
   }
 
-  const tableName = state.data.adminTableName || 'users';
+  const tableName = state.data.adminTableName || setAdminTableName(readStoredAdminTableName());
   const config = TABLE_EDITOR_CONFIG[tableName] || {};
   const configuredColumns = [...(config.lockedFields ?? []), ...(config.editableFields ?? [])]
     .filter((field, index, arr) => arr.indexOf(field) === index);
@@ -6815,7 +6949,7 @@ async function handleFinancePdfExport() {
 
   const rows = isCollabFinance ? (state.data.collabFinanceRows ?? []) : (state.data.erpFinanceRows ?? []);
   const filters = isCollabFinance
-    ? (state.data.collabFinanceFilters ?? { ...getEventFinanceFilters(), scope: 'events', eventId: state.data.collabFinanceEventId ?? '' })
+    ? (state.data.collabFinanceFilters ?? { ...getEventFinanceFilters(), scope: 'events', eventId: persistedDataValue('collabFinanceEventId', '') })
     : (state.data.erpFinanceFilters ?? getFinanceFilters());
   const events = isCollabFinance ? (state.data.collabFinanceEvents ?? []) : (state.data.financeEvents ?? []);
   const selectedEvent = isCollabFinance
@@ -6899,6 +7033,7 @@ function filterTableRows(input) {
   const tableName = input.dataset.adminTableName;
   const query = input.value.trim();
   if (tableName) setAdminTableSearch(tableName, query);
+  else setTableSearch(input, query);
 
   const normalizedQuery = normalizeSearchText(query);
   let visibleCount = 0;
@@ -7153,7 +7288,7 @@ function attachMainDelegation() {
     const tableSelect = e.target.closest('select[data-action="table-editor-table"]');
     if (tableSelect) {
       persistAdminTableSearchFromDOM();
-      state.data.adminTableName = tableSelect.value;
+      setAdminTableName(tableSelect.value);
       navigate('admin-table-editor');
       return;
     }
@@ -7167,17 +7302,17 @@ function attachMainDelegation() {
 
     const scrumEvent = e.target.closest('select[data-action="scrum-event-change"]');
     if (scrumEvent) {
-      state.data.scrumEventId = scrumEvent.value;
+      setPersistedDataValue('scrumEventId', scrumEvent.value);
       navigate('collab-tasks');
       return;
     }
 
     const financeFilter = e.target.closest('select[data-action="finance-filter"]');
     if (financeFilter) {
-      state.data[financeFilter.dataset.filterKey] = financeFilter.value;
+      setPersistedDataValue(financeFilter.dataset.filterKey, financeFilter.value);
       if (financeFilter.dataset.filterKey === 'financeScope') {
-        if (financeFilter.value === 'studio' && !state.data.financeStudio) {
-          state.data.financeStudio = 'IXT';
+        if (financeFilter.value === 'studio' && !persistedDataValue('financeStudio', '')) {
+          setPersistedDataValue('financeStudio', 'IXT');
         }
       }
       navigate(state.activeSection);
@@ -7186,21 +7321,21 @@ function attachMainDelegation() {
 
     const collabFinanceEvent = e.target.closest('select[data-action="collab-finance-event"]');
     if (collabFinanceEvent) {
-      state.data.collabFinanceEventId = collabFinanceEvent.value;
+      setPersistedDataValue('collabFinanceEventId', collabFinanceEvent.value);
       navigate('collab-finance');
       return;
     }
 
     const opsForm = e.target.closest('select[data-action="erp-ops-form"]');
     if (opsForm) {
-      state.data.erpOpsForm = opsForm.value;
+      setPersistedDataValue('erpOpsForm', opsForm.value);
       navigate('erp-ops');
       return;
     }
 
     const authAuditFilter = e.target.closest('select[data-action="auth-audit-filter"]');
     if (authAuditFilter) {
-      state.data.authAuditFilter = authAuditFilter.value;
+      setPersistedDataValue('authAuditFilter', authAuditFilter.value);
       applyAuthAuditFilter(authAuditFilter.value);
       return;
     }
@@ -7267,6 +7402,7 @@ function attachMainDelegation() {
     if (!form) return;
 
     e.preventDefault();
+    form.dataset.operationAction = e.submitter?.dataset.operationAction || 'create';
 
     if (form.dataset.form === 'task-create') handleTaskCreate(form);
     if (form.dataset.form === 'task-update') handleTaskUpdate(form);

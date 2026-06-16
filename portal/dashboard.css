@@ -411,6 +411,46 @@
   letter-spacing: var(--tracking-normal);
 }
 
+.db-table-wrap--membership .db-table {
+  table-layout: fixed;
+  width: max(100%, 960px);
+  min-width: 960px;
+}
+
+.db-table-wrap--membership .db-table th:nth-child(1),
+.db-table-wrap--membership .db-table td:nth-child(1) {
+  width: 72px;
+}
+
+.db-table-wrap--membership .db-table th:nth-child(2),
+.db-table-wrap--membership .db-table td:nth-child(2) {
+  width: 142px;
+}
+
+.db-table-wrap--membership .db-table th:nth-child(3),
+.db-table-wrap--membership .db-table td:nth-child(3) {
+  width: 118px;
+}
+
+.db-table-wrap--membership .db-table th:nth-child(4),
+.db-table-wrap--membership .db-table td:nth-child(4) {
+  width: 150px;
+}
+
+.db-table-wrap--membership .db-table th:nth-child(5),
+.db-table-wrap--membership .db-table td:nth-child(5),
+.db-table-wrap--membership .db-table th:nth-child(6),
+.db-table-wrap--membership .db-table td:nth-child(6),
+.db-table-wrap--membership .db-table th:nth-child(7),
+.db-table-wrap--membership .db-table td:nth-child(7) {
+  width: 130px;
+}
+
+.db-table-wrap--membership .db-table th:nth-child(8),
+.db-table-wrap--membership .db-table td:nth-child(8) {
+  width: 218px;
+}
+
 .db-table thead {
   background: var(--surface);
   border-bottom: var(--border-faint);
@@ -449,6 +489,8 @@
 .db-table-wrap--membership .db-table td {
   padding: 6px 10px;
   line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .db-table-wrap--membership .db-table code {
@@ -484,12 +526,33 @@
 }
 
 .db-membership-delivery-form {
-  min-width: 132px;
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  gap: 4px;
+}
+
+.db-membership-delivery-status {
+  display: block;
+  overflow: hidden;
+  color: var(--white-dim);
+  font-size: var(--text-xs);
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-membership-delivery-status--done {
+  color: var(--green);
+}
+
+.db-membership-delivery-status--pending {
+  color: var(--white-faint);
 }
 
 .db-table-wrap--membership .db-table .db-table-input--compact {
   min-height: 28px;
-  min-width: 132px;
+  min-width: 0;
   padding: 4px 6px;
   font-size: var(--text-xs);
 }
@@ -516,12 +579,14 @@
 .db-membership-delivery-edit {
   display: grid;
   gap: 5px;
-  min-width: 180px;
+  min-width: 0;
+  width: 100%;
 }
 
 .db-table-wrap--membership .db-table .db-table-input--notes {
   min-height: 42px;
-  min-width: 180px;
+  min-width: 0;
+  width: 100%;
   resize: vertical;
   padding: 5px 6px;
   font-size: var(--text-xs);
