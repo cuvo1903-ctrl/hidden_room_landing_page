@@ -4032,12 +4032,11 @@ function renderMembershipDashboardRow(row, delivery = null, options = {}) {
     : 'Sin sesión registrada';
   const deliveryNote = delivery?.status ? `Entrega: ${delivery.status}` : '';
   const baseNotes = membershipEditableDeliveryNotes(row, delivery, { fallback: row.notas });
-  const notes = delivery?.deliveryNotes !== null && delivery?.deliveryNotes !== undefined
-    ? baseNotes
-    : [sessionText, deliveryNote, baseNotes && baseNotes !== '-' ? baseNotes : '']
+  const displayNotes = [sessionText, deliveryNote, baseNotes && baseNotes !== '-' ? baseNotes : '']
     .filter(Boolean)
     .join(' · ');
   const deliveryFormId = membershipDeliveryFormId(row);
+  const sessionNotesFormId = membershipSessionNotesFormId(row);
   const cycleNumber = Math.floor((Number(row.semana ?? 1) - 1) / 4) + 1;
 
   return `
@@ -4048,8 +4047,8 @@ function renderMembershipDashboardRow(row, delivery = null, options = {}) {
       <td class="${escapeAttr(membershipCellClass('saldo', row).trim())}">${formatMembershipRowBalance(row)}</td>
       <td>${escapeHTML(formatDisplayDateOnly(row.fecha_de_saldo))}</td>
       <td>${escapeHTML(formatDisplayDateOnly(delivery?.estimatedDelivery))}</td>
-      <td>${options.canEditMaterialDelivery ? renderMembershipDeliveryDateInput(row, delivery, deliveryFormId, cycleNumber, notes) : escapeHTML(formatDisplayDateOnly(delivery?.deliveredAt))}</td>
-      <td>${options.canEditMaterialDelivery ? renderMembershipDeliveryNotesInput(row, delivery, notes, deliveryFormId) : escapeHTML(notes || '-')}</td>
+      <td>${options.canEditMaterialDelivery ? renderMembershipDeliveryDateInput(row, delivery, deliveryFormId, cycleNumber) : escapeHTML(formatDisplayDateOnly(delivery?.deliveredAt))}</td>
+      <td>${options.canEditMaterialDelivery ? renderMembershipSessionNotesInput(row, sessionNotesFormId) : escapeHTML(displayNotes || '-')}</td>
     </tr>
   `;
 }
@@ -4065,23 +4064,41 @@ function membershipDeliveryFormId(row) {
     .join('-');
 }
 
-function renderMembershipDeliveryDateInput(row, delivery, formId, cycleNumber, notes) {
+function membershipSessionNotesFormId(row) {
+  return [
+    'membership-session-notes',
+    row.session_id ?? 'none',
+    row.membership_id ?? 'legacy',
+    row.semana ?? '0',
+  ]
+    .map((part) => String(part).replace(/[^a-zA-Z0-9_-]/g, '-'))
+    .join('-');
+}
+
+function renderMembershipDeliveryDateInput(row, delivery, formId, cycleNumber) {
   return `
     <form class="db-membership-delivery-form" id="${formId}" data-form="membership-delivery" data-stay-section="admin-table-editor">
       <input type="hidden" name="membership_id" value="${escapeAttr(row.membership_id ?? '')}" />
       <input type="hidden" name="user_id" value="${escapeAttr(row.user_id ?? '')}" />
       <input type="hidden" name="cycle_number" value="${escapeAttr(String(cycleNumber))}" />
       <input type="hidden" name="delivered_at_original" value="${escapeAttr(delivery?.deliveredAt ?? '')}" />
-      <input type="hidden" name="notes_original" value="${escapeAttr(notes || '')}" />
       <input class="db-table-input db-table-input--compact db-membership-editable-cell" name="delivered_at" type="date" value="${escapeAttr(delivery?.deliveredAt ?? '')}" aria-label="Fecha real de entrega" />
     </form>
   `;
 }
 
-function renderMembershipDeliveryNotesInput(row, delivery, notes, formId) {
+function renderMembershipSessionNotesInput(row, formId) {
+  const sessionId = row.session_id ? String(row.session_id) : '';
+  const notes = row.session_notes ?? '';
+  if (!sessionId) return escapeHTML(row.notas || 'Sin sesión registrada');
+
   return `
     <div class="db-membership-delivery-edit">
-      <textarea class="db-table-input db-table-input--notes db-membership-editable-cell" form="${formId}" name="notes" rows="3" aria-label="Notas de entrega">${escapeHTML(notes || '')}</textarea>
+      <form id="${formId}" data-form="membership-session-notes" data-stay-section="admin-table-editor">
+        <input type="hidden" name="session_id" value="${escapeAttr(sessionId)}" />
+        <input type="hidden" name="notes_original" value="${escapeAttr(notes || '')}" />
+        <textarea class="db-table-input db-table-input--notes db-membership-editable-cell" name="notes" rows="3" aria-label="Notas de sesión">${escapeHTML(notes || '')}</textarea>
+      </form>
     </div>
   `;
 }
@@ -4509,6 +4526,8 @@ function buildMembershipRows(memberships = [], sessions = [], transactions = [],
           periodo: `${formatDateOnly(week.fecha_esperada)} a ${formatDateOnly(week.week_end)}`,
           fecha_esperada: week.fecha_esperada,
           obligacion: weekObligation,
+          session_id: firstSession?.id ?? null,
+          session_notes: firstSession?.notes ?? '',
           fecha_de_sesion: firstSession ? formatDateOnly(firstSession.session_date) : null,
           sesiones_usadas: usedSessionDates.join(', '),
           sesiones_usadas_lista: usedSessionDates,
@@ -5203,6 +5222,11 @@ async function handleErpForm(form) {
     return;
   }
 
+  if (type === 'membership-session-notes') {
+    await handleMembershipSessionNotes(form, values);
+    return;
+  }
+
   if ('user_id' in values && !values.user_id) {
     showToast('Selecciona un usuario valido.', 'error');
     return;
@@ -5374,8 +5398,10 @@ async function saveMembershipDeliveryValues(values = {}) {
     user_id: userId,
     cycle_number: cycleNumber,
     delivered_at: deliveredAt,
-    notes: String(values.notes ?? '').trim() || null,
   };
+  if (Object.prototype.hasOwnProperty.call(values, 'notes')) {
+    payload.notes = String(values.notes ?? '').trim() || null;
+  }
 
   let existingQuery = supabase
     .from('membership_material_deliveries')
@@ -5404,6 +5430,42 @@ async function saveMembershipDeliveryValues(values = {}) {
   if (error) {
     console.error('[HR] membership delivery save:', error);
     showToast('No se pudo guardar la entrega de material.', 'error');
+    return false;
+  }
+
+  return true;
+}
+
+async function handleMembershipSessionNotes(form, values = formValues(form)) {
+  if (!hasRole('admin')) {
+    showToast('Acceso no autorizado.', 'error');
+    return;
+  }
+
+  const ok = await saveMembershipSessionNotesValues(values);
+  if (!ok) return;
+
+  showToast('Notas de sesión guardadas.', 'success');
+  if (form.dataset.staySection === 'admin-table-editor') {
+    navigate('admin-table-editor');
+  }
+}
+
+async function saveMembershipSessionNotesValues(values = {}) {
+  const sessionId = String(values.session_id ?? '').trim();
+  if (!sessionId) {
+    showToast('Esta fila no tiene una sesión registrada para editar.', 'error');
+    return false;
+  }
+
+  const { error } = await supabase
+    .from('sessions')
+    .update({ notes: String(values.notes ?? '').trim() || null })
+    .eq('id', sessionId);
+
+  if (error) {
+    console.error('[HR] membership session notes save:', error);
+    showToast('No se pudieron guardar las notas de la sesión.', 'error');
     return false;
   }
 
@@ -6457,9 +6519,7 @@ async function handleAdminTableSaveAll() {
 function collectMembershipDeliveryFormChange(form) {
   const values = formValues(form);
   const beforeDeliveredAt = values.delivered_at_original ?? '';
-  const beforeNotes = values.notes_original ?? '';
   const afterDeliveredAt = values.delivered_at ?? '';
-  const afterNotes = values.notes ?? '';
   const changes = [];
 
   if (String(beforeDeliveredAt) !== String(afterDeliveredAt)) {
@@ -6470,9 +6530,25 @@ function collectMembershipDeliveryFormChange(form) {
     });
   }
 
+  if (!changes.length) return null;
+
+  return {
+    type: 'delivery',
+    values,
+    changes,
+    label: `Ciclo ${values.cycle_number || '-'}`,
+  };
+}
+
+function collectMembershipSessionNotesFormChange(form) {
+  const values = formValues(form);
+  const beforeNotes = values.notes_original ?? '';
+  const afterNotes = values.notes ?? '';
+  const changes = [];
+
   if (String(beforeNotes) !== String(afterNotes)) {
     changes.push({
-      field: 'Notas',
+      field: 'Notas de sesión',
       beforeValue: beforeNotes || '-',
       afterValue: afterNotes || '-',
     });
@@ -6481,9 +6557,10 @@ function collectMembershipDeliveryFormChange(form) {
   if (!changes.length) return null;
 
   return {
+    type: 'session-notes',
     values,
     changes,
-    label: `Semana ciclo ${values.cycle_number || '-'}`,
+    label: `Sesión ${values.session_id || '-'}`,
   };
 }
 
@@ -6491,9 +6568,12 @@ async function handleMembershipDashboardSaveAll() {
   if (!requireAdminMutation()) return;
   persistAdminTableSearchFromDOM('membership_dashboard');
 
-  const forms = [...document.querySelectorAll('form[data-form="membership-delivery"][data-stay-section="admin-table-editor"]')];
-  const pending = forms
-    .map(collectMembershipDeliveryFormChange)
+  const deliveryForms = [...document.querySelectorAll('form[data-form="membership-delivery"][data-stay-section="admin-table-editor"]')];
+  const sessionNotesForms = [...document.querySelectorAll('form[data-form="membership-session-notes"][data-stay-section="admin-table-editor"]')];
+  const pending = [
+    ...deliveryForms.map(collectMembershipDeliveryFormChange),
+    ...sessionNotesForms.map(collectMembershipSessionNotesFormChange),
+  ]
     .filter(Boolean);
 
   if (!pending.length) {
@@ -6501,7 +6581,7 @@ async function handleMembershipDashboardSaveAll() {
     return;
   }
 
-  const invalid = pending.find((item) => !item.values.delivered_at);
+  const invalid = pending.find((item) => item.type === 'delivery' && !item.values.delivered_at);
   if (invalid) {
     showToast('Fecha de entrega es obligatoria para guardar cambios de entrega.', 'error');
     return;
@@ -6519,7 +6599,9 @@ async function handleMembershipDashboardSaveAll() {
   if (!confirmed) return;
 
   for (const item of pending) {
-    const ok = await saveMembershipDeliveryValues(item.values);
+    const ok = item.type === 'session-notes'
+      ? await saveMembershipSessionNotesValues(item.values)
+      : await saveMembershipDeliveryValues(item.values);
     if (!ok) return;
   }
 
@@ -7194,6 +7276,7 @@ function attachMainDelegation() {
     if (form.dataset.form === 'user-merge') handleErpForm(form);
     if (form.dataset.form === 'membership-cancel') handleErpForm(form);
     if (form.dataset.form === 'membership-delivery') handleErpForm(form);
+    if (form.dataset.form === 'membership-session-notes') handleErpForm(form);
     if (form.dataset.form?.endsWith('-create') && !form.dataset.form.startsWith('task-')) {
       handleErpForm(form);
     }
