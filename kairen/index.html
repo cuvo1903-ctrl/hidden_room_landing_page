@@ -4,48 +4,71 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kairen - Pruebas</title>
+  <link rel="icon" type="image/webp" href="/assets/img/orange_logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./kairen.css">
 </head>
-<body>
-  <main>
-    <h1>Kairen</h1>
+<body class="kairen-page" data-hr-chrome data-hr-context="portal">
+  <main class="kairen-shell">
+    <header class="kairen-heading">
+      <div>
+        <p class="hr-eyebrow">Hidden Room / Intelligence layer</p>
+        <h1 class="hr-page-title">Kairen</h1>
+      </div>
+      <div class="kairen-session">
+        <p id="session-status">Validando sesión...</p>
+        <button id="logout-button" class="hr-btn hr-btn--outline" type="button" hidden>Cerrar sesión</button>
+      </div>
+    </header>
 
-    <p id="session-status">Validando sesión...</p>
-    <button id="logout-button" type="button" hidden>Cerrar sesión</button>
+    <section id="tester" class="kairen-workspace" hidden>
+      <aside class="kairen-config hr-panel">
+        <fieldset>
+          <legend>Modelo IA</legend>
 
-    <section id="tester" hidden>
-      <fieldset>
-        <legend>Modelo IA</legend>
+          <label class="hr-field" for="ai-provider">
+            <span>Provider</span>
+            <select class="hr-select" id="ai-provider">
+              <option value="gemini">Google AI</option>
+              <option value="openrouter" disabled>OpenRouter (no configurado)</option>
+              <option value="ollama" disabled>Ollama (no configurado)</option>
+            </select>
+          </label>
 
-        <label for="ai-provider">Provider</label>
-        <select id="ai-provider">
-          <option value="gemini">Google AI</option>
-          <option value="openrouter" disabled>OpenRouter (no configurado)</option>
-          <option value="ollama" disabled>Ollama (no configurado)</option>
-        </select>
+          <label class="hr-field" for="ai-model">
+            <span>Modelo</span>
+            <select class="hr-select" id="ai-model"></select>
+          </label>
 
-        <label for="ai-model">Modelo</label>
-        <select id="ai-model"></select>
+          <p class="kairen-help">
+            Recomendaciones: 3.5 Flash · Gemma 4 31B ·
+            Voz → 2.5 Flash Native Audio Dialog
+          </p>
+        </fieldset>
+      </aside>
 
-        <p>
-          Recomendaciones:
-          3.5 Flash · Gemma 4 31B ·
-          Voz → 2.5 Flash Native Audio Dialog
-        </p>
-      </fieldset>
+      <section class="kairen-console hr-panel">
+        <p id="active-model">[Kairen | Google AI | 3.1 Flash Lite]</p>
+        <div id="chat-output" class="kairen-output" aria-live="polite"></div>
 
-      <p id="active-model">[Kairen | Google AI | 3.1 Flash Lite]</p>
-
-      <div id="chat-output" aria-live="polite"></div>
-
-      <form id="kairen-form">
-        <label for="message">Mensaje</label>
-        <textarea id="message" name="message" rows="4" required></textarea>
-        <button id="submit-button" type="submit">Enviar</button>
-        <button id="clear-button" type="button">Limpiar chat</button>
-      </form>
+        <form id="kairen-form" class="kairen-form">
+          <label class="hr-field" for="message">
+            <span>Mensaje</span>
+            <textarea class="hr-textarea" id="message" name="message" rows="4" required></textarea>
+          </label>
+          <div class="hr-cluster">
+            <button id="submit-button" class="hr-btn hr-btn--primary" type="submit">Enviar</button>
+            <button id="clear-button" class="hr-btn hr-btn--outline" type="button">Limpiar chat</button>
+          </div>
+        </form>
+      </section>
     </section>
   </main>
 
+  <script src="../site.js"></script>
   <script type="module" src="kairen.js?v=20260618-google-ai"></script>
 </body>
 </html>

@@ -3,6 +3,7 @@ import {
   escapeHTML,
   formatDate,
   postURL,
+  revealMediaAdminLink,
   supabase,
 } from "./config.js";
 
@@ -121,3 +122,4 @@ loadMore.addEventListener("click", () => loadPosts());
 
 loadFeatured();
 loadPosts(true);
+revealMediaAdminLink();

@@ -5,6 +5,36 @@ export const supabase = createClient(
   "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
 );
 
+export async function revealMediaAdminLink() {
+  const nav = document.querySelector(".media-nav__links");
+  if (!nav || nav.querySelector("[data-media-admin-link]")) return;
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const [{ data: profile }, { data: permission }] = await Promise.all([
+    supabase.from("users").select("roles").eq("id", user.id).maybeSingle(),
+    supabase
+      .from("user_permissions")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("permission_key", "media.posts")
+      .maybeSingle(),
+  ]);
+
+  const isAdmin = String(profile?.roles || "")
+    .split(",")
+    .some((role) => role.trim().toLowerCase() === "admin");
+
+  if (!isAdmin && !permission) return;
+
+  const link = document.createElement("a");
+  link.href = "/media/admin.html";
+  link.dataset.mediaAdminLink = "";
+  link.textContent = "CMS";
+  nav.append(link);
+}
+
 export const MEDIA_CATEGORIES = [
   "Noticias",
   "Coberturas",

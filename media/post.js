@@ -2,6 +2,7 @@ import {
   escapeHTML,
   formatDate,
   postURL,
+  revealMediaAdminLink,
   sanitizeContent,
   setMeta,
   supabase,
@@ -131,3 +132,4 @@ async function init() {
 }
 
 init();
+revealMediaAdminLink();

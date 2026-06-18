@@ -1,6 +1,15 @@
 const SITE_STATUS = "BETA Sitio en contrucción";
 const SITE_VERSION = "V. 0.7.0";
 const GA_MEASUREMENT_ID = "G-VNHC1Z3FXZ";
+const ECOSYSTEM_LINKS = [
+  ["events", "/#events", "Eventos"],
+  ["studio", "/#studio", "Estudios"],
+  ["demonz", "/#demonz", "dem00nz"],
+  ["media", "/media/", "Media"],
+  ["store", "/store/", "Tienda"],
+  ["games", "/minijuegos/", "Minijuegos"],
+  ["portal", "/portal/", "Portal"],
+];
 
 function initAnalytics() {
   window.dataLayer = window.dataLayer || [];
@@ -31,6 +40,51 @@ function hydrateCanonicalMeta() {
 cleanIndexURL();
 hydrateCanonicalMeta();
 initAnalytics();
+
+function initGlobalChrome() {
+  const body = document.body;
+  if (!body?.hasAttribute("data-hr-chrome")) return;
+
+  const context = body.dataset.hrContext || "";
+  const accent = body.dataset.hrAccent || (context === "media" ? "media" : "brand");
+
+  if (!body.querySelector(":scope > .hr-site-nav")) {
+    const nav = document.createElement("nav");
+    nav.className = "hr-site-nav";
+    nav.dataset.accent = accent;
+    nav.setAttribute("aria-label", "Navegación del ecosistema Hidden Room");
+    nav.innerHTML = `
+      <div class="hr-site-nav__inner">
+        <a class="hr-site-nav__home" href="/">Hidden Room / La Casa del Under</a>
+        <div class="hr-site-nav__links">
+          ${ECOSYSTEM_LINKS.map(([key, href, label]) => `
+            <a href="${href}"${key === context ? ' aria-current="page"' : ""}>${label}</a>
+          `).join("")}
+        </div>
+      </div>
+    `;
+    body.prepend(nav);
+  }
+
+  if (body.dataset.hrFooter !== "false" && !body.querySelector(":scope > .hr-site-footer")) {
+    const footer = document.createElement("footer");
+    footer.className = "hr-site-footer";
+    footer.innerHTML = `
+      <a href="/" aria-label="Hidden Room">
+        <img class="hr-site-footer__logo" src="/assets/img/white_logo.webp" alt="Hidden Room">
+      </a>
+      <div class="hr-site-footer__meta">
+        <span>Una marca de Grupo Mysauth</span>
+        <span class="site-status"></span>
+        <a href="/changelog.html" class="site-version"></a>
+      </div>
+      <div class="hr-site-footer__tagline">La Casa del Under</div>
+    `;
+    body.append(footer);
+  }
+}
+
+initGlobalChrome();
 
 document.querySelectorAll(".site-status").forEach(el => {
   el.textContent = SITE_STATUS;
