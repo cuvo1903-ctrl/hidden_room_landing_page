@@ -391,6 +391,9 @@ const SUGGESTED_PERMISSIONS = [
   'erp.ops.input',
   'rrpp.manage',
   'events.access',
+  'tickets.view',
+  'tickets.edit',
+  'tickets.validate',
 ];
 
 const EVENT_PERMISSION_FLAGS = [

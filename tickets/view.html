@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Consulta de tickets de Hidden Room">
+  <title>Ver tickets | Hidden Room</title>
+  <link rel="icon" type="image/webp" href="/assets/img/orange_logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./tickets.css">
+</head>
+<body class="tickets-page tickets-page--view">
+  <header class="tickets-topbar">
+    <a class="tickets-brand" href="./index.html" aria-label="Ir al inicio de la boletera">
+      <img src="../assets/img/white_logo.webp" alt="Hidden Room">
+    </a>
+    <div class="tickets-topbar__actions">
+      <span id="session-user" class="tickets-session">Verificando sesión…</span>
+      <a class="ticket-btn ticket-btn--ghost" href="./index.html">Inicio</a>
+      <a class="ticket-btn ticket-btn--ghost" href="./generate.html">Generar</a>
+      <a class="ticket-btn ticket-btn--ghost" href="./validate.html">Validar</a>
+    </div>
+  </header>
+
+  <main class="tickets-shell">
+    <section class="tickets-hero">
+      <p class="tickets-kicker">Administración</p>
+      <h1>Ver tickets</h1>
+      <p>Selecciona un evento para consultar sus accesos e imprimir el lote completo o tickets individuales.</p>
+    </section>
+
+    <div id="page-message" class="ticket-alert" role="status" aria-live="polite" hidden></div>
+
+    <section id="view-panel" class="ticket-view-toolbar" hidden>
+      <label class="ticket-field">
+        <span>Evento</span>
+        <select id="event-key" disabled>
+          <option value="">Cargando eventos…</option>
+        </select>
+      </label>
+
+      <div class="ticket-view-toolbar__actions">
+        <button id="refresh-button" class="ticket-btn ticket-btn--ghost" type="button" disabled>
+          Actualizar
+        </button>
+        <button id="print-batch-button" class="ticket-btn ticket-btn--light" type="button" disabled>
+          Imprimir lote / PDF
+        </button>
+      </div>
+    </section>
+
+    <section id="view-summary" class="ticket-view-summary" hidden aria-label="Resumen de tickets">
+      <div><strong id="total-count">0</strong><span>Total</span></div>
+      <div><strong id="valid-count">0</strong><span>Válidos</span></div>
+      <div><strong id="used-count">0</strong><span>Usados</span></div>
+      <div><strong id="cancelled-count">0</strong><span>Cancelados</span></div>
+    </section>
+
+    <section id="tickets-section" class="tickets-results" hidden>
+      <div class="tickets-results__heading">
+        <div>
+          <p class="tickets-kicker">Evento seleccionado</p>
+          <h2 id="tickets-title">Tickets</h2>
+        </div>
+      </div>
+      <div id="tickets-list" class="tickets-list" aria-live="polite"></div>
+      <p id="tickets-empty" class="tickets-empty" hidden>No hay tickets generados para este evento.</p>
+    </section>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script type="module" src="./view.js"></script>
+</body>
+</html>

@@ -30,14 +30,16 @@ async function init() {
 
   Object.assign(state, sessionData);
   state.canValidate = isAdmin(state.profile?.roles)
-    || state.permissions.includes("tickets.validate")
-    || state.permissions.includes("tickets.scan");
+    || state.permissions.includes("tickets.validate");
 
   els.sessionUser.textContent = state.user.email || state.user.id;
   bindEvents();
 
   if (!state.canValidate) {
     showMessage("Tu sesión no tiene permiso para validar tickets.", "error");
+    els.folioInput.disabled = true;
+    els.searchButton.disabled = true;
+    return;
   }
 
   const folio = normalizeFolio(new URLSearchParams(window.location.search).get("folio"));
@@ -197,19 +199,8 @@ async function markTicketUsed() {
   const button = els.result.querySelector("[data-action='use-ticket']");
   setBusy(button, true, "Marcando…");
 
-  const usedBy = state.user.email || state.user.id;
-  const usedAt = new Date().toISOString();
   const { data, error } = await supabase
-    .from("event_tickets")
-    .update({
-      status: "used",
-      used_at: usedAt,
-      used_by: usedBy,
-    })
-    .eq("folio", state.ticket.folio)
-    .eq("status", "valid")
-    .select("*")
-    .maybeSingle();
+    .rpc("mark_ticket_used", { ticket_folio: state.ticket.folio });
 
   if (error) {
     console.error("[Tickets] Error al marcar como usado:", error);
@@ -218,8 +209,9 @@ async function markTicketUsed() {
     return;
   }
 
-  if (data) {
-    state.ticket = data;
+  const updatedTicket = Array.isArray(data) ? data[0] : data;
+  if (updatedTicket) {
+    state.ticket = updatedTicket;
     renderTicket();
     showMessage("Ticket marcado como usado.", "success");
     return;

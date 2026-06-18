@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Panel de boletera de Hidden Room">
+  <meta name="description" content="Boletera de Hidden Room">
   <title>Boletera | Hidden Room</title>
   <link rel="icon" type="image/webp" href="/assets/img/orange_logo.webp">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,102 +12,59 @@
   <link rel="stylesheet" href="../styles.css">
   <link rel="stylesheet" href="./tickets.css">
 </head>
-<body class="tickets-page">
+<body class="tickets-page tickets-page--home">
   <header class="tickets-topbar">
     <a class="tickets-brand" href="/" aria-label="Ir al inicio de Hidden Room">
       <img src="../assets/img/white_logo.webp" alt="Hidden Room">
     </a>
     <div class="tickets-topbar__actions">
       <span id="session-user" class="tickets-session">Verificando sesión…</span>
-      <a class="ticket-btn ticket-btn--ghost" href="./validate.html">Validar ticket</a>
-      <a class="ticket-btn ticket-btn--ghost" href="../portal/dashboard.html">Portal</a>
+      <a class="ticket-btn ticket-btn--ghost" href="../portal/dashboard.html">Volver al portal</a>
     </div>
   </header>
 
-  <main class="tickets-shell">
+  <main class="tickets-shell tickets-home">
     <section class="tickets-hero">
       <p class="tickets-kicker">Hidden Room · Beta</p>
-      <h1>Boletera de cover</h1>
-      <p>Genera folios, entrega códigos QR y prepara una hoja imprimible para puerta.</p>
+      <h1>Boletera</h1>
+      <p>Centro de operaciones para crear accesos y validar tickets de cover en puerta.</p>
     </section>
 
     <div id="page-message" class="ticket-alert" role="status" aria-live="polite" hidden></div>
 
-    <section id="admin-panel" class="tickets-admin-grid" hidden>
-      <article class="ticket-panel">
-        <div class="ticket-panel__heading">
-          <div>
-            <p class="tickets-kicker">Nuevo lote</p>
-            <h2>Generar tickets</h2>
-          </div>
-          <span class="ticket-chip">Solo admin</span>
-        </div>
-
-        <form id="ticket-form" class="ticket-form">
-          <label class="ticket-field ticket-field--wide">
-            <span>Evento</span>
-            <select id="event-key" name="event_key" required disabled>
-              <option value="">Cargando eventos…</option>
-            </select>
-          </label>
-
-          <label class="ticket-field">
-            <span>Cantidad</span>
-            <input id="ticket-quantity" name="quantity" type="number" min="1" max="100" value="1" required>
-          </label>
-
-          <label class="ticket-field">
-            <span>Precio</span>
-            <input id="ticket-price" name="price" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" required>
-          </label>
-
-          <label class="ticket-field">
-            <span>Nombre del cliente <small>opcional</small></span>
-            <input id="customer-name" name="customer_name" type="text" maxlength="160" autocomplete="name">
-          </label>
-
-          <label class="ticket-field">
-            <span>Email del cliente <small>opcional</small></span>
-            <input id="customer-email" name="customer_email" type="email" maxlength="254" autocomplete="email">
-          </label>
-
-          <label class="ticket-field ticket-field--wide">
-            <span>Notas <small>opcional</small></span>
-            <textarea id="ticket-notes" name="notes" rows="3" maxlength="1000"></textarea>
-          </label>
-
-          <button id="generate-button" class="ticket-btn ticket-btn--primary ticket-field--wide" type="submit">
-            Generar tickets
-          </button>
-        </form>
-      </article>
-
-      <aside class="ticket-panel ticket-panel--summary">
-        <p class="tickets-kicker">Lote actual</p>
-        <strong id="batch-count" class="tickets-big-number">0</strong>
-        <span>tickets listos</span>
-        <button id="print-batch-button" class="ticket-btn ticket-btn--light" type="button" disabled>
-          Imprimir lote / Guardar PDF
-        </button>
-        <p class="ticket-help">En el diálogo de impresión puedes elegir “Guardar como PDF”.</p>
-      </aside>
-    </section>
-
-    <section id="tickets-section" class="tickets-results" hidden>
-      <div class="tickets-results__heading">
+    <section id="ticket-home-actions" class="ticket-home-grid" hidden>
+      <a id="generate-card" class="ticket-home-card ticket-home-card--generate" href="./generate.html">
+        <span class="ticket-home-card__number">01</span>
         <div>
-          <p class="tickets-kicker">Tickets</p>
-          <h2 id="tickets-title">Lote generado</h2>
+          <p class="tickets-kicker">Administración</p>
+          <h2>Generar tickets</h2>
+          <p>Crea lotes con folios consecutivos, códigos QR y plantillas listas para imprimir.</p>
         </div>
-        <button id="refresh-button" class="ticket-btn ticket-btn--ghost" type="button">Actualizar lista</button>
-      </div>
-      <div id="tickets-list" class="tickets-list" aria-live="polite"></div>
-      <p id="tickets-empty" class="tickets-empty" hidden>No hay tickets generados para este evento.</p>
+        <span class="ticket-home-card__arrow" aria-hidden="true">→</span>
+      </a>
+
+      <a id="view-card" class="ticket-home-card ticket-home-card--view" href="./view.html">
+        <span class="ticket-home-card__number">02</span>
+        <div>
+          <p class="tickets-kicker">Consulta e impresión</p>
+          <h2>Ver tickets</h2>
+          <p>Selecciona eventos, consulta sus tickets e imprime el lote completo o accesos individuales.</p>
+        </div>
+        <span class="ticket-home-card__arrow" aria-hidden="true">→</span>
+      </a>
+
+      <a class="ticket-home-card ticket-home-card--validate" href="./validate.html">
+        <span class="ticket-home-card__number">03</span>
+        <div>
+          <p class="tickets-kicker">Acceso de puerta</p>
+          <h2>Validar tickets</h2>
+          <p>Consulta un folio, confirma su estado y márcalo como usado al permitir el acceso.</p>
+        </div>
+        <span class="ticket-home-card__arrow" aria-hidden="true">→</span>
+      </a>
     </section>
   </main>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
-          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script type="module" src="./tickets.js"></script>
+  <script type="module" src="./home.js"></script>
 </body>
 </html>
