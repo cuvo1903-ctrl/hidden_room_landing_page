@@ -17,6 +17,10 @@
     var(--black);
 }
 
+.media-body [hidden] {
+  display: none !important;
+}
+
 .media-nav {
   position: relative;
   z-index: 20;
