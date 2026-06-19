@@ -1692,7 +1692,15 @@ body[data-hr-chrome] .success-brand {
   padding: clamp(28px, 5vw, 48px) var(--hr-page-gutter);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
+  #hr-global-nav {
+    will-change: auto;
+  }
+
+  body.hr-global-menu-open #hr-global-nav {
+    transform: none !important;
+  }
+
   .hr-nav__main {
     position: relative;
     min-height: 54px;
@@ -1745,7 +1753,7 @@ body[data-hr-chrome] .success-brand {
 
   .hr-global-drawer__backdrop {
     position: fixed;
-    z-index: 198;
+    z-index: 10001;
     inset: 0;
     display: block;
     border: 0;
@@ -1759,7 +1767,7 @@ body[data-hr-chrome] .success-brand {
 
   .hr-global-drawer {
     position: fixed;
-    z-index: 199;
+    z-index: 10002;
     top: 0;
     right: 0;
     bottom: 0;
@@ -1775,7 +1783,10 @@ body[data-hr-chrome] .success-brand {
     animation: hr-drawer-in .24s var(--ease-standard);
   }
 
-  body.hr-global-menu-open #hr-global-nav { z-index: 200; }
+  body.hr-global-menu-open #hr-global-nav {
+    z-index: 10000;
+    overflow: visible;
+  }
 
   .hr-global-drawer__header {
     padding-bottom: 18px;
@@ -2029,6 +2040,20 @@ body[data-hr-chrome] .success-brand {
   .store-footer.hr-site-footer { grid-template-columns: 1fr; align-items: start; }
   .hr-site-footer__tagline { text-align: left; }
   .hr-page-title { font-size: clamp(32px, 12vw, 58px); }
+}
+
+/* El portal cambia a layout móvil en 800px. Entre 801px y 900px solo
+   activamos la hamburguesa global y conservamos su sidebar de escritorio. */
+@media (min-width: 801px) and (max-width: 900px) {
+  .db-body .db-main {
+    padding-bottom: 0;
+  }
+
+  .db-body .hr-portal-bottom-nav,
+  .db-body .hr-portal-backdrop,
+  .db-body .hr-portal-drawer {
+    display: none !important;
+  }
 }
 
 @keyframes hr-fade-in {
