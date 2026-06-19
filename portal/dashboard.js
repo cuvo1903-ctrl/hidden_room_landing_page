@@ -1439,7 +1439,9 @@ function visiblePortalGroups() {
 function renderPortalNavItem(item, className = 'db-sidebar__item') {
   const icon = `<span class="db-icon db-icon--${escapeHTML(item.icon || 'grid')}" aria-hidden="true"></span>`;
   const text = `<span class="db-sidebar__item-text">${escapeHTML(item.label)}</span>`;
-  const classes = `${className}${item.danger ? ' db-sidebar__item--danger' : ''}`;
+  const active = item.section === state.activeSection;
+  const classes = `${className}${item.danger ? ' db-sidebar__item--danger' : ''}${active ? ' is-active' : ''}`;
+  const current = active ? ' aria-current="page"' : '';
 
   if (item.href) {
     return `<a class="${classes}" href="${escapeHTML(item.href)}">${icon}${text}</a>`;
@@ -1448,7 +1450,7 @@ function renderPortalNavItem(item, className = 'db-sidebar__item') {
   const data = item.section
     ? `data-section="${escapeHTML(item.section)}"`
     : `data-sidebar-action="${escapeHTML(item.action)}"`;
-  return `<button class="${classes}" type="button" ${data}>${icon}${text}</button>`;
+  return `<button class="${classes}" type="button" ${data}${current}>${icon}${text}</button>`;
 }
 
 function renderPortalSidebar() {
@@ -1464,15 +1466,28 @@ function renderPortalSidebar() {
   `).join('');
 }
 
-function renderPortalMoreSheet(filterKey = '') {
-  const groups = visiblePortalGroups().filter((group) => !filterKey || group.key === filterKey);
+function activePortalGroupKey() {
+  return PORTAL_NAV_GROUPS.find((group) =>
+    group.items.some((item) => item.section === state.activeSection)
+  )?.key || '';
+}
+
+function renderPortalMoreSheet(openKey = '') {
+  const groups = visiblePortalGroups().filter((group) => group.key !== 'system');
+  const expandedKey = openKey || activePortalGroupKey() || groups[0]?.key;
+  const currentKey = activePortalGroupKey();
+
   return groups.map((group) => `
-    <section class="hr-portal-drawer__section" data-portal-sheet-group="${escapeHTML(group.key)}">
-      <h3>${escapeHTML(group.title)}</h3>
+    <details class="hr-portal-drawer__section${group.key === currentKey ? ' is-current' : ''}"
+      data-portal-sheet-group="${escapeHTML(group.key)}"${group.key === expandedKey ? ' open' : ''}>
+      <summary>
+        <span>${escapeHTML(group.title)}</span>
+        <span class="hr-portal-drawer__chevron" aria-hidden="true"></span>
+      </summary>
       <div class="hr-portal-drawer__list">
         ${group.items.map((item) => renderPortalNavItem(item, 'hr-portal-nav-item')).join('')}
       </div>
-    </section>
+    </details>
   `).join('');
 }
 
@@ -1510,9 +1525,8 @@ function togglePortalMoreSheet(forceOpen, filterKey = '') {
 
   const open = typeof forceOpen === 'boolean' ? forceOpen : sheet.hidden;
   if (open) {
-    const group = PORTAL_NAV_GROUPS.find((item) => item.key === filterKey);
     sheet.querySelector('.hr-portal-drawer__content').innerHTML = renderPortalMoreSheet(filterKey);
-    sheet.querySelector('[data-portal-sheet-title]').textContent = group?.title || 'Todas las secciones';
+    sheet.querySelector('[data-portal-sheet-title]').textContent = 'Todas las secciones';
   }
 
   sheet.hidden = !open;
@@ -1556,6 +1570,13 @@ function attachPortalMobileListeners() {
 
     if (event.target.closest('a, button')) closePortalMoreSheet();
   });
+  document.getElementById('hr-portal-more')?.addEventListener('toggle', (event) => {
+    const opened = event.target.closest('details[open]');
+    if (!opened) return;
+    document.querySelectorAll('#hr-portal-more details[open]').forEach((group) => {
+      if (group !== opened) group.removeAttribute('open');
+    });
+  }, true);
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && document.body.classList.contains('hr-portal-menu-open')) {

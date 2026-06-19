@@ -208,6 +208,25 @@ function toggleGlobalDrawer(forceOpen) {
   else toggle.focus();
 }
 
+function attachGlobalDrawerSwipe(drawer) {
+  if (!drawer) return;
+  let startX = 0;
+  let startY = 0;
+
+  drawer.addEventListener("touchstart", (event) => {
+    const touch = event.changedTouches[0];
+    startX = touch.clientX;
+    startY = touch.clientY;
+  }, { passive: true });
+
+  drawer.addEventListener("touchend", (event) => {
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - startX;
+    const deltaY = Math.abs(touch.clientY - startY);
+    if (deltaX > 70 && deltaY < 80) toggleGlobalDrawer(false);
+  }, { passive: true });
+}
+
 function renderGlobalNav() {
   const target = document.getElementById("hr-global-nav");
   if (!target) return;
@@ -254,6 +273,7 @@ function renderGlobalNav() {
   target.querySelector(".hr-global-drawer")?.addEventListener("click", (event) => {
     if (event.target.closest("a")) toggleGlobalDrawer(false);
   });
+  attachGlobalDrawerSwipe(target.querySelector(".hr-global-drawer"));
 }
 
 function syncPortalSubNav() {
