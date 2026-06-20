@@ -42,7 +42,7 @@ function card(post, featured = false) {
         </div>
         <h3><a href="${postURL(post.slug)}">${escapeHTML(post.title)}</a></h3>
         <p>${escapeHTML(post.excerpt || "")}</p>
-        <a class="media-card__read" href="${postURL(post.slug)}">Leer artículo →</a>
+        <a class="media-card__read hr-btn hr-btn-ghost hr-btn-sm" href="${postURL(post.slug)}">Leer artículo →</a>
       </div>
     </article>
   `;

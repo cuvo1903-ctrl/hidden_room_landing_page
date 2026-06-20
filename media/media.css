@@ -203,7 +203,7 @@
 }
 
 .media-card__read {
-  display: inline-block;
+  justify-self: start;
   margin-top: 24px;
   color: var(--hr-accent);
   font-size: var(--text-sm);
