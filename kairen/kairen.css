@@ -3,38 +3,30 @@
   background:
     radial-gradient(circle at 82% 8%, rgba(219, 1, 0, .13), transparent 30rem),
     var(--hr-bg);
-  color: var(--hr-text);
   cursor: auto;
 }
 
 .kairen-shell {
-  width: min(1400px, calc(100% - 36px));
   min-height: 72vh;
-  margin: 0 auto;
   padding: clamp(48px, 8vw, 100px) 0;
 }
 
 .kairen-heading {
   margin-bottom: clamp(34px, 6vw, 70px);
-  display: flex;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
-  justify-content: space-between;
   gap: 28px;
 }
 
 .kairen-session {
+  --hr-cluster-gap: 16px;
   max-width: 430px;
-  display: flex;
-  align-items: center;
   justify-content: flex-end;
-  gap: 16px;
-  color: var(--hr-muted);
   font-size: 11px;
   text-align: right;
 }
 
 .kairen-workspace {
-  display: grid;
   grid-template-columns: minmax(250px, .65fr) minmax(0, 1.6fr);
   gap: 18px;
   align-items: start;
@@ -46,19 +38,15 @@
 }
 
 .kairen-config fieldset {
-  display: grid;
-  gap: 20px;
   border: 0;
 }
 
 .kairen-config legend {
   margin-bottom: 24px;
-  font: 700 18px var(--font-display);
-  text-transform: uppercase;
+  font-size: 18px;
 }
 
 .kairen-help {
-  color: var(--hr-muted);
   font-size: 10px;
   line-height: 1.7;
 }
@@ -67,21 +55,19 @@
   min-height: 520px;
   display: flex;
   flex-direction: column;
+  gap: 0;
 }
 
 #active-model {
   padding-bottom: 16px;
   border-bottom: 1px solid var(--hr-border);
-  color: var(--hr-red);
   font-size: 10px;
   letter-spacing: .12em;
-  text-transform: uppercase;
 }
 
 .kairen-output {
   min-height: 280px;
   padding: 24px 0;
-  display: grid;
   align-content: start;
   gap: 14px;
 }
@@ -96,11 +82,12 @@
 }
 
 .kairen-output strong { color: var(--hr-text); }
-.kairen-form { margin-top: auto; display: grid; gap: 16px; }
+.kairen-form { margin-top: auto; }
+.kairen-actions { --hr-cluster-gap: var(--hr-space-sm); }
 
 @media (max-width: 800px) {
-  .kairen-heading { align-items: flex-start; flex-direction: column; }
-  .kairen-session { align-items: flex-start; flex-direction: column; text-align: left; }
+  .kairen-heading { grid-template-columns: 1fr; align-items: start; }
+  .kairen-session { align-items: flex-start; flex-direction: column; justify-content: flex-start; text-align: left; }
   .kairen-workspace { grid-template-columns: 1fr; }
   .kairen-config { position: static; }
 }

@@ -8,27 +8,28 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../styles.css?v=20260618-mobileauth">
-  <link rel="stylesheet" href="./kairen.css">
+  <link rel="stylesheet" href="../styles.css?v=20260620-kairen-system">
+  <link rel="stylesheet" href="./kairen.css?v=20260620-kairen-system">
 </head>
-<body class="kairen-page" data-hr-chrome data-hr-context="kairen">
+<body class="kairen-page hr-page" data-hr-chrome data-hr-context="kairen">
   <div id="hr-global-nav"></div>
-  <main class="kairen-shell">
-    <header class="kairen-heading">
+  <main class="kairen-shell hr-section">
+    <div class="hr-container hr-stack hr-stack-xl">
+    <header class="kairen-heading hr-grid hr-grid-2">
       <div>
         <p class="hr-eyebrow">Hidden Room / Intelligence layer</p>
-        <h1 class="hr-page-title">Kairen</h1>
+        <h1 class="hr-title-xl">Kairen</h1>
       </div>
-      <div class="kairen-session">
-        <p id="session-status">Validando sesión...</p>
-        <button id="logout-button" class="hr-btn hr-btn--outline" type="button" hidden>Cerrar sesión</button>
+      <div class="kairen-session hr-cluster">
+        <p id="session-status" class="hr-muted">Validando sesión...</p>
+        <button id="logout-button" class="hr-btn hr-btn-outline" type="button" hidden>Cerrar sesión</button>
       </div>
     </header>
 
-    <section id="tester" class="kairen-workspace" hidden>
-      <aside class="kairen-config hr-panel">
-        <fieldset>
-          <legend>Modelo IA</legend>
+    <section id="tester" class="kairen-workspace hr-grid" hidden>
+      <aside class="kairen-config hr-panel hr-card hr-stack">
+        <fieldset class="hr-stack hr-stack-lg">
+          <legend class="hr-section-title">Modelo IA</legend>
 
           <label class="hr-field" for="ai-provider">
             <span>Provider</span>
@@ -44,29 +45,30 @@
             <select class="hr-select" id="ai-model"></select>
           </label>
 
-          <p class="kairen-help">
+          <p class="kairen-help hr-help">
             Recomendaciones: 3.5 Flash · Gemma 4 31B ·
             Voz → 2.5 Flash Native Audio Dialog
           </p>
         </fieldset>
       </aside>
 
-      <section class="kairen-console hr-panel">
-        <p id="active-model">[Kairen | Google AI | 3.1 Flash Lite]</p>
-        <div id="chat-output" class="kairen-output" aria-live="polite"></div>
+      <section class="kairen-console hr-panel hr-card hr-stack">
+        <p id="active-model" class="hr-kicker hr-color-pop">[Kairen | Google AI | 3.1 Flash Lite]</p>
+        <div id="chat-output" class="kairen-output hr-stack" aria-live="polite"></div>
 
-        <form id="kairen-form" class="kairen-form">
+        <form id="kairen-form" class="kairen-form hr-stack">
           <label class="hr-field" for="message">
             <span>Mensaje</span>
             <textarea class="hr-textarea" id="message" name="message" rows="4" required></textarea>
           </label>
-          <div class="hr-cluster">
-            <button id="submit-button" class="hr-btn hr-btn--primary" type="submit">Enviar</button>
-            <button id="clear-button" class="hr-btn hr-btn--outline" type="button">Limpiar chat</button>
+          <div class="kairen-actions hr-cluster">
+            <button id="submit-button" class="hr-btn hr-btn-primary" type="submit">Enviar</button>
+            <button id="clear-button" class="hr-btn hr-btn-outline" type="button">Limpiar chat</button>
           </div>
         </form>
       </section>
     </section>
+    </div>
   </main>
 
   <script src="../site.js?v=20260618-mobileauth"></script>
