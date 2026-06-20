@@ -33,10 +33,10 @@ function card(post, featured = false) {
     : `<div class="media-card__placeholder" aria-hidden="true">HR</div>`;
 
   return `
-    <article class="media-card ${featured ? "media-card--featured" : ""}">
+    <article class="media-card hr-media-card hr-hover-lift ${featured ? "media-card--featured" : ""}">
       <a class="media-card__image" href="${postURL(post.slug)}">${cover}</a>
-      <div class="media-card__body">
-        <div class="media-card__meta">
+      <div class="media-card__body hr-card-body hr-stack">
+        <div class="media-card__meta hr-cluster">
           <span>${escapeHTML(post.category)}</span>
           <time datetime="${escapeHTML(post.published_at || post.created_at)}">${formatDate(post.published_at || post.created_at)}</time>
         </div>

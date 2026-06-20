@@ -16,23 +16,23 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../styles.css?v=20260618-mobileauth">
-  <link rel="stylesheet" href="./media.css">
+  <link rel="stylesheet" href="../styles.css?v=20260620-media-public">
+  <link rel="stylesheet" href="./media.css?v=20260620-media-public">
   <script id="article-jsonld" type="application/ld+json">{}</script>
 </head>
-<body class="media-body post-page" data-hr-chrome data-hr-context="media" data-hr-accent="media">
+<body class="media-body post-page hr-page" data-hr-chrome data-hr-context="media" data-hr-accent="media">
   <div id="hr-global-nav"></div>
   <div class="cursor" id="cursor" aria-hidden="true"></div>
   <div class="cursor-ring" id="cursorRing" aria-hidden="true"></div>
 
   <main id="post-main">
-    <div id="post-status" class="post-loading" role="status">Cargando artículo…</div>
+    <div id="post-status" class="post-loading hr-muted" role="status">Cargando artículo…</div>
     <article id="post-article" class="post-article" hidden>
-      <header class="post-header">
-        <a id="post-category" class="post-category" href="/media/"></a>
-        <h1 id="post-title"></h1>
-        <p id="post-excerpt" class="post-excerpt"></p>
-        <div class="post-meta">
+      <header class="post-header hr-container hr-stack">
+        <a id="post-category" class="post-category hr-kicker" href="/media/"></a>
+        <h1 id="post-title" class="hr-title-xl"></h1>
+        <p id="post-excerpt" class="post-excerpt hr-subtitle"></p>
+        <div class="post-meta hr-cluster">
           <span id="post-author"></span>
           <time id="post-date"></time>
           <span id="post-views"></span>
@@ -41,22 +41,24 @@
       <figure id="post-cover-wrap" class="post-cover" hidden>
         <img id="post-cover" alt="">
       </figure>
-      <div id="post-content" class="post-content"></div>
-      <footer class="post-footer">
-        <div id="post-tags" class="post-tags"></div>
-        <div class="post-share" aria-label="Compartir artículo">
+      <div id="post-content" class="post-content hr-body"></div>
+      <footer class="post-footer hr-stack">
+        <div id="post-tags" class="post-tags hr-cluster"></div>
+        <div class="post-share hr-cluster" aria-label="Compartir artículo">
           <span>Compartir</span>
-          <a id="share-x" target="_blank" rel="noopener noreferrer">X</a>
-          <a id="share-facebook" target="_blank" rel="noopener noreferrer">Facebook</a>
-          <a id="share-whatsapp" target="_blank" rel="noopener noreferrer">WhatsApp</a>
-          <button id="share-copy" type="button">Copiar link</button>
+          <a id="share-x" class="hr-btn hr-btn-ghost hr-btn-sm" target="_blank" rel="noopener noreferrer">X</a>
+          <a id="share-facebook" class="hr-btn hr-btn-ghost hr-btn-sm" target="_blank" rel="noopener noreferrer">Facebook</a>
+          <a id="share-whatsapp" class="hr-btn hr-btn-ghost hr-btn-sm" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+          <button id="share-copy" class="hr-btn hr-btn-ghost hr-btn-sm" type="button">Copiar link</button>
         </div>
       </footer>
     </article>
 
-    <section id="related-section" class="related-section" hidden>
-      <div class="media-section-heading"><span>03</span><h2>También en el archivo</h2></div>
-      <div id="related-grid" class="posts-grid"></div>
+    <section id="related-section" class="related-section hr-section" hidden>
+      <div class="hr-container hr-stack hr-stack-xl">
+      <div class="media-section-heading hr-cluster"><span>03</span><h2 class="hr-section-title">También en el archivo</h2></div>
+      <div id="related-grid" class="posts-grid hr-card-grid"></div>
+      </div>
     </section>
   </main>
 

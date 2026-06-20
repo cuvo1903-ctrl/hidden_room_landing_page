@@ -16,51 +16,57 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../styles.css?v=20260618-mobileauth">
-  <link rel="stylesheet" href="./media.css">
+  <link rel="stylesheet" href="../styles.css?v=20260620-media-public">
+  <link rel="stylesheet" href="./media.css?v=20260620-media-public">
 </head>
-<body class="media-body" data-hr-chrome data-hr-context="media" data-hr-accent="media">
+<body class="media-body hr-page" data-hr-chrome data-hr-context="media" data-hr-accent="media">
   <div id="hr-global-nav"></div>
   <div class="cursor" id="cursor" aria-hidden="true"></div>
   <div class="cursor-ring" id="cursorRing" aria-hidden="true"></div>
 
   <main>
-    <section class="media-hero">
-      <p class="media-kicker">Hidden Room Archivo</p>
-      <h1>MEDIA<span>.</span></h1>
-      <p>Noticias, voces y ruido.</p>
+    <section class="media-hero hr-section">
+      <div class="media-hero__content hr-container hr-stack">
+      <p class="media-kicker hr-kicker">Hidden Room Archivo</p>
+      <h1 class="hr-title-xl">MEDIA<span>.</span></h1>
+      <p class="hr-subtitle">Noticias, voces y ruido.</p>
+      </div>
     </section>
 
-    <section class="media-featured" id="featured-section" aria-labelledby="featured-title" hidden>
-      <div class="media-section-heading">
+    <section class="media-featured hr-section" id="featured-section" aria-labelledby="featured-title" hidden>
+      <div class="hr-container hr-stack hr-stack-xl">
+      <div class="media-section-heading hr-cluster">
         <span>01</span>
-        <h2 id="featured-title">En portada</h2>
+        <h2 id="featured-title" class="hr-section-title">En portada</h2>
       </div>
-      <div id="featured-grid" class="featured-grid"></div>
+      <div id="featured-grid" class="featured-grid hr-card-grid"></div>
+      </div>
     </section>
 
-    <section class="media-feed" aria-labelledby="feed-title">
-      <div class="media-section-heading">
+    <section class="media-feed hr-section" aria-labelledby="feed-title">
+      <div class="hr-container hr-stack hr-stack-xl">
+      <div class="media-section-heading hr-cluster">
         <span>02</span>
-        <h2 id="feed-title">Últimas publicaciones</h2>
+        <h2 id="feed-title" class="hr-section-title">Últimas publicaciones</h2>
       </div>
 
-      <form class="media-toolbar" id="media-filters" role="search">
-        <label class="media-search">
+      <form class="media-toolbar hr-filterbar" id="media-filters" role="search">
+        <label class="media-search hr-search">
           <span class="sr-only">Buscar publicaciones</span>
-          <input id="media-search" type="search" placeholder="Buscar en el archivo…" autocomplete="off">
+          <input id="media-search" class="hr-search-input" type="search" placeholder="Buscar en el archivo…" autocomplete="off">
         </label>
-        <label class="media-category">
+        <label class="media-category hr-field">
           <span class="sr-only">Filtrar por categoría</span>
-          <select id="media-category">
+          <select id="media-category" class="hr-select">
             <option value="">Todas las categorías</option>
           </select>
         </label>
       </form>
 
-      <div id="media-status" class="media-status" role="status">Cargando publicaciones…</div>
-      <div id="posts-grid" class="posts-grid"></div>
-      <button id="load-more" class="media-load-more" type="button" hidden>Cargar más</button>
+      <div id="media-status" class="media-status hr-muted" role="status">Cargando publicaciones…</div>
+      <div id="posts-grid" class="posts-grid hr-card-grid"></div>
+      <button id="load-more" class="media-load-more hr-btn hr-btn-cyan" type="button" hidden>Cargar más</button>
+      </div>
     </section>
   </main>
 

@@ -14,14 +14,14 @@ const status = document.getElementById("post-status");
 
 function relatedCard(post) {
   return `
-    <article class="media-card">
+    <article class="media-card hr-media-card hr-hover-lift">
       <a class="media-card__image" href="${postURL(post.slug)}">
         ${post.cover_image
           ? `<img src="${escapeHTML(post.cover_image)}" alt="" loading="lazy">`
           : `<div class="media-card__placeholder" aria-hidden="true">HR</div>`}
       </a>
-      <div class="media-card__body">
-        <div class="media-card__meta"><span>${escapeHTML(post.category)}</span><time>${formatDate(post.published_at)}</time></div>
+      <div class="media-card__body hr-card-body hr-stack">
+        <div class="media-card__meta hr-cluster"><span>${escapeHTML(post.category)}</span><time>${formatDate(post.published_at)}</time></div>
         <h3><a href="${postURL(post.slug)}">${escapeHTML(post.title)}</a></h3>
         <p>${escapeHTML(post.excerpt || "")}</p>
       </div>
@@ -115,7 +115,7 @@ async function init() {
   document.getElementById("post-views").textContent = `${post.views || 0} lecturas`;
   document.getElementById("post-content").innerHTML = sanitizeContent(post.content);
   document.getElementById("post-tags").innerHTML = (post.tags || [])
-    .map((tag) => `<span>#${escapeHTML(tag)}</span>`)
+    .map((tag) => `<span class="hr-chip">#${escapeHTML(tag)}</span>`)
     .join("");
 
   if (post.cover_image) {

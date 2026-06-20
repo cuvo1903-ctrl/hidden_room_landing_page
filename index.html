@@ -20,42 +20,45 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;1,300&family=Unbounded:wght@200;400;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=20260618-mobileauth">
+  <link rel="stylesheet" href="./styles.css?v=20260620-home-system">
   
 </head>
-<body class="home-page" data-hr-chrome data-hr-context="home">
+<body class="home-page hr-page" data-hr-chrome data-hr-context="home">
 
 <div id="hr-global-nav"></div>
 <div class="cursor" id="cursor"></div>
 <div class="cursor-ring" id="cursorRing"></div>
 
-<section class="hero" id="hero">
+<section class="hero hr-section" id="hero">
   <div class="hero-bg">
     <div class="hero-accent"></div>
   </div>
   <div class="hero-number">HIDDEN</div>
 
-  <div class="hero-eyebrow">La Casa del Under</div>
+  <div class="hero-content hr-container hr-stack">
+  <div class="hero-eyebrow hr-eyebrow">La Casa del Under</div>
 
-  <h1 class="hero-title">
+  <h1 class="hero-title hr-title-xl">
     La Casa del<br>
     <span>Under</span>
   </h1>
 
-  <p class="hero-subtitle">
+  <p class="hero-subtitle hr-subtitle">
     <strong>Eventos</strong> &nbsp;•&nbsp; Estudio &nbsp;•&nbsp; <strong>Dem00nz</strong> &nbsp;•&nbsp; Media
   </p>
 
   <div class="hero-bottom">
-    <div class="hero-cta">
-      <a href="#events" class="btn-primary">Agenda de Eventos</a>
-      <a href="#studio" class="btn-outline">Estudios</a>
+    <div class="hero-cta hr-cluster">
+      <a href="#events" class="btn-primary hr-btn hr-btn-primary">Agenda de Eventos</a>
+      <a href="#studio" class="btn-outline hr-btn hr-btn-outline">Estudios</a>
     </div>
     <div class="hero-coords">
       Una Marca de Grupo Mysauth -
   <span class="site-status"></span>
   <span class="site-version"></span>
     </div>
+  </div>
+
   </div>
 
   <div class="scroll-indicator">
@@ -85,36 +88,39 @@
   </div>
 </div>
 
-<section class="pillars" id="culture">
-  <div class="pillars-header reveal">
+<section class="pillars hr-section" id="culture">
+  <div class="hr-container">
+  <div class="pillars-header reveal hr-grid hr-grid-2">
     <div>
-      <div class="section-label"><span class="section-num">Últimas</span> Novedades</div>
+      <div class="section-label hr-eyebrow"><span class="section-num">Últimas</span> Novedades</div>
       <!-- CHANGE: removed inline style="text-transform: uppercase;" → already in .pillars-title CSS -->
-      <h2 class="pillars-title">La casa del under.</h2>
+      <h2 class="pillars-title hr-title">La casa del under.</h2>
     </div>
-    <p class="pillars-desc">Cultura underground de México para la gente.</p>
+    <p class="pillars-desc hr-subtitle">Cultura underground de México para la gente.</p>
   </div>
 
-  <div class="gallery-slider">
+  <div class="gallery-slider hr-card">
     <div class="gallery-track" id="galleryTrack">
       <img src="assets/img/hr_gente.jpg" alt="Dem00nz">
       <img src="assets/img/hr_gente2.jpg" alt="Streetwear">
     </div>
-    <button class="gallery-btn prev" data-gallery-dir="-1">&#8592;</button>
-    <button class="gallery-btn next" data-gallery-dir="1">&#8594;</button>
+    <button class="gallery-btn prev hr-icon-btn" data-gallery-dir="-1">&#8592;</button>
+    <button class="gallery-btn next hr-icon-btn" data-gallery-dir="1">&#8594;</button>
+  </div>
   </div>
 </section>
 
-<section class="events" id="events">
+<section class="events hr-section" id="events">
+  <div class="hr-container">
   <div class="events-header reveal">
     <div>
-      <div class="section-label"><span class="section-num">02</span> Eventos</div>
-      <h2 class="events-title">Próximos<br>Eventos</h2>
+      <div class="section-label hr-eyebrow"><span class="section-num">02</span> Eventos</div>
+      <h2 class="events-title hr-title-xl">Próximos<br>Eventos</h2>
     </div>
-    <a href="#contact" class="btn-outline">Todos los Eventos</a>
+    <a href="#contact" class="btn-outline hr-btn hr-btn-outline">Todos los Eventos</a>
   </div>
 
-  <div class="events-list">
+  <div class="events-list hr-stack">
     <div class="event-row reveal">
       <div class="event-date">20 JUN</div>
       <div class="event-name">Hidden Room Vol. 21 x Tlalpan Wings House</div>
@@ -146,51 +152,55 @@
       <div class="event-tag">Dem00nz</div>
     </div>
   </div>
+  </div>
 </section>
 
-<section class="studio" id="studio">
+<section class="studio hr-section" id="studio">
+  <div class="studio-layout hr-container hr-grid hr-grid-2">
   <div class="studio-visual reveal">
     <!-- CHANGE: removed inline style="width:100%;height:100%;object-fit:cover;" → now .img-cover in CSS -->
     <img src="assets/img/studio_mic_1.jpg" alt="Hidden Room" class="img-cover">
   </div>
 
-  <div class="studio-content reveal">
-    <div class="section-label"><span class="section-num">03</span> Estudios</div>
-    <h2 class="studio-title">AGENDA<br>TU TIEMPO DE <em>ESTUDIO</em></h2>
-    <p class="studio-body">
+  <div class="studio-content reveal hr-stack">
+    <div class="section-label hr-eyebrow"><span class="section-num">03</span> Estudios</div>
+    <h2 class="studio-title hr-title">AGENDA<br>TU TIEMPO DE <em>ESTUDIO</em></h2>
+    <p class="studio-body hr-subtitle">
       Ixtapaluca, Iztapalapa, Venustiano Carranza. Al agendar tu sesión aceptas los Términos y Condiciones de el o los servicios que adquieras.
     </p>
-    <div class="studio-specs">
-      <div class="spec-item">
-        <div class="spec-label">Grabación 1 hr</div>
+    <div class="studio-specs hr-grid hr-grid-2">
+      <div class="spec-item hr-card">
+        <div class="spec-label hr-label">Grabación 1 hr</div>
         <div class="spec-value">$650</div>
       </div>
-      <div class="spec-item">
-        <div class="spec-label">Grabación + beat personalizado (Hora y media)</div>
+      <div class="spec-item hr-card">
+        <div class="spec-label hr-label">Grabación + beat personalizado (Hora y media)</div>
         <div class="spec-value">$1,700</div>
       </div>
-      <div class="spec-item">
-        <div class="spec-label">Membresía</div>
+      <div class="spec-item hr-card">
+        <div class="spec-label hr-label">Membresía</div>
         <div class="spec-value">$500 SEM</div>
       </div>
-      <div class="spec-item">
-        <div class="spec-label">Paquete premium</div>
+      <div class="spec-item hr-card">
+        <div class="spec-label hr-label">Paquete premium</div>
         <div class="spec-value">$3,700</div>
       </div>
-      <div class="spec-item">
-        <div class="spec-label">EP</div>
+      <div class="spec-item hr-card">
+        <div class="spec-label hr-label">EP</div>
         <div class="spec-value">$7,800</div>
       </div>
     </div>
-    <a href="https://wa.me/525542881737" class="btn-primary">AGENDA AHORA</a>
+    <a href="https://wa.me/525542881737" class="btn-primary hr-btn hr-btn-primary">AGENDA AHORA</a>
+  </div>
   </div>
 </section>
 
-<section class="demonz" id="demonz">
-  <div class="demonz-eyebrow">Ecosistema</div>
-  <h2 class="demonz-title reveal">EXPLORA "LA JAIDEN"</h2>
+<section class="demonz hr-section" id="demonz">
+  <div class="demonz-content hr-container hr-stack">
+  <div class="demonz-eyebrow hr-eyebrow">Ecosistema</div>
+  <h2 class="demonz-title reveal hr-title-xl">EXPLORA "LA JAIDEN"</h2>
 
-  <div class="demonz-members reveal">
+  <div class="demonz-members reveal hr-cluster">
     <span class="member-tag">Dem00nz</span>
     <a href="/media/" class="member-tag">Media</a>
     <a href="/minijuegos/" class="member-tag">Minijuegos</a>
@@ -206,12 +216,14 @@
     <span class="member-tag">Beat Shop</span>
   </div>
 
-  <p class="demonz-desc reveal">Somos un ecosistema de arte y cultura en México.</p>
+  <p class="demonz-desc reveal hr-subtitle">Somos un ecosistema de arte y cultura en México.</p>
 
-  <a href="https://wa.me/525542881737" class="btn-primary reveal">ÚNETE</a>
+  <a href="https://wa.me/525542881737" class="btn-primary reveal hr-btn hr-btn-primary">ÚNETE</a>
+  </div>
 </section>
 
-<section class="manifesto">
+<section class="manifesto hr-section">
+  <div class="hr-container">
   <p class="manifesto-text reveal">
     De <em>artistas</em>.<br>
     Para <em>artistas</em>.<br>
@@ -219,6 +231,7 @@
     <em>MEXA</em> - y la cultura<br>
     <strong>underground</strong>.
   </p>
+  </div>
 </section>
 
 <footer>
