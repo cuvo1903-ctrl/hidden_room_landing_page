@@ -18,89 +18,89 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../styles.css?v=20260618-mobileauth">
-  <link rel="stylesheet" href="./tickets.css">
+  <link rel="stylesheet" href="../styles.css?v=20260620-tickets-system">
+  <link rel="stylesheet" href="./tickets.css?v=20260620-tickets-system">
 </head>
-<body class="tickets-page" data-hr-chrome data-hr-context="tickets">
+<body class="tickets-page hr-page" data-hr-chrome data-hr-context="tickets">
   <div id="hr-global-nav"></div>
-  <main class="tickets-shell">
-    <section class="tickets-hero">
-      <p class="tickets-kicker">Hidden Room · Beta</p>
-      <h1>Generar tickets</h1>
+  <main class="tickets-shell hr-section hr-container hr-stack hr-stack-xl">
+    <section class="tickets-hero hr-stack">
+      <p class="tickets-kicker hr-kicker">Hidden Room · Beta</p>
+      <h1 class="hr-title-xl">Generar tickets</h1>
       <p>Genera folios, entrega códigos QR y prepara una hoja imprimible para puerta.</p>
     </section>
 
-    <div id="page-message" class="ticket-alert" role="status" aria-live="polite" hidden></div>
+    <div id="page-message" class="ticket-alert hr-card" role="status" aria-live="polite" hidden></div>
 
-    <section id="admin-panel" class="tickets-admin-grid" hidden>
-      <article class="ticket-panel">
+    <section id="admin-panel" class="tickets-admin-grid hr-grid" hidden>
+      <article class="ticket-panel hr-card hr-panel">
         <div class="ticket-panel__heading">
           <div>
-            <p class="tickets-kicker">Nuevo lote</p>
+            <p class="tickets-kicker hr-kicker">Nuevo lote</p>
             <h2>Generar tickets</h2>
           </div>
-          <span class="ticket-chip">Solo admin</span>
+          <span class="ticket-chip hr-badge hr-badge-danger">Solo admin</span>
         </div>
 
-        <form id="ticket-form" class="ticket-form">
-          <label class="ticket-field ticket-field--wide">
+        <form id="ticket-form" class="ticket-form hr-form-grid">
+          <label class="ticket-field ticket-field--wide hr-field">
             <span>Evento</span>
-            <select id="event-key" name="event_key" required disabled>
+            <select id="event-key" class="hr-select" name="event_key" required disabled>
               <option value="">Cargando eventos…</option>
             </select>
           </label>
 
-          <label class="ticket-field">
+          <label class="ticket-field hr-field">
             <span>Cantidad</span>
-            <input id="ticket-quantity" name="quantity" type="number" min="1" max="100" value="1" required>
+            <input id="ticket-quantity" class="hr-input" name="quantity" type="number" min="1" max="100" value="1" required>
           </label>
 
-          <label class="ticket-field">
+          <label class="ticket-field hr-field">
             <span>Precio</span>
-            <input id="ticket-price" name="price" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" required>
+            <input id="ticket-price" class="hr-input" name="price" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" required>
           </label>
 
-          <label class="ticket-field">
+          <label class="ticket-field hr-field">
             <span>Nombre del cliente <small>opcional</small></span>
-            <input id="customer-name" name="customer_name" type="text" maxlength="160" autocomplete="name">
+            <input id="customer-name" class="hr-input" name="customer_name" type="text" maxlength="160" autocomplete="name">
           </label>
 
-          <label class="ticket-field">
+          <label class="ticket-field hr-field">
             <span>Email del cliente <small>opcional</small></span>
-            <input id="customer-email" name="customer_email" type="email" maxlength="254" autocomplete="email">
+            <input id="customer-email" class="hr-input" name="customer_email" type="email" maxlength="254" autocomplete="email">
           </label>
 
-          <label class="ticket-field ticket-field--wide">
+          <label class="ticket-field ticket-field--wide hr-field">
             <span>Notas <small>opcional</small></span>
-            <textarea id="ticket-notes" name="notes" rows="3" maxlength="1000"></textarea>
+            <textarea id="ticket-notes" class="hr-textarea" name="notes" rows="3" maxlength="1000"></textarea>
           </label>
 
-          <button id="generate-button" class="ticket-btn ticket-btn--primary ticket-field--wide" type="submit">
+          <button id="generate-button" class="ticket-btn ticket-btn--primary ticket-field--wide hr-btn hr-btn-primary hr-btn-block" type="submit">
             Generar tickets
           </button>
         </form>
       </article>
 
-      <aside class="ticket-panel ticket-panel--summary">
-        <p class="tickets-kicker">Lote actual</p>
+      <aside class="ticket-panel ticket-panel--summary hr-card hr-panel hr-stack">
+        <p class="tickets-kicker hr-kicker">Lote actual</p>
         <strong id="batch-count" class="tickets-big-number">0</strong>
         <span>tickets listos</span>
-        <button id="print-batch-button" class="ticket-btn ticket-btn--light" type="button" disabled>
+        <button id="print-batch-button" class="ticket-btn ticket-btn--light hr-btn hr-btn-secondary" type="button" disabled>
           Imprimir lote / Guardar PDF
         </button>
         <p class="ticket-help">En el diálogo de impresión puedes elegir “Guardar como PDF”.</p>
       </aside>
     </section>
 
-    <section id="tickets-section" class="tickets-results" hidden>
+    <section id="tickets-section" class="tickets-results hr-stack" hidden>
       <div class="tickets-results__heading">
         <div>
-          <p class="tickets-kicker">Tickets</p>
+          <p class="tickets-kicker hr-kicker">Tickets</p>
           <h2 id="tickets-title">Lote generado</h2>
         </div>
-        <button id="refresh-button" class="ticket-btn ticket-btn--ghost" type="button">Actualizar lista</button>
+        <button id="refresh-button" class="ticket-btn ticket-btn--ghost hr-btn hr-btn-outline" type="button">Actualizar lista</button>
       </div>
-      <div id="tickets-list" class="tickets-list" aria-live="polite"></div>
+      <div id="tickets-list" class="tickets-list hr-card-grid" aria-live="polite"></div>
       <p id="tickets-empty" class="tickets-empty" hidden>No hay tickets generados para este evento.</p>
     </section>
   </main>

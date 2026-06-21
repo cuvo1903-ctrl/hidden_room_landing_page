@@ -37,6 +37,6 @@ async function init() {
 
 function showMessage(message, type = "") {
   pageMessage.textContent = message;
-  pageMessage.className = `ticket-alert${type ? ` ticket-alert--${type}` : ""}`;
+  pageMessage.className = `ticket-alert hr-card${type ? ` ticket-alert--${type}` : ""}`;
   pageMessage.hidden = false;
 }

@@ -248,12 +248,12 @@ function renderTickets() {
 function ticketCardHTML(ticket) {
   const status = normalizeStatus(ticket.status);
   return `
-    <article class="ticket-card" data-folio="${escapeHTML(ticket.folio)}">
+    <article class="ticket-card hr-ticket-card" data-folio="${escapeHTML(ticket.folio)}">
       <div class="ticket-card__qr" id="qr-${safeId(ticket.folio)}" aria-label="QR de ${escapeHTML(ticket.folio)}"></div>
       <div class="ticket-card__content">
         <div class="ticket-card__top">
           <h3 class="ticket-card__folio">${escapeHTML(ticket.folio)}</h3>
-          <span class="ticket-status ticket-status--${status}">${escapeHTML(statusLabel(status))}</span>
+          <span class="ticket-status ticket-status--${status} hr-badge">${escapeHTML(statusLabel(status))}</span>
         </div>
         <div class="ticket-card__meta">
           <div>Evento<strong>${escapeHTML(ticket.event_key || "—")}</strong></div>
@@ -263,10 +263,10 @@ function ticketCardHTML(ticket) {
           ${ticket.notes ? `<div>Notas<strong>${escapeHTML(ticket.notes)}</strong></div>` : ""}
         </div>
         <div class="ticket-card__actions">
-          <button class="ticket-btn ticket-btn--ghost" type="button" data-action="print" data-folio="${escapeHTML(ticket.folio)}">
+          <button class="ticket-btn ticket-btn--ghost hr-btn hr-btn-outline hr-btn-sm" type="button" data-action="print" data-folio="${escapeHTML(ticket.folio)}">
             Imprimir / PDF
           </button>
-          <a class="ticket-btn ticket-btn--ghost" href="${escapeHTML(ticket.qr_payload || buildValidationURL(ticket.folio))}" target="_blank" rel="noopener">
+          <a class="ticket-btn ticket-btn--ghost hr-btn hr-btn-outline hr-btn-sm" href="${escapeHTML(ticket.qr_payload || buildValidationURL(ticket.folio))}" target="_blank" rel="noopener">
             Validar
           </a>
         </div>
@@ -384,7 +384,7 @@ function setBusy(element, busy, text) {
 
 function showMessage(message, type = "") {
   els.pageMessage.textContent = message;
-  els.pageMessage.className = `ticket-alert${type ? ` ticket-alert--${type}` : ""}`;
+  els.pageMessage.className = `ticket-alert hr-card${type ? ` ticket-alert--${type}` : ""}`;
   els.pageMessage.hidden = false;
 }
 

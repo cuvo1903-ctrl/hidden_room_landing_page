@@ -195,12 +195,12 @@ function renderSummary() {
 function ticketCardHTML(ticket) {
   const status = normalizeStatus(ticket.status);
   return `
-    <article class="ticket-card" data-folio="${escapeHTML(ticket.folio)}">
+    <article class="ticket-card hr-ticket-card" data-folio="${escapeHTML(ticket.folio)}">
       <div class="ticket-card__qr" id="view-qr-${safeId(ticket.folio)}" aria-label="QR de ${escapeHTML(ticket.folio)}"></div>
       <div class="ticket-card__content">
         <div class="ticket-card__top">
           <h3 class="ticket-card__folio">${escapeHTML(ticket.folio)}</h3>
-          <span class="ticket-status ticket-status--${status}">${escapeHTML(statusLabel(status))}</span>
+          <span class="ticket-status ticket-status--${status} hr-badge">${escapeHTML(statusLabel(status))}</span>
         </div>
         <div class="ticket-card__meta">
           <div>Evento<strong>${escapeHTML(ticket.event_key || "—")}</strong></div>
@@ -211,14 +211,14 @@ function ticketCardHTML(ticket) {
           ${ticket.used_at ? `<div>Usado<strong>${escapeHTML(formatDate(ticket.used_at))}</strong></div>` : ""}
         </div>
         <div class="ticket-card__actions">
-          <button class="ticket-btn ticket-btn--ghost" type="button" data-action="print" data-folio="${escapeHTML(ticket.folio)}">
+          <button class="ticket-btn ticket-btn--ghost hr-btn hr-btn-outline hr-btn-sm" type="button" data-action="print" data-folio="${escapeHTML(ticket.folio)}">
             Imprimir / PDF
           </button>
-          <a class="ticket-btn ticket-btn--ghost" href="${escapeHTML(ticket.qr_payload || buildValidationURL(ticket.folio))}" target="_blank" rel="noopener">
+          <a class="ticket-btn ticket-btn--ghost hr-btn hr-btn-outline hr-btn-sm" href="${escapeHTML(ticket.qr_payload || buildValidationURL(ticket.folio))}" target="_blank" rel="noopener">
             Validar
           </a>
           ${state.canEdit ? `
-            <button class="ticket-btn ticket-btn--ghost" type="button" data-action="edit" data-folio="${escapeHTML(ticket.folio)}">
+            <button class="ticket-btn ticket-btn--ghost hr-btn hr-btn-outline hr-btn-sm" type="button" data-action="edit" data-folio="${escapeHTML(ticket.folio)}">
               Editar
             </button>
           ` : ""}
@@ -258,34 +258,34 @@ function handleTicketAction(event) {
 
 function ticketEditFormHTML(ticket) {
   return `
-    <form class="ticket-edit-form" data-edit-folio="${escapeHTML(ticket.folio)}" hidden>
-      <label class="ticket-field">
+    <form class="ticket-edit-form hr-form-grid" data-edit-folio="${escapeHTML(ticket.folio)}" hidden>
+      <label class="ticket-field hr-field">
         <span>Precio</span>
-        <input name="price" type="number" min="0" step="0.01" value="${escapeHTML(ticket.price ?? 0)}" required>
+        <input class="hr-input" name="price" type="number" min="0" step="0.01" value="${escapeHTML(ticket.price ?? 0)}" required>
       </label>
-      <label class="ticket-field">
+      <label class="ticket-field hr-field">
         <span>Estado</span>
-        <select name="status">
+        <select class="hr-select" name="status">
           ${["valid", "used", "cancelled"].map((status) => (
             `<option value="${status}" ${normalizeStatus(ticket.status) === status ? "selected" : ""}>${statusLabel(status)}</option>`
           )).join("")}
         </select>
       </label>
-      <label class="ticket-field">
+      <label class="ticket-field hr-field">
         <span>Cliente</span>
-        <input name="customer_name" maxlength="160" value="${escapeHTML(ticket.customer_name || "")}">
+        <input class="hr-input" name="customer_name" maxlength="160" value="${escapeHTML(ticket.customer_name || "")}">
       </label>
-      <label class="ticket-field">
+      <label class="ticket-field hr-field">
         <span>Email</span>
-        <input name="customer_email" type="email" maxlength="254" value="${escapeHTML(ticket.customer_email || "")}">
+        <input class="hr-input" name="customer_email" type="email" maxlength="254" value="${escapeHTML(ticket.customer_email || "")}">
       </label>
       <label class="ticket-field ticket-field--wide">
         <span>Notas</span>
         <textarea name="notes" rows="2" maxlength="1000">${escapeHTML(ticket.notes || "")}</textarea>
       </label>
       <div class="ticket-edit-form__actions ticket-field--wide">
-        <button class="ticket-btn ticket-btn--primary" type="submit">Guardar cambios</button>
-        <button class="ticket-btn ticket-btn--ghost" type="button" data-action="cancel-edit" data-folio="${escapeHTML(ticket.folio)}">Cancelar</button>
+        <button class="ticket-btn ticket-btn--primary hr-btn hr-btn-primary" type="submit">Guardar cambios</button>
+        <button class="ticket-btn ticket-btn--ghost hr-btn hr-btn-outline" type="button" data-action="cancel-edit" data-folio="${escapeHTML(ticket.folio)}">Cancelar</button>
       </div>
     </form>
   `;
@@ -449,7 +449,7 @@ function setBusy(element, busy, text) {
 
 function showMessage(message, type = "") {
   els.pageMessage.textContent = message;
-  els.pageMessage.className = `ticket-alert${type ? ` ticket-alert--${type}` : ""}`;
+  els.pageMessage.className = `ticket-alert hr-card${type ? ` ticket-alert--${type}` : ""}`;
   els.pageMessage.hidden = false;
 }
 

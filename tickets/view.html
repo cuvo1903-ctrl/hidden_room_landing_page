@@ -18,54 +18,54 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../styles.css?v=20260618-mobileauth">
-  <link rel="stylesheet" href="./tickets.css">
+  <link rel="stylesheet" href="../styles.css?v=20260620-tickets-system">
+  <link rel="stylesheet" href="./tickets.css?v=20260620-tickets-system">
 </head>
-<body class="tickets-page tickets-page--view" data-hr-chrome data-hr-context="tickets">
+<body class="tickets-page tickets-page--view hr-page" data-hr-chrome data-hr-context="tickets">
   <div id="hr-global-nav"></div>
-  <main class="tickets-shell">
-    <section class="tickets-hero">
-      <p class="tickets-kicker">Administración</p>
-      <h1>Ver tickets</h1>
+  <main class="tickets-shell hr-section hr-container hr-stack hr-stack-xl">
+    <section class="tickets-hero hr-stack">
+      <p class="tickets-kicker hr-kicker">Administración</p>
+      <h1 class="hr-title-xl">Ver tickets</h1>
       <p>Selecciona un evento para consultar sus accesos e imprimir el lote completo o tickets individuales.</p>
     </section>
 
-    <div id="page-message" class="ticket-alert" role="status" aria-live="polite" hidden></div>
+    <div id="page-message" class="ticket-alert hr-card" role="status" aria-live="polite" hidden></div>
 
-    <section id="view-panel" class="ticket-view-toolbar" hidden>
-      <label class="ticket-field">
+    <section id="view-panel" class="ticket-view-toolbar hr-filterbar" hidden>
+      <label class="ticket-field hr-field">
         <span>Evento</span>
-        <select id="event-key" disabled>
+        <select id="event-key" class="hr-select" disabled>
           <option value="">Cargando eventos…</option>
         </select>
       </label>
 
-      <div class="ticket-view-toolbar__actions">
-        <button id="refresh-button" class="ticket-btn ticket-btn--ghost" type="button" disabled>
+      <div class="ticket-view-toolbar__actions hr-cluster">
+        <button id="refresh-button" class="ticket-btn ticket-btn--ghost hr-btn hr-btn-outline" type="button" disabled>
           Actualizar
         </button>
-        <button id="print-batch-button" class="ticket-btn ticket-btn--light" type="button" disabled>
+        <button id="print-batch-button" class="ticket-btn ticket-btn--light hr-btn hr-btn-secondary" type="button" disabled>
           Imprimir lote / PDF
         </button>
       </div>
     </section>
 
-    <section id="view-summary" class="ticket-view-summary" hidden aria-label="Resumen de tickets">
+    <section id="view-summary" class="ticket-view-summary hr-grid" hidden aria-label="Resumen de tickets">
       <div><strong id="total-count">0</strong><span>Total</span></div>
       <div><strong id="valid-count">0</strong><span>Válidos</span></div>
       <div><strong id="used-count">0</strong><span>Usados</span></div>
       <div><strong id="cancelled-count">0</strong><span>Cancelados</span></div>
     </section>
 
-    <section id="tickets-section" class="tickets-results" hidden>
+    <section id="tickets-section" class="tickets-results hr-stack" hidden>
       <div class="tickets-results__heading">
         <div>
-          <p class="tickets-kicker">Evento seleccionado</p>
+          <p class="tickets-kicker hr-kicker">Evento seleccionado</p>
           <h2 id="tickets-title">Tickets</h2>
         </div>
       </div>
-      <div id="tickets-list" class="tickets-list" aria-live="polite"></div>
-      <p id="tickets-empty" class="tickets-empty" hidden>No hay tickets generados para este evento.</p>
+      <div id="tickets-list" class="tickets-list hr-card-grid" aria-live="polite"></div>
+      <p id="tickets-empty" class="tickets-empty hr-table-empty" hidden>No hay tickets generados para este evento.</p>
     </section>
   </main>
 

@@ -18,32 +18,32 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../styles.css?v=20260618-mobileauth">
-  <link rel="stylesheet" href="./tickets.css">
+  <link rel="stylesheet" href="../styles.css?v=20260620-tickets-system">
+  <link rel="stylesheet" href="./tickets.css?v=20260620-tickets-system">
 </head>
-<body class="tickets-page tickets-page--validator" data-hr-chrome data-hr-context="tickets">
+<body class="tickets-page tickets-page--validator hr-page" data-hr-chrome data-hr-context="tickets">
   <div id="hr-global-nav"></div>
-  <main class="validator-shell">
-    <section class="tickets-hero tickets-hero--compact">
-      <p class="tickets-kicker">Acceso de puerta</p>
-      <h1>Validar ticket</h1>
+  <main class="validator-shell hr-section hr-container hr-stack hr-stack-xl">
+    <section class="tickets-hero tickets-hero--compact hr-stack">
+      <p class="tickets-kicker hr-kicker">Acceso de puerta</p>
+      <h1 class="hr-title-xl">Validar ticket</h1>
       <p>Escanea el QR o captura el folio manualmente.</p>
     </section>
 
-    <form id="validate-form" class="validator-search">
-      <label class="ticket-field">
+    <form id="validate-form" class="validator-search hr-card hr-panel">
+      <label class="ticket-field hr-field">
         <span>Folio</span>
         <div class="validator-search__row">
-          <input id="folio-input" name="folio" type="text" maxlength="80" placeholder="HR001-0001"
+          <input id="folio-input" class="hr-input" name="folio" type="text" maxlength="80" placeholder="HR001-0001"
                  autocomplete="off" autocapitalize="characters" required>
-          <button id="search-button" class="ticket-btn ticket-btn--primary" type="submit">Buscar</button>
+          <button id="search-button" class="ticket-btn ticket-btn--primary hr-btn hr-btn-primary" type="submit">Buscar</button>
         </div>
       </label>
     </form>
 
-    <div id="page-message" class="ticket-alert" role="status" aria-live="polite" hidden></div>
+    <div id="page-message" class="ticket-alert hr-card" role="status" aria-live="polite" hidden></div>
 
-    <section id="ticket-result" class="validator-result validator-result--idle" aria-live="polite">
+    <section id="ticket-result" class="validator-result validator-result--idle hr-card hr-panel" aria-live="polite">
       <p class="validator-result__eyebrow">Esperando folio</p>
       <h2>LISTO PARA VALIDAR</h2>
       <p>El resultado aparecerá aquí.</p>

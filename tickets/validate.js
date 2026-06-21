@@ -142,7 +142,7 @@ function renderTicket() {
 
 function renderValid() {
   const ticket = state.ticket;
-  els.result.className = "validator-result validator-result--valid";
+  els.result.className = "validator-result validator-result--valid hr-card hr-panel";
   els.result.innerHTML = `
     <p class="validator-result__eyebrow">Acceso disponible</p>
     <h2>TICKET VÁLIDO</h2>
@@ -152,7 +152,7 @@ function renderValid() {
       ${detailHTML("Precio", formatMoney(ticket.price))}
       ${ticket.customer_name ? detailHTML("Cliente", ticket.customer_name) : ""}
     </div>
-    <button class="ticket-btn ticket-btn--light" type="button" data-action="use-ticket"
+    <button class="ticket-btn ticket-btn--light hr-btn hr-btn-secondary" type="button" data-action="use-ticket"
             ${state.canValidate ? "" : "disabled"}>
       Marcar como usado
     </button>
@@ -161,7 +161,7 @@ function renderValid() {
 
 function renderUsed() {
   const ticket = state.ticket;
-  els.result.className = "validator-result validator-result--used";
+  els.result.className = "validator-result validator-result--used hr-card hr-panel";
   els.result.innerHTML = `
     <p class="validator-result__eyebrow">No permitir acceso de nuevo</p>
     <h2>TICKET YA USADO</h2>
@@ -174,7 +174,7 @@ function renderUsed() {
 }
 
 function renderCancelled() {
-  els.result.className = "validator-result validator-result--cancelled";
+  els.result.className = "validator-result validator-result--cancelled hr-card hr-panel";
   els.result.innerHTML = `
     <p class="validator-result__eyebrow">Acceso denegado</p>
     <h2>TICKET CANCELADO</h2>
@@ -185,7 +185,7 @@ function renderCancelled() {
 }
 
 function renderInvalid() {
-  els.result.className = "validator-result validator-result--invalid";
+  els.result.className = "validator-result validator-result--invalid hr-card hr-panel";
   els.result.innerHTML = `
     <p class="validator-result__eyebrow">Acceso denegado</p>
     <h2>TICKET INVÁLIDO</h2>
@@ -269,7 +269,7 @@ function setBusy(element, busy, text) {
 
 function showMessage(message, type = "") {
   els.pageMessage.textContent = message;
-  els.pageMessage.className = `ticket-alert${type ? ` ticket-alert--${type}` : ""}`;
+  els.pageMessage.className = `ticket-alert hr-card${type ? ` ticket-alert--${type}` : ""}`;
   els.pageMessage.hidden = false;
 }
 
