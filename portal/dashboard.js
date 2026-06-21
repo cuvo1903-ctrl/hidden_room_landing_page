@@ -25,8 +25,9 @@
 
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
+const SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 const supabase = createClient(
-  "https://rpcunbkstadgngqrjafp.supabase.co",
+  SUPABASE_URL,
   "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
 );
 
@@ -367,6 +368,11 @@ const SECTIONS = {
     roleRequired: 'admin',
     render: renderErpAuthAudit,
   },
+  'erp-infrastructure': {
+    label: 'Servidor Mysauth',
+    roleRequired: 'admin',
+    render: renderErpInfrastructure,
+  },
   'admin-table-editor': {
     label: 'BB.DD',
     roleRequired: 'admin',
@@ -441,6 +447,7 @@ const PORTAL_NAV_GROUPS = [
       { label: 'Operaciones', section: 'erp-ops', icon: 'settings' },
       { label: 'Permisos', section: 'erp-permissions', icon: 'users' },
       { label: 'Auth / Registros', section: 'erp-auth-audit', icon: 'activity' },
+      { label: 'Servidor Mysauth', section: 'erp-infrastructure', icon: 'server' },
       { label: 'Boletera', href: '../tickets/', icon: 'ticket' },
       { label: 'BB.DD', section: 'admin-table-editor', icon: 'settings' },
     ],
@@ -2914,6 +2921,50 @@ async function renderErpFinance() {
       balanceFromAmountWhenNoIncomeExpense: filters.scope === 'events',
     })}
     ${filters.scope === 'events' ? renderEventFinanceTransactionsTable(data ?? []) : renderTransactionsTable(data ?? [])}
+  `);
+}
+
+async function renderErpInfrastructure() {
+  if (!hasRole('admin')) {
+    return sectionShell('ERP', 'Servidor Mysauth', 'title-erp-infrastructure', `
+      <p class="db-empty db-empty--error">Acceso no autorizado.</p>
+    `);
+  }
+
+  let serverStatus = null;
+  let errorMessage = null;
+
+  try {
+    serverStatus = await fetchServerStatus();
+  } catch (err) {
+    console.error('[HR] renderErpInfrastructure:', err);
+    if (isSessionStaleError(err)) markSessionStale(err.message || 'server status fetch');
+    errorMessage = err.message || 'No se pudo obtener el estado del servidor.';
+  }
+
+  const statusLabel = serverStatus?.online ? 'Online' : 'Offline';
+  const uptime = serverStatus?.uptime ?? 'Desconocido';
+  const cpu = serverStatus?.cpu ?? 'No disponible';
+  const ram = serverStatus?.ram ?? 'No disponible';
+  const disk = serverStatus?.disk ?? 'No disponible';
+  const temperature = serverStatus?.temperature ?? 'No disponible';
+  const hostname = serverStatus?.hostname ?? 'No disponible';
+  const tailscaleIp = serverStatus?.tailscaleIp ?? 'No disponible';
+
+  return sectionShell('ERP', 'Servidor Mysauth', 'title-erp-infrastructure', `
+    <p class="db-section__summary">Estado de infraestructura. Los datos se obtienen desde <code>/api/server-status</code> en el servidor, sin exponer credenciales en el frontend.</p>
+    ${errorMessage ? `<p class="db-empty db-empty--error">${escapeHTML(errorMessage)}</p>` : ''}
+    <div class="db-grid db-grid--3col db-grid--server-status">
+      ${renderServerStatusCard('Estado', statusLabel)}
+      ${renderServerStatusCard('Hostname', hostname)}
+      ${renderServerStatusCard('IP Tailscale', tailscaleIp)}
+      ${renderServerStatusCard('Uptime', uptime)}
+      ${renderServerStatusCard('CPU', cpu)}
+      ${renderServerStatusCard('RAM', ram)}
+      ${renderServerStatusCard('Disco', disk)}
+      ${renderServerStatusCard('Temperatura', temperature)}
+    </div>
+    <p class="db-note">Esta vista solo es visible para administradores. No hay acceso SSH directo desde el navegador.</p>
   `);
 }
 
@@ -5556,6 +5607,63 @@ function renderStatCard(label, value) {
       </div>
     </article>
   `;
+}
+
+function renderServerStatusCard(label, value) {
+  return `
+    <article class="db-card db-card--server-status">
+      <div class="db-card__inner">
+        <span class="section-label">${escapeHTML(label)}</span>
+        <strong>${escapeHTML(value ?? '-')}</strong>
+      </div>
+    </article>
+  `;
+}
+
+async function fetchServerStatus() {
+  const cache = state.data.serverStatus;
+  const cacheAgeMs = 30_000;
+  if (cache && Date.now() - cache.fetchedAt < cacheAgeMs) {
+    return cache;
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) {
+    throw new Error('Sesión de Supabase no disponible');
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/server-status`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`No se pudo obtener el estado del servidor (${response.status})`);
+  }
+
+  const payload = await response.json();
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Respuesta inválida de estado de servidor');
+  }
+
+  const serverStatus = {
+    online: Boolean(payload.online),
+    hostname: payload.hostname ?? payload.host ?? null,
+    tailscaleIp: payload.tailscale_ip ?? payload.tailscaleIp ?? payload.tailscale ?? null,
+    uptime: payload.uptime ?? payload.uptime_human ?? null,
+    cpu: payload.cpu ?? payload.cpu_status ?? null,
+    ram: payload.ram ?? payload.memory ?? null,
+    disk: payload.disk ?? payload.storage ?? null,
+    temperature: payload.temperature ?? payload.temp ?? null,
+    fetchedAt: Date.now(),
+  };
+
+  state.data.serverStatus = serverStatus;
+  return serverStatus;
 }
 
 function eventLabel(event) {

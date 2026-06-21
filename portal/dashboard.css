@@ -306,6 +306,44 @@
 .db-grid--2col { grid-template-columns: repeat(2, 1fr); }
 .db-grid--3col { grid-template-columns: repeat(3, 1fr); }
 
+.db-grid--server-status { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+
+.db-section__summary {
+  margin-bottom: var(--space-lg);
+  color: var(--white-dim);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+}
+
+.db-note {
+  margin-top: var(--space-lg);
+  color: var(--white-faint);
+  font-size: var(--text-sm);
+}
+
+.db-card--server-status {
+  border-color: var(--border);
+  background: rgba(14, 14, 14, 0.85);
+}
+
+.db-card--server-status .db-card__inner {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.db-card--server-status .section-label {
+  color: var(--white-faint);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-widest);
+}
+
+.db-card--server-status strong {
+  color: var(--white);
+  font-size: var(--text-lg);
+  line-height: 1.2;
+}
+
 
 /* ================================================================
    7. CARDS
