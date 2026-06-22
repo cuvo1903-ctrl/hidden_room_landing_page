@@ -1598,6 +1598,7 @@ body.home-page > footer {
 }
 
 .hr-color-pop { color: var(--hr-red); }
+[data-hr-accent=media] .hr-color-pop,
 [data-hr-accent=cyan] .hr-color-pop,
 .hr-color-pop--cyan { color: var(--hr-cyan); }
 [data-hr-accent=purple] .hr-color-pop,
