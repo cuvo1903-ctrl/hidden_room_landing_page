@@ -1,5 +1,5 @@
 const SITE_STATUS = "BETA Sitio en contrucción";
-const SITE_VERSION = "V. 0.9.0";
+const SITE_VERSION = "V. 1.0.0";
 const GA_MEASUREMENT_ID = "G-VNHC1Z3FXZ";
 const HR_SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 const HR_SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";

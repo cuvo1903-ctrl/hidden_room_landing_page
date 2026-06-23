@@ -60,6 +60,35 @@ const TRANSACTION_CONCEPT_OPTIONS = [
   'RENTA DE ESTUDIO',
   'PERSONALIZADO',
 ];
+const CLOUD_HIDDENROOM_URL = 'https://cloud.hiddenroom.mx/';
+const CLOUD_MOCK_TREE = {
+  '/': {
+    folders: ['Documentos', 'Imagenes'],
+    files: [
+      { name: 'bienvenida.pdf', size: '34 KB', type: 'PDF', modified: 'Hoy', url: 'https://cloud.hiddenroom.mx/files/bienvenida.pdf' },
+      { name: 'manual-erp.docx', size: '88 KB', type: 'DOCX', modified: 'Ayer', url: 'https://cloud.hiddenroom.mx/files/manual-erp.docx' },
+    ],
+  },
+  '/Documentos': {
+    folders: ['Contratos'],
+    files: [
+      { name: 'contrato-servicio.pdf', size: '108 KB', type: 'PDF', modified: 'Hace 2 días', url: 'https://cloud.hiddenroom.mx/files/contrato-servicio.pdf' },
+    ],
+  },
+  '/Documentos/Contratos': {
+    folders: [],
+    files: [
+      { name: 'acuerdo-colaboracion.pdf', size: '94 KB', type: 'PDF', modified: '06/06/2026', url: 'https://cloud.hiddenroom.mx/files/acuerdo-colaboracion.pdf' },
+    ],
+  },
+  '/Imagenes': {
+    folders: [],
+    files: [
+      { name: 'logo-hiddenroom.png', size: '220 KB', type: 'PNG', modified: '05/06/2026', url: 'https://cloud.hiddenroom.mx/files/logo-hiddenroom.png' },
+      { name: 'portada-evento.jpg', size: '520 KB', type: 'JPG', modified: '03/06/2026', url: 'https://cloud.hiddenroom.mx/files/portada-evento.jpg' },
+    ],
+  },
+};
 const FINANCE_STUDIO_SOURCES = [
   { value: 'IXT', label: 'Ixtapaluca' },
   { value: 'VC', label: 'Venustiano Carranza' },
@@ -115,6 +144,9 @@ const state = {
 
   /** Session may be stale when UI role and API/RLS responses disagree */
   sessionStale: false,
+  erpCloud: {
+    currentPath: '/',
+  },
 };
 
 /**
@@ -123,6 +155,152 @@ const state = {
  */
 function setState(patch) {
   Object.assign(state, patch);
+}
+
+function normalizeCloudPath(path) {
+  if (!path || path === '/') return '/';
+  let normalized = String(path).replace(/\\/g, '/');
+  normalized = normalized.replace(/\/+/g, '/');
+  if (!normalized.startsWith('/')) normalized = `/${normalized}`;
+  return normalized;
+}
+
+function getCloudNode(path = state.erpCloud.currentPath) {
+  const normalized = normalizeCloudPath(path);
+  return CLOUD_MOCK_TREE[normalized] ?? { folders: [], files: [] };
+}
+
+function listCloudFiles(path = state.erpCloud.currentPath) {
+  const node = getCloudNode(path);
+  return Promise.resolve({ ...node, path: normalizeCloudPath(path) });
+}
+
+async function uploadCloudFile(file) {
+  if (!file) return;
+  const currentPath = normalizeCloudPath(state.erpCloud.currentPath);
+  const node = getCloudNode(currentPath);
+  const fileName = file.name;
+  const exists = node.files.some((item) => item.name === fileName);
+  const newFile = {
+    name: fileName,
+    size: `${Math.max(1, Math.round(file.size / 1024))} KB`,
+    type: fileName.split('.').pop().toUpperCase(),
+    modified: 'Ahora',
+    url: `${CLOUD_HIDDENROOM_URL}files/${encodeURIComponent(fileName)}`,
+  };
+
+  if (exists) {
+    const index = node.files.findIndex((item) => item.name === fileName);
+    node.files[index] = newFile;
+  } else {
+    node.files.unshift(newFile);
+  }
+
+  CLOUD_MOCK_TREE[currentPath] = node;
+  return Promise.resolve(newFile);
+}
+
+async function createCloudFolder(folderName) {
+  if (!folderName) return;
+  const currentPath = normalizeCloudPath(state.erpCloud.currentPath);
+  const node = getCloudNode(currentPath);
+  const sanitized = folderName.trim();
+  if (!sanitized) throw new Error('El nombre de carpeta no puede estar vacío.');
+  if (node.folders.includes(sanitized)) throw new Error('Ya existe una carpeta con ese nombre.');
+
+  node.folders.push(sanitized);
+  CLOUD_MOCK_TREE[currentPath] = node;
+  CLOUD_MOCK_TREE[`${currentPath === '/' ? '' : currentPath}/${sanitized}`] = { folders: [], files: [] };
+  return Promise.resolve(sanitized);
+}
+
+async function deleteCloudFile(itemType, itemName) {
+  const currentPath = normalizeCloudPath(state.erpCloud.currentPath);
+  const node = getCloudNode(currentPath);
+
+  if (itemType === 'folder') {
+    node.folders = node.folders.filter((name) => name !== itemName);
+    const childPath = `${currentPath === '/' ? '' : currentPath}/${itemName}`;
+    delete CLOUD_MOCK_TREE[childPath];
+  } else {
+    node.files = node.files.filter((file) => file.name !== itemName);
+  }
+
+  CLOUD_MOCK_TREE[currentPath] = node;
+  return Promise.resolve(true);
+}
+
+function copyCloudLink(url) {
+  return url;
+}
+
+function getCloudBreadcrumb(path) {
+  const normalized = normalizeCloudPath(path);
+  if (normalized === '/') return [{ name: 'Root', path: '/' }];
+  const segments = normalized.slice(1).split('/');
+  const result = [{ name: 'Root', path: '/' }];
+  let current = '';
+  for (const segment of segments) {
+    current = `${current}/${segment}`;
+    result.push({ name: segment, path: current });
+  }
+  return result;
+}
+
+function renderCloudBreadcrumb(path) {
+  const items = getCloudBreadcrumb(path);
+  return `
+    <nav aria-label="Ruta actual" class="hr-stack hr-stack-sm">
+      ${items.map((item, index) => `
+        <button class="hr-btn" type="button" data-action="cloud-breadcrumb" data-path="${escapeHTML(item.path)}">
+          ${escapeHTML(item.name)}
+        </button>
+        ${index < items.length - 1 ? '<span>/</span>' : ''}
+      `).join('')}
+    </nav>
+  `;
+}
+
+function renderCloudFolderList(node, currentPath) {
+  if (!node.folders.length) {
+    return `<p>No hay carpetas en esta ubicación.</p>`;
+  }
+
+  return node.folders.map((folder) => `
+    <div class="hr-card hr-panel hr-stack">
+      <div class="hr-stack hr-stack-sm">
+        <div>
+          <p><strong>${escapeHTML(folder)}</strong></p>
+          <p class="hr-eyebrow">Carpeta</p>
+        </div>
+        <div class="hr-stack hr-stack-sm">
+          <button class="hr-btn" type="button" data-action="cloud-open-folder" data-path="${escapeHTML(currentPath === '/' ? `/${folder}` : `${currentPath}/${folder}`)}">Abrir</button>
+          <button class="hr-btn" type="button" data-action="cloud-delete-item" data-item-type="folder" data-item-name="${escapeHTML(folder)}">Eliminar</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderCloudFileList(node) {
+  if (!node.files.length) {
+    return `<p>No hay archivos en esta carpeta.</p>`;
+  }
+
+  return node.files.map((file) => `
+    <div class="hr-card hr-panel hr-stack">
+      <div class="hr-stack hr-stack-sm">
+        <div>
+          <p><strong>${escapeHTML(file.name)}</strong></p>
+          <p class="hr-eyebrow">${escapeHTML(file.type)} · ${escapeHTML(file.size)} · ${escapeHTML(file.modified)}</p>
+        </div>
+        <div class="hr-stack hr-stack-sm">
+          <button class="hr-btn" type="button" data-action="cloud-copy-link" data-url="${escapeHTML(file.url)}">Copiar enlace</button>
+          <button class="hr-btn" type="button" data-action="cloud-delete-item" data-item-type="file" data-item-name="${escapeHTML(file.name)}">Eliminar</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
 }
 
 
@@ -373,6 +551,11 @@ const SECTIONS = {
     roleRequired: 'admin',
     render: renderErpInfrastructure,
   },
+  'erp-cloud': {
+    label: 'Cloud Hidden Room',
+    roleRequired: 'admin',
+    render: renderErpCloud,
+  },
   'admin-table-editor': {
     label: 'BB.DD',
     roleRequired: 'admin',
@@ -448,6 +631,7 @@ const PORTAL_NAV_GROUPS = [
       { label: 'Permisos', section: 'erp-permissions', icon: 'users' },
       { label: 'Auth / Registros', section: 'erp-auth-audit', icon: 'activity' },
       { label: 'Servidor Mysauth', section: 'erp-infrastructure', icon: 'server' },
+      { label: 'Cloud Hidden Room', section: 'erp-cloud', icon: 'cloud' },
       { label: 'Boletera', href: '../tickets/', icon: 'ticket' },
       { label: 'BB.DD', section: 'admin-table-editor', icon: 'settings' },
     ],
@@ -2965,6 +3149,51 @@ async function renderErpInfrastructure() {
       ${renderServerStatusCard('Temperatura', temperature)}
     </div>
     <p class="db-note">Esta vista solo es visible para administradores. No hay acceso SSH directo desde el navegador.</p>
+  `);
+}
+
+async function renderErpCloud() {
+  const currentPath = normalizeCloudPath(state.erpCloud.currentPath);
+  const node = getCloudNode(currentPath);
+  const cloudFiles = await listCloudFiles(currentPath);
+
+  return sectionShell('Infraestructura', 'Cloud Hidden Room', 'title-erp-cloud', `
+    <div class="hr-container hr-stack">
+      <div class="hr-panel hr-card hr-stack">
+        <div>
+          <p class="hr-eyebrow">Cloud Hidden Room</p>
+          <h2 class="hr-title">Administración de archivos y almacenamiento del servidor Mysauth.</h2>
+          <p>Estado: Online · Dominio: cloud.hiddenroom.mx</p>
+        </div>
+        <div class="hr-stack hr-stack-sm">
+          <a class="hr-btn hr-btn-primary" href="${escapeHTML(CLOUD_HIDDENROOM_URL)}" target="_blank" rel="noopener noreferrer">Abrir Cloud</a>
+          <button class="hr-btn hr-btn-primary" type="button" data-action="copy-cloud-hiddenroom-url" data-url="${escapeHTML(CLOUD_HIDDENROOM_URL)}">Copiar URL</button>
+        </div>
+      </div>
+
+      <div class="hr-panel hr-card hr-stack">
+        <div class="hr-eyebrow">Ruta actual</div>
+        ${renderCloudBreadcrumb(currentPath)}
+        <div class="hr-stack hr-stack-sm">
+          <button class="hr-btn hr-btn-primary" type="button" data-action="cloud-upload-file">Subir archivo</button>
+          <button class="hr-btn hr-btn-primary" type="button" data-action="cloud-create-folder">Crear carpeta</button>
+        </div>
+      </div>
+
+      <div class="hr-stack hr-stack-sm">
+        <div class="hr-panel hr-card hr-stack" style="width:100%;">
+          <p class="hr-eyebrow">Carpetas</p>
+          ${renderCloudFolderList(cloudFiles, currentPath)}
+        </div>
+
+        <div class="hr-panel hr-card hr-stack" style="width:100%;">
+          <p class="hr-eyebrow">Archivos</p>
+          ${renderCloudFileList(cloudFiles)}
+        </div>
+      </div>
+
+      <input id="js-cloud-file-input" type="file" hidden />
+    </div>
   `);
 }
 
@@ -7882,6 +8111,62 @@ function attachMainDelegation() {
       }
     }
 
+    if (action === 'copy-cloud-hiddenroom-url') {
+      const btn = e.target.closest('[data-url]');
+      const url = btn?.dataset.url;
+      if (url) {
+        navigator.clipboard?.writeText(url)
+          .then(() => showToast('URL copiada a portapapeles.', 'success'))
+          .catch(() => showToast('No se pudo copiar automáticamente.', 'error'));
+      }
+    }
+
+    if (action === 'cloud-upload-file') {
+      document.getElementById('js-cloud-file-input')?.click();
+      return;
+    }
+
+    if (action === 'cloud-create-folder') {
+      const name = window.prompt('Nombre de la nueva carpeta');
+      if (name) {
+        createCloudFolder(name)
+          .then(() => renderSection(state.activeSection))
+          .catch((err) => showToast(err.message || 'No se pudo crear la carpeta.', 'error'));
+      }
+      return;
+    }
+
+    if (action === 'cloud-open-folder' || action === 'cloud-breadcrumb') {
+      const btn = e.target.closest('[data-path]');
+      const path = btn?.dataset.path;
+      if (path) {
+        setState({ erpCloud: { currentPath: normalizeCloudPath(path) } });
+        renderSection(state.activeSection);
+      }
+      return;
+    }
+
+    if (action === 'cloud-delete-item') {
+      const btn = e.target.closest('[data-item-type][data-item-name]');
+      if (btn) {
+        deleteCloudFile(btn.dataset.itemType, btn.dataset.itemName)
+          .then(() => renderSection(state.activeSection))
+          .catch((err) => showToast(err.message || 'No se pudo eliminar.', 'error'));
+      }
+      return;
+    }
+
+    if (action === 'cloud-copy-link') {
+      const btn = e.target.closest('[data-url]');
+      const url = btn?.dataset.url;
+      if (url) {
+        navigator.clipboard?.writeText(url)
+          .then(() => showToast('Enlace copiado.', 'success'))
+          .catch(() => showToast('No se pudo copiar automáticamente.', 'error'));
+      }
+      return;
+    }
+
     if (action === 'refresh-session') {
       handleRefreshSession();
     }
@@ -7924,6 +8209,16 @@ function attachMainDelegation() {
   });
 
   main?.addEventListener('change', (e) => {
+    const cloudFileInput = e.target.closest('#js-cloud-file-input');
+    if (cloudFileInput && cloudFileInput.files?.length) {
+      const file = cloudFileInput.files[0];
+      uploadCloudFile(file)
+        .then(() => renderSection(state.activeSection))
+        .catch((err) => showToast(err.message || 'No se pudo subir el archivo.', 'error'))
+        .finally(() => { if (cloudFileInput) cloudFileInput.value = ''; });
+      return;
+    }
+
     const statusSelect = e.target.closest('select[data-action="task-status"]');
     const taskCard = statusSelect?.closest('.db-task-card[data-task-id]');
     if (statusSelect && taskCard) {
