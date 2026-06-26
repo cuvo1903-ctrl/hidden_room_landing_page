@@ -2949,3 +2949,61 @@ input[data-user-search] {
     width: 100%;
   }
 }
+
+/* ================================================================
+   21. PORTAL TABLES / HR DESIGN SYSTEM BRIDGE
+   Visual table adoption only. Existing db-* selectors, columns,
+   field names and table editor behavior remain the source of truth.
+================================================================ */
+.db-table-wrap.hr-table-wrap {
+  border-color: var(--hr-border);
+  background: var(--hr-surface);
+}
+
+.db-table.hr-table {
+  color: var(--hr-text);
+  font-family: var(--hr-font-mono);
+}
+
+.db-table.hr-table thead {
+  background: var(--hr-surface);
+}
+
+.db-table.hr-table th {
+  color: var(--hr-muted);
+}
+
+.db-table.hr-table td {
+  color: var(--hr-text);
+  border-color: var(--hr-border);
+}
+
+.db-table.hr-table-readable tbody tr:hover td,
+.db-table.hr-table-editable tbody tr:hover td {
+  background: var(--white-trace);
+}
+
+.db-table.hr-table-editable .hr-cell-editable,
+.db-table.hr-table-editable .db-membership-editable-cell {
+  border-color: var(--hr-border-strong);
+  background: color-mix(in srgb, var(--hr-surface-2) 86%, transparent);
+}
+
+.db-table.hr-table-editable .hr-cell-editable:focus,
+.db-table.hr-table-editable .hr-cell-editable:focus-within,
+.db-table.hr-table-editable .db-membership-editable-cell:focus {
+  outline: 1px solid var(--hr-red);
+  outline-offset: -1px;
+  box-shadow: var(--hr-focus-ring);
+}
+
+.db-table__empty-row.hr-table-empty td,
+.db-table__empty-row .hr-table-empty {
+  color: var(--hr-muted);
+  background: color-mix(in srgb, var(--hr-surface) 72%, transparent);
+}
+
+.db-toolbar.hr-table-toolbar {
+  border-color: var(--hr-border);
+  background: var(--hr-surface);
+}

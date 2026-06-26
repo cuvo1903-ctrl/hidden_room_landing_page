@@ -2278,8 +2278,8 @@ async function renderClientDownloads() {
 
   if (!data || data.length === 0) {
     rows = `
-      <tr class="db-table__empty-row">
-        <td colspan="5" class="db-empty">Sin descargas disponibles.</td>
+      <tr class="db-table__empty-row hr-table-empty">
+        <td colspan="5" class="db-empty hr-table-empty">Sin descargas disponibles.</td>
       </tr>
     `;
   } else {
@@ -2304,8 +2304,8 @@ async function renderClientDownloads() {
         <p class="section-label">Cliente</p>
         <h1 class="db-section__title" id="title-downloads">Descargas</h1>
       </header>
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="Productos descargables">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="Productos descargables">
           <thead>
             <tr>
               <th scope="col">Producto</th>
@@ -2350,8 +2350,8 @@ async function renderClientSessions() {
 
   if (!data || data.length === 0) {
     rows = `
-      <tr class="db-table__empty-row">
-        <td colspan="5" class="db-empty">Sin sesiones registradas.</td>
+      <tr class="db-table__empty-row hr-table-empty">
+        <td colspan="5" class="db-empty hr-table-empty">Sin sesiones registradas.</td>
       </tr>
     `;
   } else {
@@ -2372,8 +2372,8 @@ async function renderClientSessions() {
         <p class="section-label">Cliente</p>
         <h1 class="db-section__title" id="title-sessions">Sesiones</h1>
       </header>
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="Historial de sesiones">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="Historial de sesiones">
           <thead>
             <tr>
               <th scope="col">Concepto</th>
@@ -2418,8 +2418,8 @@ async function renderClientTransactions() {
 
   if (!data || data.length === 0) {
     rows = `
-      <tr class="db-table__empty-row">
-        <td colspan="5" class="db-empty">Sin transacciones registradas.</td>
+      <tr class="db-table__empty-row hr-table-empty">
+        <td colspan="5" class="db-empty hr-table-empty">Sin transacciones registradas.</td>
       </tr>
     `;
   } else {
@@ -2440,8 +2440,8 @@ async function renderClientTransactions() {
         <p class="section-label">Cliente</p>
         <h1 class="db-section__title" id="title-txn">Transacciones</h1>
       </header>
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="Historial de transacciones">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="Historial de transacciones">
           <thead>
             <tr>
               <th scope="col">Concepto</th>
@@ -2593,8 +2593,8 @@ function renderClientStore() {
         <p class="section-label">Cliente</p>
         <h1 class="db-section__title" id="title-store">Tienda Online - Pedidos</h1>
       </header>
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="Historial de pedidos">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="Historial de pedidos">
           <thead>
             <tr>
               <th scope="col">Pedido</th>
@@ -2605,8 +2605,8 @@ function renderClientStore() {
             </tr>
           </thead>
           <tbody id="js-store-body">
-            <tr class="db-table__empty-row">
-              <td colspan="5" class="db-empty">Sin pedidos registrados.</td>
+            <tr class="db-table__empty-row hr-table-empty">
+              <td colspan="5" class="db-empty hr-table-empty">Sin pedidos registrados.</td>
             </tr>
           </tbody>
         </table>
@@ -2803,7 +2803,7 @@ async function fetchCollabFinanceTransactions(filters, eventId, events = []) {
 
 function renderCollabFinanceEventFilter(events = [], selectedEventId = '') {
   return `
-    <div class="db-toolbar">
+    <div class="db-toolbar hr-table-toolbar">
       <label class="db-field db-field--compact">
         <span>Eventos</span>
         <select data-action="collab-finance-event" aria-label="Filtrar financiero por evento">
@@ -3077,16 +3077,16 @@ function optionHTML(value, label, selectedValue) {
 /* -- RRPP --------------------------------------------------- */
 function renderRrppContacts() {
   return sectionShell('Embajador', 'Boletos vendidos', 'title-rrpp-contacts', `
-    <div class="db-table-wrap">
-      <table class="db-table" aria-label="Boletos vendidos">
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="db-table hr-table hr-table-readable" aria-label="Boletos vendidos">
         <thead><tr>
           <th scope="col">Cliente</th>
           <th scope="col">Canal</th>
           <th scope="col">Evento</th>
           <th scope="col">Boletos</th>
         </tr></thead>
-        <tbody><tr class="db-table__empty-row">
-          <td colspan="4" class="db-empty">Sin boletos vendidos registrados.</td>
+        <tbody><tr class="db-table__empty-row hr-table-empty">
+          <td colspan="4" class="db-empty hr-table-empty">Sin boletos vendidos registrados.</td>
         </tr></tbody>
       </table>
     </div>
@@ -3770,7 +3770,7 @@ function renderFinanceScopeFilters(filters, events = []) {
   const secondaryLabel = filters.scope === 'events' ? 'Evento' : 'Estudio';
 
   return `
-    <div class="db-toolbar">
+    <div class="db-toolbar hr-table-toolbar">
       <label class="db-field db-field--compact">
         <span>Origen</span>
         <select data-action="finance-filter" data-filter-key="financeScope">
@@ -3793,7 +3793,7 @@ function renderFinanceFilters(filters) {
   const years = Array.from({ length: 6 }, (_, i) => String(new Date().getFullYear() - i));
   const months = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
   return `
-    <div class="db-toolbar">
+    <div class="db-toolbar hr-table-toolbar">
       <label class="db-field db-field--compact"><span>Mes</span><select data-action="finance-filter" data-filter-key="financeMonth">${optionHTML('', 'Todos los meses', filters.month)}${months.map((month) => optionHTML(month, month, filters.month)).join('')}</select></label>
       <label class="db-field db-field--compact"><span>Año</span><select data-action="finance-filter" data-filter-key="financeYear">${optionHTML('', 'Todos los años', filters.year)}${years.map((year) => optionHTML(year, year, filters.year)).join('')}</select></label>
       <label class="db-field db-field--compact"><span>Tipo</span><select data-action="finance-filter" data-filter-key="financeType">${[
@@ -4007,7 +4007,7 @@ function renderEventInternalInvestors(event, transactions = []) {
         <td><div class="db-investor-share"><i style="--bar:${Math.max(2, investor.percent)}%"></i></div></td>
       </tr>
     `).join('')
-    : '<tr class="db-table__empty-row"><td colspan="4" class="db-empty">Sin inversiones internas registradas.</td></tr>';
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="4" class="db-empty hr-table-empty">Sin inversiones internas registradas.</td></tr>';
 
   return `
     <article class="db-card db-event-investors">
@@ -4019,8 +4019,8 @@ function renderEventInternalInvestors(event, transactions = []) {
           ${renderStatCard('Inversión interna total', money(total))}
           ${renderStatCard('Costo total del evento', money(rightsTotals.totalCost))}
         </div>
-        <div class="db-table-wrap">
-          <table class="db-table" aria-label="Porcentaje de inversión sobre costo total por participante">
+        <div class="db-table-wrap hr-table-wrap">
+          <table class="db-table hr-table hr-table-readable" aria-label="Porcentaje de inversión sobre costo total por participante">
             <thead>
               <tr>
                 <th scope="col">Participante</th>
@@ -4193,11 +4193,11 @@ function renderTransactionsTable(transactions) {
         <td>${escapeHTML(tx.username ?? tx.user_id ?? '-')}</td>
       </tr>
     `).join('')
-    : '<tr class="db-table__empty-row"><td colspan="6" class="db-empty">Sin transacciones en el periodo.</td></tr>';
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="6" class="db-empty hr-table-empty">Sin transacciones en el periodo.</td></tr>';
 
   return `
-    <div class="db-table-wrap">
-      <table class="db-table" aria-label="Desglose de transacciones">
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="db-table hr-table hr-table-readable" aria-label="Desglose de transacciones">
         <thead><tr>
           ${headers.map(([field, label]) => renderSortableHeader(tableId, field, label, activeSort)).join('')}
         </tr></thead>
@@ -4241,11 +4241,11 @@ function renderEventFinanceTransactionsTable(transactions, options = {}) {
         ${options.canEdit ? `<td><button class="db-btn-secondary" type="button" data-action="event-movement-edit" data-event-movement="${escapeAttr(encodeURIComponent(JSON.stringify(tx)))}">Editar</button></td>` : ''}
       </tr>
     `).join('')
-    : `<tr class="db-table__empty-row"><td colspan="${headers.length + (options.canEdit ? 1 : 0)}" class="db-empty">Sin transacciones en el periodo.</td></tr>`;
+    : `<tr class="db-table__empty-row hr-table-empty"><td colspan="${headers.length + (options.canEdit ? 1 : 0)}" class="db-empty hr-table-empty">Sin transacciones en el periodo.</td></tr>`;
 
   return `
-    <div class="db-table-wrap">
-      <table class="db-table" aria-label="Desglose financiero de eventos">
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="db-table hr-table hr-table-readable" aria-label="Desglose financiero de eventos">
         <thead><tr>
           ${headers.map(([field, label]) => renderSortableHeader(tableId, field, label, activeSort)).join('')}
           ${options.canEdit ? '<th scope="col">Acciones</th>' : ''}
@@ -4305,19 +4305,19 @@ async function renderErpPermissions() {
 
   const rows = (users ?? []).length
     ? users.map(renderPermissionUserRow).join('')
-    : `<tr class="db-table__empty-row"><td colspan="6" class="db-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin usuarios registrados.'}</td></tr>`;
+    : `<tr class="db-table__empty-row hr-table-empty"><td colspan="6" class="db-empty hr-table-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin usuarios registrados.'}</td></tr>`;
   const permissionSearch = tableSearchFor('js-permissions-table-body');
 
   return sectionShell('ERP', 'Permisos', 'title-erp-permissions', `
-    <div class="db-toolbar">
+    <div class="db-toolbar hr-table-toolbar">
       <label class="db-field db-field--compact db-field--search">
         <span>Buscar</span>
         <input data-table-search data-table-target="js-permissions-table-body" data-table-count="js-permissions-table-count" placeholder="Buscar por nombre, usuario, rol o permiso" value="${escapeAttr(permissionSearch)}" />
         <small id="js-permissions-table-count" class="db-field__hint">${(users ?? []).length} filas visibles</small>
       </label>
     </div>
-    <div class="db-table-wrap">
-      <table class="db-table db-table--permissions" aria-label="Administracion de roles y permisos">
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="db-table hr-table hr-table-editable db-table--permissions" aria-label="Administracion de roles y permisos">
         <thead>
           <tr>
             <th scope="col">Nombre</th>
@@ -4386,7 +4386,7 @@ async function renderErpAuthAudit() {
 
 function renderAuthAuditFilterBar(activeFilter = 'all') {
   return `
-    <div class="db-toolbar">
+    <div class="db-toolbar hr-table-toolbar">
       <label class="db-field db-field--compact">
         <span>Filtro</span>
         <select data-action="auth-audit-filter" aria-label="Filtrar auditoría de Auth">
@@ -4445,14 +4445,14 @@ function renderAuthUsersTable(title, users = [], dateField = 'created_at', group
         </tr>
       `;
     }).join('')
-    : '<tr class="db-table__empty-row"><td colspan="6" class="db-empty">Sin registros.</td></tr>';
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="6" class="db-empty hr-table-empty">Sin registros.</td></tr>';
 
   return `
     <article class="db-auth-audit-block" ${authAuditBlockAttrs(groups)}>
       <h2 class="db-auth-audit-block__title">${escapeHTML(title)}</h2>
       ${renderAuditTableSearch(tableId, users.length)}
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="${escapeAttr(title)}">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="${escapeAttr(title)}">
           <thead>
             <tr>
               <th scope="col">Fecha</th>
@@ -4491,14 +4491,14 @@ function renderPublicProfilesTable(title, profiles = [], groups = ['public'], ta
         </tr>
       `;
     }).join('')
-    : '<tr class="db-table__empty-row"><td colspan="5" class="db-empty">Sin registros.</td></tr>';
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="5" class="db-empty hr-table-empty">Sin registros.</td></tr>';
 
   return `
     <article class="db-auth-audit-block" ${authAuditBlockAttrs(groups)}>
       <h2 class="db-auth-audit-block__title">${escapeHTML(title)}</h2>
       ${renderAuditTableSearch(tableId, profiles.length)}
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="${escapeAttr(title)}">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="${escapeAttr(title)}">
           <thead>
             <tr>
               <th scope="col">Email public.users</th>
@@ -4533,14 +4533,14 @@ function renderDuplicateEmailAudit(emailGroups = [], groups = ['alerts'], tableI
         </tr>
       `;
     }).join('')
-    : '<tr class="db-table__empty-row"><td colspan="4" class="db-empty">Sin emails duplicados.</td></tr>';
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="4" class="db-empty hr-table-empty">Sin emails duplicados.</td></tr>';
 
   return `
     <article class="db-auth-audit-block" ${authAuditBlockAttrs(groups)}>
       <h2 class="db-auth-audit-block__title">Emails duplicados</h2>
       ${renderAuditTableSearch(tableId, emailGroups.length)}
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="Emails duplicados">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="Emails duplicados">
           <thead>
             <tr>
               <th scope="col">Email</th>
@@ -4572,14 +4572,14 @@ function renderDuplicateUserIdAudit(userIdGroups = [], groups = ['alerts'], tabl
         </tr>
       `;
     }).join('')
-    : '<tr class="db-table__empty-row"><td colspan="3" class="db-empty">Sin User ID duplicados.</td></tr>';
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="3" class="db-empty hr-table-empty">Sin User ID duplicados.</td></tr>';
 
   return `
     <article class="db-auth-audit-block" ${authAuditBlockAttrs(groups)}>
       <h2 class="db-auth-audit-block__title">User ID duplicados</h2>
       ${renderAuditTableSearch(tableId, userIdGroups.length)}
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="User ID duplicados">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="User ID duplicados">
           <thead>
             <tr>
               <th scope="col">User ID</th>
@@ -4700,13 +4700,13 @@ async function renderAdminTableEditor() {
     ? sortedData.map((row, index) => renderAdminTableEditorRow(tableName, config, row, index, {
       hidden: Boolean(searchQuery) && !rowMatchesSearch(row, columns, searchQuery),
     })).join('')
-    : `<tr class="db-table__empty-row"><td colspan="99" class="db-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin filas disponibles.'}</td></tr>`;
+    : `<tr class="db-table__empty-row hr-table-empty"><td colspan="99" class="db-empty hr-table-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin filas disponibles.'}</td></tr>`;
   const membershipDashboardTable = isMembershipDashboard
     ? renderMembershipDashboardTable(visibleData, { canEditMaterialDelivery: true })
     : '';
 
   return sectionShell('ERP', 'BB.DD', 'title-admin-table-editor', `
-    <div class="db-toolbar">
+    <div class="db-toolbar hr-table-toolbar">
       <label class="db-field db-field--compact">
         <span>Tabla</span>
         <select data-action="table-editor-table" aria-label="Seleccionar tabla">
@@ -4721,8 +4721,8 @@ async function renderAdminTableEditor() {
     ${membershipDashboardContext}
     ${isMembershipDashboard && !membershipDashboardHasUser ? '<p class="db-empty">Selecciona un usuario para consultar su dashboard de membresía.</p>' : `
     ${isMembershipDashboard ? membershipDashboardTable : `
-    <div class="db-table-wrap">
-      <table class="db-table db-table--editor" aria-label="Editor de ${escapeAttr(config.label)}">
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="db-table hr-table hr-table-editable db-table--editor" aria-label="Editor de ${escapeAttr(config.label)}">
         <thead>
           <tr>
             ${visibleColumns.map((field) => renderSortableHeader(tableId, field, adminFieldLabel(config, field), activeSort)).join('')}
@@ -4795,9 +4795,9 @@ function renderAdminTableEditorRow(tableName, config, row, index, options = {}) 
         }
 
         return `
-          <td class="db-table-cell--editable${escapeAttr(cellToneClass)}">
+          <td class="db-table-cell--editable hr-cell-editable${escapeAttr(cellToneClass)}">
             <input
-              class="db-table-input"
+              class="db-table-input hr-input"
               form="admin-table-form-${index}"
               name="${escapeAttr(field)}"
               value="${escapeAttr(value)}"
@@ -4870,14 +4870,14 @@ function renderMembershipDashboardTable(rows = [], options = {}) {
   const body = rows.length
     ? rows.map((row) => renderMembershipDashboardRow(row, deliveryByWeek.get(Number(row.semana ?? 0)), options)).join('')
     : `
-      <tr class="db-table__empty-row">
-        <td colspan="8" class="db-empty">Sin datos de membresía.</td>
+      <tr class="db-table__empty-row hr-table-empty">
+        <td colspan="8" class="db-empty hr-table-empty">Sin datos de membresía.</td>
       </tr>
     `;
 
   return `
-    <div class="db-table-wrap db-table-wrap--membership">
-      <table class="db-table" aria-label="Membresía">
+    <div class="db-table-wrap hr-table-wrap db-table-wrap--membership">
+      <table class="db-table hr-table hr-table-editable" aria-label="Membresía">
         <thead>
           <tr>
             <th scope="col">Semana</th>
@@ -4964,7 +4964,7 @@ function renderMembershipDeliveryDateInput(row, delivery, formId, cycleNumber, d
       <input type="hidden" name="cycle_number" value="${escapeAttr(String(cycleNumber))}" />
       <input type="hidden" name="delivered_at_original" value="${escapeAttr(delivery?.deliveredAt ?? '')}" />
       <span class="db-membership-delivery-status db-membership-delivery-status--${isDelivered ? 'done' : 'pending'}">${escapeHTML(deliveredAtText)}</span>
-      <input class="db-table-input db-table-input--compact db-membership-editable-cell" name="delivered_at" type="date" value="${escapeAttr(delivery?.deliveredAt ?? '')}" aria-label="Fecha real de entrega" />
+      <input class="db-table-input hr-input hr-cell-editable db-table-input--compact db-membership-editable-cell" name="delivered_at" type="date" value="${escapeAttr(delivery?.deliveredAt ?? '')}" aria-label="Fecha real de entrega" />
     </form>
   `;
 }
@@ -4979,7 +4979,7 @@ function renderMembershipSessionNotesInput(row, formId) {
       <form id="${formId}" data-form="membership-session-notes" data-stay-section="admin-table-editor">
         <input type="hidden" name="session_id" value="${escapeAttr(sessionId)}" />
         <input type="hidden" name="notes_original" value="${escapeAttr(notes || '')}" />
-        <textarea class="db-table-input db-table-input--notes db-membership-editable-cell" name="notes" rows="3" aria-label="Notas de sesión">${escapeHTML(notes || '')}</textarea>
+        <textarea class="db-table-input hr-input hr-cell-editable db-table-input--notes db-membership-editable-cell" name="notes" rows="3" aria-label="Notas de sesión">${escapeHTML(notes || '')}</textarea>
       </form>
     </div>
   `;
@@ -7160,7 +7160,7 @@ function renderEventPermissionsEditor(user) {
         </tr>
       `;
     }).join('')
-    : '<tr class="db-table__empty-row"><td colspan="5" class="db-empty">Sin eventos disponibles.</td></tr>';
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="5" class="db-empty hr-table-empty">Sin eventos disponibles.</td></tr>';
   const eventPermissionSearch = tableSearchFor('js-event-permissions-body');
 
   return `
@@ -7171,8 +7171,8 @@ function renderEventPermissionsEditor(user) {
         <input data-table-search data-table-target="js-event-permissions-body" data-table-count="js-event-permissions-count" placeholder="Buscar evento" value="${escapeAttr(eventPermissionSearch)}" />
         <small id="js-event-permissions-count" class="db-field__hint">${events.length} eventos visibles</small>
       </label>
-      <div class="db-table-wrap db-event-permissions__table-wrap">
-        <table class="db-table db-event-permissions__table" aria-label="Permisos por evento">
+      <div class="db-table-wrap hr-table-wrap db-event-permissions__table-wrap">
+        <table class="db-table hr-table hr-table-editable db-event-permissions__table" aria-label="Permisos por evento">
           <thead>
             <tr>
               <th scope="col">Evento</th>
