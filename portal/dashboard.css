@@ -2415,8 +2415,9 @@
 
 /* ================================================================
    19. PORTAL SHELL / HR DESIGN SYSTEM BRIDGE
-   Visual compatibility only. Data tables and ERP-specific layouts
-   intentionally remain under their existing db-* rules.
+   Visual compatibility only. ERP-specific layouts intentionally remain
+   under their existing db-* rules; table db-* selectors are kept as
+   compatibility adapters for hr-table classes.
 ================================================================ */
 .db-body {
   background: var(--hr-bg);
@@ -2898,10 +2899,6 @@ input[data-user-search] {
   border-color: var(--hr-border);
 }
 
-.db-modal__body {
-  color: var(--hr-text);
-}
-
 .db-modal__actions {
   gap: var(--hr-space-sm);
   border-top: 1px solid var(--hr-border);
@@ -2960,11 +2957,6 @@ input[data-user-search] {
   background: var(--hr-surface);
 }
 
-.db-table.hr-table {
-  color: var(--hr-text);
-  font-family: var(--hr-font-mono);
-}
-
 .db-table.hr-table thead {
   background: var(--hr-surface);
 }
@@ -3001,9 +2993,4 @@ input[data-user-search] {
 .db-table__empty-row .hr-table-empty {
   color: var(--hr-muted);
   background: color-mix(in srgb, var(--hr-surface) 72%, transparent);
-}
-
-.db-toolbar.hr-table-toolbar {
-  border-color: var(--hr-border);
-  background: var(--hr-surface);
 }
