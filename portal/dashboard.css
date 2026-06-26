@@ -2620,3 +2620,332 @@
     bottom: var(--hr-bottom-nav-height);
   }
 }
+
+/* ================================================================
+   20. PORTAL INTERNAL VIEWS / HR DESIGN SYSTEM BRIDGE
+   CSS-only adoption for dashboard.js-rendered views.
+   JS, Supabase queries, db-* component names and editable tables are
+   intentionally untouched.
+================================================================ */
+.db-section {
+  width: 100%;
+}
+
+.db-section__header {
+  gap: var(--hr-space-md);
+}
+
+.db-section__header .section-label,
+.db-card__header .section-label,
+.db-scrum-col__title,
+.db-notifications__header .section-label {
+  color: var(--hr-muted);
+  font-family: var(--hr-font-mono);
+  font-size: var(--hr-text-xs);
+  letter-spacing: .14em;
+}
+
+.db-section__cta,
+.db-card-list__item .btn-primary,
+.db-empty a,
+.db-note a {
+  min-height: var(--hr-touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--hr-red);
+  border-radius: var(--hr-radius-none);
+  background: var(--hr-red);
+  color: var(--hr-text);
+  font-family: var(--hr-font-mono);
+  font-size: var(--hr-text-xs);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  text-decoration: none;
+  padding: 0 var(--hr-space-md);
+  transition:
+    transform var(--hr-duration-fast),
+    background var(--hr-duration-fast),
+    border-color var(--hr-duration-fast);
+}
+
+.db-section__cta:hover,
+.db-card-list__item .btn-primary:hover,
+.db-empty a:hover,
+.db-note a:hover {
+  transform: translateY(-1px);
+  border-color: var(--hr-red-hover);
+  background: var(--hr-red-hover);
+}
+
+.db-card-list,
+.db-coupon-list,
+.db-activity-log {
+  display: grid;
+  gap: var(--hr-space-sm);
+}
+
+.db-card-list__item,
+.db-coupon-list__item,
+.db-activity-log li {
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius-none);
+  background: var(--hr-surface-2);
+  color: var(--hr-text);
+}
+
+.db-card-list__label,
+.db-card-list__value,
+.db-profile__meta dt,
+.db-profile__meta dd,
+.db-task-card__meta {
+  color: var(--hr-muted);
+}
+
+.db-profile__name,
+.db-card strong,
+.db-stat-card strong,
+.db-task-card__title {
+  color: var(--hr-text);
+  font-family: var(--hr-font-display);
+}
+
+.db-profile-action,
+.db-quick-action,
+.db-btn-secondary,
+.db-btn-danger,
+.db-task-card__actions button,
+.db-membership-sync__button {
+  cursor: pointer;
+}
+
+.db-profile-action,
+.db-quick-action {
+  border: 1px solid var(--hr-border-strong);
+  background: var(--hr-surface-2);
+  color: var(--hr-text);
+  text-decoration: none;
+}
+
+.db-profile-action:hover,
+.db-quick-action:hover {
+  border-color: color-mix(in srgb, var(--hr-red) 42%, transparent);
+  background: color-mix(in srgb, var(--hr-red) 10%, transparent);
+  color: var(--hr-text);
+}
+
+.db-btn-secondary:hover {
+  border-color: var(--hr-border-strong);
+  background: var(--hr-surface);
+  color: var(--hr-text);
+}
+
+.db-btn-danger:hover {
+  border-color: var(--hr-danger);
+  background: var(--hr-danger-ghost);
+  color: var(--hr-danger);
+}
+
+.db-field input::placeholder,
+.db-field textarea::placeholder,
+.db-toolbar input::placeholder {
+  color: color-mix(in srgb, var(--hr-muted) 72%, transparent);
+}
+
+.db-field input:disabled,
+.db-field textarea:disabled,
+.db-field select:disabled,
+.db-field input[readonly] {
+  cursor: not-allowed;
+  opacity: .68;
+  background: color-mix(in srgb, var(--hr-surface) 88%, black);
+}
+
+.db-toolbar {
+  align-items: end;
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius-none);
+  background: var(--hr-surface);
+  padding: var(--hr-space-md);
+}
+
+.db-field--search input,
+.db-toolbar input[type="search"],
+input[data-table-search],
+input[data-user-search] {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--hr-red) 10%, transparent), transparent 42%),
+    #090909;
+}
+
+.db-permission-list {
+  gap: var(--hr-space-xs);
+}
+
+.db-permission-chip {
+  min-height: 28px;
+  border-color: var(--hr-border-strong);
+  background: var(--hr-surface-2);
+  color: var(--hr-muted);
+}
+
+.db-permission-chip button {
+  min-width: 20px;
+  min-height: 20px;
+  border-radius: var(--hr-radius-none);
+}
+
+.db-badge--role,
+.db-status,
+.db-auth-audit__ok,
+.db-auth-audit__flag {
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+}
+
+.db-badge--client,
+.db-badge--rrpp {
+  color: var(--hr-cyan);
+  border-color: var(--hr-cyan-dim);
+  background: var(--hr-cyan-ghost);
+}
+
+.db-badge--collaborator {
+  color: var(--hr-purple);
+  border-color: var(--hr-purple-dim);
+  background: var(--hr-purple-ghost);
+}
+
+.db-badge--admin {
+  color: var(--hr-red);
+  border-color: color-mix(in srgb, var(--hr-red) 42%, transparent);
+  background: color-mix(in srgb, var(--hr-red) 10%, transparent);
+}
+
+.db-empty {
+  border: 1px dashed var(--hr-border);
+  border-radius: var(--hr-radius-none);
+  background: color-mix(in srgb, var(--hr-surface) 72%, transparent);
+  padding: var(--hr-space-lg);
+  text-align: center;
+}
+
+.db-empty--error {
+  border-color: var(--hr-danger-dim);
+  background: var(--hr-danger-ghost);
+  color: var(--hr-danger);
+}
+
+.db-scrum-board {
+  gap: var(--hr-space-md);
+}
+
+.db-scrum-col {
+  background: color-mix(in srgb, var(--hr-surface) 94%, transparent);
+}
+
+.db-scrum-col__header {
+  border-color: var(--hr-border);
+}
+
+.db-scrum-col__count {
+  border: 1px solid var(--hr-border);
+  background: var(--hr-surface-2);
+  color: var(--hr-muted);
+}
+
+.db-task-card {
+  background: var(--hr-surface-2);
+}
+
+.db-user-picker__menu {
+  z-index: var(--hr-z-popover);
+  border-color: var(--hr-border-strong);
+  border-radius: var(--hr-radius-none);
+  background: var(--hr-surface);
+  box-shadow: var(--hr-shadow-md);
+}
+
+.db-user-option {
+  min-height: var(--hr-touch-target);
+  border-radius: var(--hr-radius-none);
+  color: var(--hr-muted);
+}
+
+.db-user-option:hover,
+.db-user-option:focus-visible {
+  outline: 0;
+  background: color-mix(in srgb, var(--hr-red) 10%, transparent);
+  color: var(--hr-text);
+}
+
+.db-modal {
+  z-index: var(--hr-z-overlay);
+  backdrop-filter: blur(12px);
+}
+
+.db-modal__dialog {
+  border-color: var(--hr-border-strong);
+  background: var(--hr-surface);
+  box-shadow: var(--hr-shadow-lg);
+}
+
+.db-modal__title {
+  color: var(--hr-text);
+  font-family: var(--hr-font-display);
+  letter-spacing: -.03em;
+  border-color: var(--hr-border);
+}
+
+.db-modal__body {
+  color: var(--hr-text);
+}
+
+.db-modal__actions {
+  gap: var(--hr-space-sm);
+  border-top: 1px solid var(--hr-border);
+  background: linear-gradient(180deg, transparent, var(--hr-surface) 22%);
+}
+
+.db-notifications__item {
+  background: var(--hr-surface-2);
+}
+
+.db-notifications__item--read {
+  opacity: .72;
+}
+
+.db-notifications__msg {
+  color: var(--hr-text);
+}
+
+.db-notifications__time {
+  color: var(--hr-muted);
+}
+
+.db-toast {
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius-none);
+  background: var(--hr-surface);
+  color: var(--hr-text);
+  box-shadow: var(--hr-shadow-md);
+}
+
+.db-session-banner {
+  border-color: var(--hr-warning-dim);
+  background: var(--hr-warning-ghost);
+}
+
+@media (max-width: 720px) {
+  .db-toolbar,
+  .db-form__row {
+    grid-template-columns: 1fr;
+  }
+
+  .db-toolbar > *,
+  .db-form__actions > *,
+  .db-task-card__actions > * {
+    width: 100%;
+  }
+}
