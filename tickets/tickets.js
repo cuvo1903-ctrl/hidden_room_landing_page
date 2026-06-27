@@ -442,7 +442,7 @@ function preparePrintPages(tickets) {
   const pagesRoot = document.querySelector("[data-print-pages]");
   if (!pagesRoot) return;
 
-  const pageSize = 24;
+  const pageSize = 44;
   const emission = formatDate(new Date().toISOString());
   const pages = [];
   for (let index = 0; index < printableTickets.length; index += pageSize) {
