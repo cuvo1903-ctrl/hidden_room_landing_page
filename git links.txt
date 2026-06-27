@@ -1,0 +1,3 @@
+git remote set-url origin https://github.com/cuvo1903-ctrl/hidden_room_landing_page
+
+git remote set-url origin https://github.com/cuvo1903-ctrl/beta_hiddenroom

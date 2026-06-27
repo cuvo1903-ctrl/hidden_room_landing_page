@@ -5,6 +5,8 @@ const supabase = createClient(
   "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
 );
 
+const TICKET_SITE_ORIGIN = "https://hiddenroom.mx";
+
 const TICKET_TYPES = ["COVER", "ESTÁNDAR", "VIP", "2x1", "3x2", "3x1", "ACREDITACIÓN"];
 
 const state = {
@@ -387,7 +389,7 @@ function ticketCardHTML(ticket) {
           <button class="ticket-btn ticket-btn--ghost hr-btn hr-btn-outline hr-btn-sm" type="button" data-action="print" data-folio="${escapeHTML(ticket.folio)}">
             Imprimir / PDF
           </button>
-          <a class="ticket-btn ticket-btn--ghost hr-btn hr-btn-outline hr-btn-sm" href="${escapeHTML(ticket.qr_payload || buildValidationURL(ticket.folio))}" target="_blank" rel="noopener">
+          <a class="ticket-btn ticket-btn--ghost hr-btn hr-btn-outline hr-btn-sm" href="${escapeHTML(ticketValidationURL(ticket))}" target="_blank" rel="noopener">
             Validar
           </a>
         </div>
@@ -406,7 +408,7 @@ function renderQR(ticket) {
   }
 
   new window.QRCode(container, {
-    text: ticket.qr_payload || buildValidationURL(ticket.folio),
+    text: ticketValidationURL(ticket),
     width: 110,
     height: 110,
     colorDark: "#000000",
@@ -661,7 +663,7 @@ function renderPrintQRs(tickets) {
     if (!container) return;
     container.innerHTML = "";
     new window.QRCode(container, {
-      text: ticket.qr_payload || buildValidationURL(ticket.folio),
+      text: ticketValidationURL(ticket),
       width: 92,
       height: 92,
       colorDark: "#000000",
@@ -685,10 +687,25 @@ function clearPrintState() {
 
 function buildValidationURL(folio) {
   const encodedFolio = encodeURIComponent(folio);
-  if (window.location.origin && window.location.origin !== "null") {
-    return `${window.location.origin}/tickets/validate.html?folio=${encodedFolio}`;
+  return `${TICKET_SITE_ORIGIN}/tickets/validate.html?folio=${encodedFolio}`;
+}
+
+function ticketValidationURL(ticket) {
+  const fallback = buildValidationURL(ticket?.folio || "");
+  const payload = String(ticket?.qr_payload || "").trim();
+  if (!payload) return fallback;
+
+  try {
+    const url = new URL(payload, TICKET_SITE_ORIGIN);
+    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+      const site = new URL(TICKET_SITE_ORIGIN);
+      url.protocol = site.protocol;
+      url.host = site.host;
+    }
+    return url.toString();
+  } catch (_) {
+    return fallback;
   }
-  return `/tickets/validate.html?folio=${encodedFolio}`;
 }
 
 function normalizeEventKey(value) {
