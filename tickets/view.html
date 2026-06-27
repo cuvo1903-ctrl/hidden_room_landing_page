@@ -62,7 +62,10 @@
           Actualizar
         </button>
         <button id="print-batch-button" class="ticket-btn ticket-btn--light hr-btn hr-btn-secondary" type="button" disabled>
-          Imprimir lote / PDF
+          Imprimir lote
+        </button>
+        <button id="download-pdf-button" class="ticket-btn ticket-btn--ghost hr-btn hr-btn-outline" type="button" disabled>
+          Descargar PDF
         </button>
       </div>
     </section>
@@ -87,6 +90,8 @@
   </main>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
           crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="../site.js?v=20260618-mobileauth"></script>
   <script type="module" src="./view.js"></script>

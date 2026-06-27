@@ -726,11 +726,11 @@
     min-height: 11mm;
     max-height: 13mm;
     margin: 0 !important;
-    padding: 1mm 2mm !important;
+    padding: .8mm 1.5mm !important;
     display: grid;
-    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, .85fr);
+    grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr) 35mm;
     align-items: center;
-    gap: 1mm;
+    gap: 1.5mm;
     border: 0;
     border-bottom: .5px dotted #000;
     color: #000;
@@ -742,37 +742,61 @@
   .ticket-print-header > div {
     min-width: 0;
     display: grid;
-    grid-template-columns: 1fr;
-    gap: 0;
+    gap: .35mm;
   }
 
   .ticket-print-header span {
+    min-width: 0;
+    overflow: hidden;
     color: #555;
-    font: 700 4.2pt/1 Arial, sans-serif;
+    font: 700 4.1pt/1 Arial, sans-serif;
     letter-spacing: 0;
+    text-overflow: ellipsis;
     text-transform: uppercase;
+    white-space: nowrap;
   }
 
   .ticket-print-header strong {
+    min-width: 0;
     overflow: hidden;
     color: #000;
-    font: 700 6.3pt/1 Arial, sans-serif;
+    font: 800 6.2pt/1 Arial, sans-serif;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .ticket-print-header__brand {
-    grid-template-columns: minmax(0, 1fr);
     align-items: center;
-    gap: 0;
-  }
-
-  .ticket-print-header__brand img {
-    display: none !important;
   }
 
   .ticket-print-header__brand strong {
-    font-size: 8.5pt;
+    font-size: 8.8pt;
+    font-weight: 900;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+  }
+
+  .ticket-print-header__brand span {
+    color: #111;
+    font-size: 4.6pt;
+    font-weight: 800;
+  }
+
+  .ticket-print-header__meta {
+    align-content: center;
+  }
+
+  .ticket-print-header__total {
+    position: relative;
+    min-height: 10mm;
+    padding-right: 0;
+    align-content: center;
+    justify-items: end;
+    text-align: right;
+  }
+
+  .ticket-print-header__total strong {
+    font-size: 7.4pt;
     font-weight: 900;
     text-transform: uppercase;
   }

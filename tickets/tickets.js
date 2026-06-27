@@ -28,6 +28,7 @@ const els = {
   ticketsTitle: document.getElementById("tickets-title"),
   batchCount: document.getElementById("batch-count"),
   printBatchButton: document.getElementById("print-batch-button"),
+  downloadPdfButton: document.getElementById("download-pdf-button"),
   refreshButton: document.getElementById("refresh-button"),
   deleteBatchForm: document.getElementById("delete-batch-form"),
   deleteEventKey: document.getElementById("delete-event-key"),
@@ -97,6 +98,7 @@ function bindEvents() {
   });
   els.refreshButton.addEventListener("click", () => loadTicketsForEvent(state.currentEventKey));
   els.printBatchButton.addEventListener("click", printBatch);
+  els.downloadPdfButton?.addEventListener("click", downloadBatchPDF);
   els.ticketsList.addEventListener("click", handleTicketAction);
   window.addEventListener("afterprint", clearPrintState);
 }
@@ -354,6 +356,7 @@ function renderTickets() {
   els.ticketsList.hidden = !hasTickets;
   els.batchCount.textContent = String(state.tickets.length);
   els.printBatchButton.disabled = !hasTickets;
+  if (els.downloadPdfButton) els.downloadPdfButton.disabled = !hasTickets;
   els.ticketsTitle.textContent = state.currentEventKey
     ? `Tickets · ${state.currentEventKey}`
     : "Lote generado";
@@ -428,13 +431,163 @@ function printSingle(folio) {
   card.dataset.printSelected = "true";
   const ticket = state.tickets.find((item) => item.folio === folio);
   preparePrintPages(ticket ? [ticket] : []);
-  window.print();
+  printPreparedDocument(printFileName("ticket", ticket?.folio || folio));
 }
 
 function printBatch() {
   clearPrintState();
   preparePrintPages(state.tickets);
+  printPreparedDocument(printFileName("tickets"));
+}
+
+
+async function downloadBatchPDF() {
+  const jsPDF = window.jspdf?.jsPDF;
+  if (!jsPDF) {
+    showMessage("No fue posible cargar el generador de PDF. Intenta de nuevo.", "error");
+    return;
+  }
+  if (!state.tickets.length) return;
+
+  clearPrintState();
+  preparePrintPages(state.tickets);
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+  setBusy(els.downloadPdfButton, true, "Preparando PDF...");
+  try {
+    const doc = buildTicketsPDF(jsPDF, state.tickets);
+    doc.save(printFileName("tickets") + ".pdf");
+  } catch (error) {
+    console.error("[Tickets] No fue posible generar el PDF:", error);
+    showMessage("No fue posible generar el PDF. Intenta imprimir y guardar como PDF.", "error");
+  } finally {
+    setBusy(els.downloadPdfButton, false, "Descargar PDF");
+    clearPrintState();
+  }
+}
+
+function buildTicketsPDF(jsPDF, tickets) {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
+  const page = { width: 215.9, height: 279.4, margin: 4, header: 12, columns: 4, rows: 10, ticketWidth: 48 };
+  const gridHeight = page.height - (page.margin * 2) - page.header;
+  const rowHeight = gridHeight / page.rows;
+  const gridWidth = page.columns * page.ticketWidth;
+  const startX = page.margin + ((page.width - (page.margin * 2) - gridWidth) / 2);
+  const startY = page.margin + page.header;
+  const pageSize = page.columns * page.rows;
+  const pages = [];
+
+  for (let index = 0; index < tickets.length; index += pageSize) {
+    pages.push(tickets.slice(index, index + pageSize));
+  }
+
+  pages.forEach((pageTickets, pageIndex) => {
+    if (pageIndex > 0) doc.addPage("letter", "portrait");
+    drawPDFHeader(doc, pageTickets, page, pageIndex + 1, pages.length);
+    pageTickets.forEach((ticket, ticketIndex) => {
+      const col = ticketIndex % page.columns;
+      const row = Math.floor(ticketIndex / page.columns);
+      drawPDFTicket(doc, ticket, startX + (col * page.ticketWidth), startY + (row * rowHeight), page.ticketWidth, rowHeight);
+    });
+  });
+
+  return doc;
+}
+
+function drawPDFHeader(doc, tickets, page, pageNumber, totalPages) {
+  const eventKey = tickets[0]?.event_key || state.currentEventKey || "-";
+  const total = tickets.reduce((sum, ticket) => {
+    const price = Number(ticket?.price);
+    return Number.isFinite(price) ? sum + price : sum;
+  }, 0);
+  const ticketTypes = [...new Set(tickets.map((ticket) => cleanTicketType(ticket.ticket_type)))];
+  const pageTicketType = ticketTypes.length === 1 ? ticketTypes[0] : "VARIOS";
+  const talon = "TALON CORRESPONDIENTE A " + tickets.length + " BOLETO" + (tickets.length === 1 ? "" : "S") + " DE " + pageTicketType;
+  const responsible = state.user?.email || state.user?.id || "-";
+  const emission = formatDate(new Date().toISOString());
+
+  doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.8);
+  doc.text(String(eventKey), page.margin + 1, page.margin + 4.4, { maxWidth: 62 });
+  doc.setFontSize(4.6);
+  doc.text(talon, page.margin + 1, page.margin + 7.2, { maxWidth: 86 });
+
+  doc.setFontSize(4.1);
+  doc.text("EMISOR:", page.width / 2 - 6, page.margin + 2.7);
+  doc.setFontSize(6.2);
+  doc.text(String(responsible), page.width / 2 - 6, page.margin + 5.2, { maxWidth: 46 });
+  doc.setFontSize(4.1);
+  doc.text("EMISION", page.width / 2 - 6, page.margin + 7.6);
+  doc.setFontSize(6.2);
+  doc.text(emission, page.width / 2 - 6, page.margin + 10.1, { maxWidth: 46 });
+
+  doc.setFontSize(4.1);
+  doc.text("PAGARE POR", page.width - page.margin - 1, page.margin + 4.5, { align: "right" });
+  doc.setFontSize(7.4);
+  doc.text(formatMoney(total), page.width - page.margin - 1, page.margin + 8, { align: "right" });
+  doc.setFontSize(4);
+  doc.text(String(pageNumber) + "/" + String(totalPages), page.width - page.margin - 1, page.margin + 10.6, { align: "right" });
+
+  doc.setLineWidth(0.15);
+  doc.setLineDashPattern([0.8, 0.8], 0);
+  doc.line(page.margin, page.margin + page.header, page.width - page.margin, page.margin + page.header);
+  doc.setLineDashPattern([], 0);
+}
+
+function drawPDFTicket(doc, ticket, x, y, width, height) {
+  const padding = 1.5;
+  const qrSize = 21.5;
+  const qrX = x + padding;
+  const qrY = y + ((height - qrSize) / 2);
+  const textX = qrX + qrSize + 2;
+  const textY = y + (height / 2) - 5;
+  const qrData = printQRDataURL(ticket);
+
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.12);
+  doc.setLineDashPattern([0.8, 0.8], 0);
+  doc.rect(x, y, width, height);
+  doc.setLineDashPattern([], 0);
+
+  if (qrData) doc.addImage(qrData, "PNG", qrX, qrY, qrSize, qrSize);
+
+  doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(4.2);
+  doc.text("TICKET", textX, textY);
+  doc.setFontSize(8.5);
+  doc.text(cleanTicketType(ticket.ticket_type), textX, textY + 3.6, { maxWidth: width - qrSize - 5 });
+  doc.setFontSize(4.2);
+  doc.text("PRECIO", textX, textY + 7.2);
+  doc.setFontSize(7.2);
+  doc.text(formatMoney(ticket.price), textX, textY + 10.8, { maxWidth: width - qrSize - 5 });
+}
+
+function printQRDataURL(ticket) {
+  const container = document.getElementById("print-qr-" + safeId(ticket.folio));
+  const canvas = container?.querySelector("canvas");
+  if (canvas) return canvas.toDataURL("image/png");
+  const image = container?.querySelector("img");
+  return image?.src || "";
+}
+
+function printPreparedDocument(title) {
+  if (title) {
+    state.previousDocumentTitle = document.title;
+    document.title = title;
+  }
   window.print();
+}
+
+function printFileName(prefix, detail = state.currentEventKey) {
+  const eventKey = normalizeEventKey(detail || state.currentEventKey || "tickets");
+  const date = new Date().toISOString().slice(0, 10);
+  return [prefix, eventKey, date]
+    .filter(Boolean)
+    .join("-")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function preparePrintPages(tickets) {
@@ -468,13 +621,12 @@ function preparePrintPages(tickets) {
             <span>${escapeHTML(talonText)}</span>
           </div>
           <div class="ticket-print-header__meta">
-            <span>RESPONSABLE</span>
+            <span>EMISOR:</span>
             <strong>${escapeHTML(responsible)}</strong>
             <span>EMISIÓN</span>
             <strong>${escapeHTML(emission)}</strong>
           </div>
           <div class="ticket-print-header__total">
-            <img src="/assets/img/black_logo.webp" alt="">
             <span>PAGARÉ POR</span>
             <strong>${escapeHTML(formatMoney(total))}</strong>
           </div>
@@ -520,6 +672,10 @@ function renderPrintQRs(tickets) {
 }
 
 function clearPrintState() {
+  if (state.previousDocumentTitle) {
+    document.title = state.previousDocumentTitle;
+    delete state.previousDocumentTitle;
+  }
   document.body.classList.remove("print-single");
   document.querySelectorAll("[data-print-selected]").forEach((card) => {
     delete card.dataset.printSelected;

@@ -116,9 +116,12 @@
         <strong id="batch-count" class="tickets-big-number">0</strong>
         <span>tickets listos</span>
         <button id="print-batch-button" class="ticket-btn ticket-btn--light hr-btn hr-btn-secondary" type="button" disabled>
-          Imprimir lote / Guardar PDF
+          Imprimir lote
         </button>
-        <p class="ticket-help">En el diálogo de impresión puedes elegir “Guardar como PDF”.</p>
+        <button id="download-pdf-button" class="ticket-btn ticket-btn--ghost hr-btn hr-btn-outline" type="button" disabled>
+          Descargar PDF
+        </button>
+        <p class="ticket-help">Se abrir? el di?logo de impresi?n con la hoja lista para guardar como PDF.</p>
       </aside>
 
       <article class="ticket-panel ticket-panel--danger hr-card hr-panel">
@@ -173,6 +176,8 @@
   </main>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
           crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="../site.js?v=20260618-mobileauth"></script>
   <script type="module" src="./tickets.js"></script>
