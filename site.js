@@ -1,5 +1,5 @@
 const SITE_STATUS = "BETA Sitio en contrucción";
-const SITE_VERSION = "V. 1.0.0";
+const SITE_VERSION = "V. 1.0.1";
 const GA_MEASUREMENT_ID = "G-VNHC1Z3FXZ";
 const HR_SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 const HR_SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
@@ -151,6 +151,21 @@ function renderNavActions(module) {
 }
 
 function renderGlobalDrawer(activeModule) {
+  const isPortalDashboard = document.body.classList.contains("db-body");
+  const drawerSessionMarkup = isPortalDashboard
+    ? `
+          <div class="hr-global-drawer__guest hr-global-drawer__guest--portal">
+            <button type="button" data-global-nav-action="settings">Ajustes</button>
+            <button type="button" data-global-nav-action="logout">Cerrar sesion</button>
+          </div>
+        `
+    : `
+          <div class="hr-global-drawer__guest">
+            <a href="/portal/">Ingresar</a>
+            <a href="/portal/?mode=register">Registrarse</a>
+          </div>
+        `;
+
   return `
     <button class="hr-global-drawer__backdrop" type="button"
       data-global-drawer-close aria-label="Cerrar menú" hidden></button>
@@ -173,10 +188,7 @@ function renderGlobalDrawer(activeModule) {
       </nav>
       <div class="hr-global-drawer__footer">
         <div data-hr-drawer-session>
-          <div class="hr-global-drawer__guest">
-            <a href="/portal/">Ingresar</a>
-            <a href="/portal/?mode=register">Registrarse</a>
-          </div>
+          ${drawerSessionMarkup}
         </div>
         <div class="hr-global-drawer__meta">
           <span class="site-status"></span>
@@ -461,6 +473,20 @@ function renderGlobalNav() {
     control.addEventListener("click", () => toggleGlobalDrawer(false));
   });
   target.querySelector(".hr-global-drawer")?.addEventListener("click", (event) => {
+    const actionButton = event.target.closest("[data-global-nav-action]");
+    if (actionButton) {
+      const action = actionButton.dataset.globalNavAction;
+      const targetControl = document.querySelector(
+        `#js-user-menu [data-action="${CSS.escape(action)}"], .db-sidebar__item[data-sidebar-action="${CSS.escape(action)}"]`,
+      );
+      if (targetControl) {
+        event.preventDefault();
+        targetControl.click();
+      }
+      toggleGlobalDrawer(false);
+      return;
+    }
+
     if (event.target.closest("a")) toggleGlobalDrawer(false);
   });
   attachGlobalDrawerSwipe(target.querySelector(".hr-global-drawer"));

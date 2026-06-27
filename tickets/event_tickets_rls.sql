@@ -3,7 +3,24 @@
 
 alter table public.event_tickets
   add column if not exists customer_name text,
-  add column if not exists customer_email text;
+  add column if not exists customer_email text,
+  add column if not exists ticket_type text default 'COVER';
+
+update public.event_tickets
+set ticket_type = 'COVER'
+where ticket_type is null
+   or ticket_type not in ('COVER', 'ESTÁNDAR', 'VIP', '2x1', '3x2', '3x1', 'ACREDITACIÓN');
+
+alter table public.event_tickets
+  alter column ticket_type set default 'COVER',
+  alter column ticket_type set not null;
+
+alter table public.event_tickets
+  drop constraint if exists event_tickets_ticket_type_check;
+
+alter table public.event_tickets
+  add constraint event_tickets_ticket_type_check
+  check (ticket_type in ('COVER', 'ESTÁNDAR', 'VIP', '2x1', '3x2', '3x1', 'ACREDITACIÓN'));
 
 alter table public.event_tickets enable row level security;
 
@@ -117,3 +134,50 @@ $$;
 revoke all on function public.mark_ticket_used(text) from public;
 grant execute on function public.mark_ticket_used(text) to authenticated;
 grant select, insert, update on table public.event_tickets to authenticated;
+
+create or replace function public.delete_ticket_batch(
+  p_event_key text,
+  p_start_number integer,
+  p_end_number integer
+)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  normalized_event_key text := upper(trim(coalesce(p_event_key, '')));
+  deleted_count integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'No tienes permiso para eliminar tickets'
+      using errcode = '42501';
+  end if;
+
+  if normalized_event_key = ''
+    or p_start_number is null
+    or p_end_number is null
+    or p_start_number < 1
+    or p_end_number < 1
+    or p_start_number > p_end_number then
+    raise exception 'Rango de tickets invalido'
+      using errcode = '22023';
+  end if;
+
+  with deleted as (
+    delete from public.event_tickets
+    where event_key = normalized_event_key
+      and folio like normalized_event_key || '-%'
+      and substring(folio from length(normalized_event_key) + 2) ~ '^[0-9]+$'
+      and substring(folio from length(normalized_event_key) + 2)::integer between p_start_number and p_end_number
+    returning 1
+  )
+  select count(*) into deleted_count from deleted;
+
+  return deleted_count;
+end;
+$$;
+
+revoke all on function public.delete_ticket_batch(text, integer, integer) from public;
+grant execute on function public.delete_ticket_batch(text, integer, integer) to authenticated;
+

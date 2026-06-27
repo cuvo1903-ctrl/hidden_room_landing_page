@@ -2150,12 +2150,12 @@ function renderAccountSettings() {
               <input type="email" name="email" autocomplete="email" value="${escapeAttr(email)}" required />
             </label>
             <label class="db-field">
-              <span>Nueva contrasena</span>
-              <input type="password" name="password" autocomplete="new-password" minlength="6" placeholder="Nueva contrasena" />
+              <span>Nueva contraseña</span>
+              <input type="password" name="password" autocomplete="new-password" minlength="6" placeholder="Nueva contraseña" />
             </label>
             <label class="db-field">
-              <span>Confirmar contrasena</span>
-              <input type="password" name="password_confirm" autocomplete="new-password" minlength="6" placeholder="Confirmar contrasena" />
+              <span>Confirmar contraseña</span>
+              <input type="password" name="password_confirm" autocomplete="new-password" minlength="6" placeholder="Confirmar contraseña" />
             </label>
             <button class="btn-primary" type="submit">Guardar cuenta</button>
           </form>
@@ -6996,12 +6996,12 @@ async function handleAccountUpdate(form) {
 
   if (password || passwordConfirm) {
     if (password !== passwordConfirm) {
-      showToast('Las contrasenas no coinciden.', 'error');
+      showToast('Las contraseñas no coinciden.', 'error');
       return;
     }
 
     if (password.length < 8) {
-      showToast('La contrasena debe tener al menos 8 caracteres.', 'error');
+      showToast('La contraseña debe tener al menos 8 caracteres.', 'error');
       return;
     }
   }
@@ -8047,7 +8047,7 @@ function enhancePasswordToggles(root = document) {
     button.type = 'button';
     button.className = 'db-password-toggle';
     button.dataset.action = 'toggle-password';
-    button.setAttribute('aria-label', 'Ver contrasena');
+    button.setAttribute('aria-label', 'Ver contraseña');
     button.innerHTML = '<span class="password-eye" aria-hidden="true"></span>';
     wrapper.appendChild(button);
   });
@@ -8115,7 +8115,7 @@ function attachMainDelegation() {
         input.type = visible ? 'password' : 'text';
         input.dataset.passwordVisible = visible ? 'false' : 'true';
         passwordToggle.innerHTML = '<span class="password-eye" aria-hidden="true"></span>';
-        passwordToggle.setAttribute('aria-label', visible ? 'Ver contrasena' : 'Ocultar contrasena');
+        passwordToggle.setAttribute('aria-label', visible ? 'Ver contraseña' : 'Ocultar contraseña');
       }
       return;
     }

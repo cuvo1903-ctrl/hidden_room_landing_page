@@ -32,6 +32,23 @@
 
     <div id="page-message" class="ticket-alert hr-card" role="status" aria-live="polite" hidden></div>
 
+    <section class="ticket-print-header" aria-hidden="true">
+      <div class="ticket-print-header__brand">
+        <img src="/assets/img/white_logo.webp" alt="">
+        <strong data-print-event>-</strong>
+      </div>
+      <div>
+        <span>EMISIÓN</span>
+        <strong data-print-user>-</strong>
+      </div>
+      <div>
+        <span>PAGARÉ POR</span>
+        <strong data-print-total>$0.00</strong>
+      </div>
+    </section>
+
+    <section class="ticket-print-pages" data-print-pages aria-hidden="true"></section>
+
     <section id="admin-panel" class="tickets-admin-grid hr-grid" hidden>
       <article class="ticket-panel hr-card hr-panel">
         <div class="ticket-panel__heading">
@@ -53,6 +70,19 @@
           <label class="ticket-field hr-field">
             <span>Cantidad</span>
             <input id="ticket-quantity" class="hr-input" name="quantity" type="number" min="1" max="100" value="1" required>
+          </label>
+
+          <label class="ticket-field hr-field">
+            <span>TICKET</span>
+            <select id="ticket-type" class="hr-select" name="ticket_type">
+              <option value="COVER" selected>COVER</option>
+              <option value="ESTÁNDAR">ESTÁNDAR</option>
+              <option value="VIP">VIP</option>
+              <option value="2x1">2x1</option>
+              <option value="3x2">3x2</option>
+              <option value="3x1">3x1</option>
+              <option value="ACREDITACIÓN">ACREDITACIÓN</option>
+            </select>
           </label>
 
           <label class="ticket-field hr-field">
@@ -90,6 +120,43 @@
         </button>
         <p class="ticket-help">En el diálogo de impresión puedes elegir “Guardar como PDF”.</p>
       </aside>
+
+      <article class="ticket-panel ticket-panel--danger hr-card hr-panel">
+        <div class="ticket-panel__heading">
+          <div>
+            <p class="tickets-kicker hr-kicker">Zona admin</p>
+            <h2>Eliminar lote</h2>
+          </div>
+          <span class="ticket-chip hr-badge hr-badge-danger">Irreversible</span>
+        </div>
+
+        <form id="delete-batch-form" class="ticket-form hr-form-grid">
+          <label class="ticket-field ticket-field--wide hr-field">
+            <span>Evento</span>
+            <select id="delete-event-key" class="hr-select" name="event_key" required disabled>
+              <option value="">Cargando eventos...</option>
+            </select>
+          </label>
+
+          <label class="ticket-field hr-field">
+            <span>Folio inicial</span>
+            <select id="delete-folio-start" class="hr-select" name="start_number" required disabled>
+              <option value="">Selecciona evento</option>
+            </select>
+          </label>
+
+          <label class="ticket-field hr-field">
+            <span>Folio final</span>
+            <select id="delete-folio-end" class="hr-select" name="end_number" required disabled>
+              <option value="">Selecciona evento</option>
+            </select>
+          </label>
+
+          <button id="delete-batch-button" class="ticket-btn ticket-btn--danger ticket-field--wide hr-btn hr-btn-outline hr-btn-block" type="submit">
+            Eliminar lote
+          </button>
+        </form>
+      </article>
     </section>
 
     <section id="tickets-section" class="tickets-results hr-stack" hidden>

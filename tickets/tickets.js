@@ -5,6 +5,8 @@ const supabase = createClient(
   "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
 );
 
+const TICKET_TYPES = ["COVER", "ESTÁNDAR", "VIP", "2x1", "3x2", "3x1", "ACREDITACIÓN"];
+
 const state = {
   user: null,
   profile: null,
@@ -27,6 +29,11 @@ const els = {
   batchCount: document.getElementById("batch-count"),
   printBatchButton: document.getElementById("print-batch-button"),
   refreshButton: document.getElementById("refresh-button"),
+  deleteBatchForm: document.getElementById("delete-batch-form"),
+  deleteEventKey: document.getElementById("delete-event-key"),
+  deleteFolioStart: document.getElementById("delete-folio-start"),
+  deleteFolioEnd: document.getElementById("delete-folio-end"),
+  deleteBatchButton: document.getElementById("delete-batch-button"),
 };
 
 init();
@@ -78,8 +85,14 @@ function hasAdminRole(rawRoles = "") {
 
 function bindEvents() {
   els.form.addEventListener("submit", handleGenerateTickets);
+  els.deleteBatchForm?.addEventListener("submit", handleDeleteBatch);
+  els.deleteEventKey?.addEventListener("change", () => loadDeleteFolioOptions(normalizeEventKey(els.deleteEventKey.value)));
   els.eventKey.addEventListener("change", async () => {
     state.currentEventKey = normalizeEventKey(els.eventKey.value);
+    if (els.deleteEventKey) {
+      els.deleteEventKey.value = state.currentEventKey;
+      await loadDeleteFolioOptions(state.currentEventKey);
+    }
     await loadTicketsForEvent(state.currentEventKey);
   });
   els.refreshButton.addEventListener("click", () => loadTicketsForEvent(state.currentEventKey));
@@ -103,12 +116,18 @@ async function loadEvents() {
   }
 
   state.events = (data || []).filter((event) => event.event_key);
-  els.eventKey.innerHTML = [
+  const eventOptions = [
     '<option value="">Selecciona un evento</option>',
     ...state.events.map((event) => (
       `<option value="${escapeHTML(event.event_key)}">${escapeHTML(eventLabel(event))}</option>`
     )),
   ].join("");
+  els.eventKey.innerHTML = eventOptions;
+  if (els.deleteEventKey) {
+    els.deleteEventKey.innerHTML = eventOptions;
+    els.deleteEventKey.disabled = false;
+    resetDeleteFolioOptions("Selecciona evento");
+  }
   setBusy(els.eventKey, false);
 }
 
@@ -126,6 +145,7 @@ async function handleGenerateTickets(event) {
   const eventKey = normalizeEventKey(formData.get("event_key"));
   const quantity = Number.parseInt(formData.get("quantity"), 10);
   const price = Number.parseFloat(formData.get("price"));
+  const ticketType = cleanTicketType(formData.get("ticket_type"));
 
   if (!eventKey || !Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
     showMessage("Selecciona un evento y una cantidad entre 1 y 100.", "error");
@@ -148,12 +168,13 @@ async function handleGenerateTickets(event) {
     const notes = cleanOptional(formData.get("notes"));
 
     const rows = Array.from({ length: quantity }, (_, index) => {
-      const folio = `${eventKey}-${String(nextNumber + index).padStart(4, "0")}`;
+      const folio = buildFolio(eventKey, nextNumber + index);
       return {
         event_key: eventKey,
         folio,
         qr_payload: buildValidationURL(folio),
         status: "valid",
+        ticket_type: ticketType,
         price,
         sold_at: soldAt,
         created_by: creator,
@@ -172,6 +193,7 @@ async function handleGenerateTickets(event) {
 
     state.currentEventKey = eventKey;
     state.tickets = data || rows;
+    if (els.deleteEventKey?.value === eventKey) await loadDeleteFolioOptions(eventKey);
     renderTickets();
     showMessage(
       `${quantity} ticket${quantity === 1 ? "" : "s"} generado${quantity === 1 ? "" : "s"}: ${rows[0].folio}${quantity > 1 ? ` a ${rows.at(-1).folio}` : ""}.`,
@@ -183,6 +205,101 @@ async function handleGenerateTickets(event) {
   } finally {
     setBusy(els.generateButton, false, "Generar tickets");
   }
+}
+
+async function loadDeleteFolioOptions(eventKey) {
+  resetDeleteFolioOptions(eventKey ? "Cargando folios..." : "Selecciona evento");
+  if (!eventKey) return;
+
+  const { data, error } = await supabase
+    .from("event_tickets")
+    .select("folio")
+    .eq("event_key", eventKey)
+    .order("folio", { ascending: true })
+    .limit(1000);
+
+  if (error) {
+    showMessage("No se pudieron cargar los folios del lote: " + friendlyError(error), "error");
+    resetDeleteFolioOptions("Sin folios");
+    return;
+  }
+
+  const options = (data || [])
+    .map((ticket) => ticketNumberFromFolio(eventKey, ticket.folio))
+    .filter((number) => Number.isInteger(number) && number > 0)
+    .sort((a, b) => a - b);
+
+  if (!options.length) {
+    resetDeleteFolioOptions("Sin folios");
+    return;
+  }
+
+  const html = options.map((number) => {
+    const folio = buildFolio(eventKey, number);
+    return '<option value="' + number + '">' + escapeHTML(folio) + '</option>';
+  }).join("");
+
+  els.deleteFolioStart.innerHTML = html;
+  els.deleteFolioEnd.innerHTML = html;
+  els.deleteFolioStart.disabled = false;
+  els.deleteFolioEnd.disabled = false;
+  els.deleteFolioStart.value = String(options[0]);
+  els.deleteFolioEnd.value = String(options.at(-1));
+}
+
+function resetDeleteFolioOptions(label) {
+  if (!els.deleteFolioStart || !els.deleteFolioEnd) return;
+  const option = '<option value="">' + escapeHTML(label) + '</option>';
+  els.deleteFolioStart.innerHTML = option;
+  els.deleteFolioEnd.innerHTML = option;
+  els.deleteFolioStart.disabled = true;
+  els.deleteFolioEnd.disabled = true;
+}
+
+async function handleDeleteBatch(event) {
+  event.preventDefault();
+  hideMessage();
+
+  const formData = new FormData(els.deleteBatchForm);
+  const eventKey = normalizeEventKey(formData.get("event_key"));
+  const startNumber = Number.parseInt(formData.get("start_number"), 10);
+  const endNumber = Number.parseInt(formData.get("end_number"), 10);
+
+  if (!eventKey || !Number.isInteger(startNumber) || !Number.isInteger(endNumber) || startNumber < 1 || endNumber < 1) {
+    showMessage("Selecciona un evento y captura un rango de folios valido.", "error");
+    return;
+  }
+
+  if (startNumber > endNumber) {
+    showMessage("El folio inicial no puede ser mayor que el folio final.", "error");
+    return;
+  }
+
+  const firstFolio = buildFolio(eventKey, startNumber);
+  const lastFolio = buildFolio(eventKey, endNumber);
+  const total = endNumber - startNumber + 1;
+  const confirmed = window.confirm(
+    "Vas a eliminar " + total + " ticket" + (total === 1 ? "" : "s") + " de " + eventKey + ": " + firstFolio + " a " + lastFolio + ". Esta accion no se puede deshacer.",
+  );
+  if (!confirmed) return;
+
+  setBusy(els.deleteBatchButton, true, "Eliminando...");
+  const { data, error } = await supabase.rpc("delete_ticket_batch", {
+    p_event_key: eventKey,
+    p_start_number: startNumber,
+    p_end_number: endNumber,
+  });
+  setBusy(els.deleteBatchButton, false, "Eliminar lote");
+
+  if (error) {
+    showMessage("No se pudo eliminar el lote: " + friendlyError(error), "error");
+    return;
+  }
+
+  const deletedCount = Number(data || 0);
+  showMessage(deletedCount + " ticket" + (deletedCount === 1 ? "" : "s") + " eliminado" + (deletedCount === 1 ? "" : "s") + ".", "success");
+  await loadDeleteFolioOptions(eventKey);
+  if (state.currentEventKey === eventKey) await loadTicketsForEvent(eventKey);
 }
 
 async function getNextTicketNumber(eventKey) {
@@ -257,6 +374,7 @@ function ticketCardHTML(ticket) {
         </div>
         <div class="ticket-card__meta">
           <div>Evento<strong>${escapeHTML(ticket.event_key || "—")}</strong></div>
+          <div>TICKET<strong>${escapeHTML(cleanTicketType(ticket.ticket_type))}</strong></div>
           <div>Precio<strong>${formatMoney(ticket.price)}</strong></div>
           ${ticket.customer_name ? `<div>Cliente<strong>${escapeHTML(ticket.customer_name)}</strong></div>` : ""}
           ${ticket.customer_email ? `<div>Email<strong>${escapeHTML(ticket.customer_email)}</strong></div>` : ""}
@@ -308,12 +426,90 @@ function printSingle(folio) {
 
   document.body.classList.add("print-single");
   card.dataset.printSelected = "true";
+  const ticket = state.tickets.find((item) => item.folio === folio);
+  preparePrintPages(ticket ? [ticket] : []);
   window.print();
 }
 
 function printBatch() {
   clearPrintState();
+  preparePrintPages(state.tickets);
   window.print();
+}
+
+function preparePrintPages(tickets) {
+  const printableTickets = Array.isArray(tickets) ? tickets.filter(Boolean) : [];
+  const pagesRoot = document.querySelector("[data-print-pages]");
+  if (!pagesRoot) return;
+
+  const pageSize = 24;
+  const emission = formatDate(new Date().toISOString());
+  const pages = [];
+  for (let index = 0; index < printableTickets.length; index += pageSize) {
+    pages.push(printableTickets.slice(index, index + pageSize));
+  }
+
+  pagesRoot.innerHTML = pages.map((pageTickets) => {
+    const eventKey = pageTickets[0]?.event_key || state.currentEventKey || "-";
+    const total = pageTickets.reduce((sum, ticket) => {
+      const price = Number(ticket?.price);
+      return Number.isFinite(price) ? sum + price : sum;
+    }, 0);
+
+    return `
+      <section class="ticket-print-page">
+        <header class="ticket-print-header">
+          <div class="ticket-print-header__brand">
+            <img src="/assets/img/white_logo.webp" alt="">
+            <strong>${escapeHTML(eventKey)}</strong>
+          </div>
+          <div>
+            <span>EMISIÓN</span>
+            <strong>${escapeHTML(emission)}</strong>
+          </div>
+          <div>
+            <span>PAGARÉ POR</span>
+            <strong>${escapeHTML(formatMoney(total))}</strong>
+          </div>
+        </header>
+        <div class="ticket-print-grid">
+          ${pageTickets.map(printTicketCardHTML).join("")}
+        </div>
+      </section>
+    `;
+  }).join("");
+
+  renderPrintQRs(printableTickets);
+}
+
+function printTicketCardHTML(ticket) {
+  const qrId = `print-qr-${safeId(ticket.folio)}`;
+  return `
+    <article class="ticket-print-card">
+      <div class="ticket-print-card__qr" id="${escapeHTML(qrId)}" aria-label="QR de ${escapeHTML(ticket.folio)}"></div>
+      <div class="ticket-print-card__meta">
+        <div>TICKET<strong>${escapeHTML(cleanTicketType(ticket.ticket_type))}</strong></div>
+        <div>Precio<strong>${formatMoney(ticket.price)}</strong></div>
+      </div>
+    </article>
+  `;
+}
+
+function renderPrintQRs(tickets) {
+  if (!window.QRCode) return;
+  tickets.forEach((ticket) => {
+    const container = document.getElementById(`print-qr-${safeId(ticket.folio)}`);
+    if (!container) return;
+    container.innerHTML = "";
+    new window.QRCode(container, {
+      text: ticket.qr_payload || buildValidationURL(ticket.folio),
+      width: 92,
+      height: 92,
+      colorDark: "#000000",
+      colorLight: "#ffffff",
+      correctLevel: window.QRCode.CorrectLevel.M,
+    });
+  });
 }
 
 function clearPrintState() {
@@ -321,6 +517,7 @@ function clearPrintState() {
   document.querySelectorAll("[data-print-selected]").forEach((card) => {
     delete card.dataset.printSelected;
   });
+  document.querySelector("[data-print-pages]")?.replaceChildren();
 }
 
 function buildValidationURL(folio) {
@@ -335,6 +532,18 @@ function normalizeEventKey(value) {
   return String(value || "").trim().toUpperCase();
 }
 
+function buildFolio(eventKey, number) {
+  return eventKey + "-" + String(number).padStart(4, "0");
+}
+
+function ticketNumberFromFolio(eventKey, folio) {
+  const prefix = eventKey + "-";
+  const value = String(folio || "");
+  if (!value.startsWith(prefix)) return null;
+  const number = Number.parseInt(value.slice(prefix.length), 10);
+  return Number.isFinite(number) ? number : null;
+}
+
 function normalizeStatus(value) {
   const status = String(value || "").toLowerCase();
   return ["valid", "used", "cancelled"].includes(status) ? status : "invalid";
@@ -347,6 +556,11 @@ function statusLabel(status) {
     cancelled: "Cancelado",
     invalid: "Inválido",
   }[status];
+}
+
+function cleanTicketType(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return TICKET_TYPES.includes(normalized) ? normalized : "COVER";
 }
 
 function cleanOptional(value) {

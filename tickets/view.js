@@ -5,6 +5,8 @@ const supabase = createClient(
   "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
 );
 
+const TICKET_TYPES = ["COVER", "ESTÁNDAR", "VIP", "2x1", "3x2", "3x1", "ACREDITACIÓN"];
+
 const state = {
   user: null,
   profile: null,
@@ -204,6 +206,7 @@ function ticketCardHTML(ticket) {
         </div>
         <div class="ticket-card__meta">
           <div>Evento<strong>${escapeHTML(ticket.event_key || "—")}</strong></div>
+          <div>TICKET<strong>${escapeHTML(cleanTicketType(ticket.ticket_type))}</strong></div>
           <div>Precio<strong>${formatMoney(ticket.price)}</strong></div>
           ${ticket.customer_name ? `<div>Cliente<strong>${escapeHTML(ticket.customer_name)}</strong></div>` : ""}
           ${ticket.customer_email ? `<div>Email<strong>${escapeHTML(ticket.customer_email)}</strong></div>` : ""}
@@ -264,6 +267,12 @@ function ticketEditFormHTML(ticket) {
         <input class="hr-input" name="price" type="number" min="0" step="0.01" value="${escapeHTML(ticket.price ?? 0)}" required>
       </label>
       <label class="ticket-field hr-field">
+        <span>TICKET</span>
+        <select class="hr-select" name="ticket_type">
+          ${ticketTypeOptionsHTML(ticket.ticket_type)}
+        </select>
+      </label>
+      <label class="ticket-field hr-field">
         <span>Estado</span>
         <select class="hr-select" name="status">
           ${["valid", "used", "cancelled"].map((status) => (
@@ -314,6 +323,7 @@ async function handleTicketEdit(event) {
   setBusy(submitButton, true, "Guardando…");
   const payload = {
     price,
+    ticket_type: cleanTicketType(values.ticket_type),
     status: values.status,
     customer_name: cleanOptional(values.customer_name),
     customer_email: cleanOptional(values.customer_email),
@@ -353,12 +363,90 @@ function printSingle(folio) {
 
   document.body.classList.add("print-single");
   card.dataset.printSelected = "true";
+  const ticket = state.tickets.find((item) => item.folio === folio);
+  preparePrintPages(ticket ? [ticket] : []);
   window.print();
 }
 
 function printBatch() {
   clearPrintState();
+  preparePrintPages(state.tickets);
   window.print();
+}
+
+function preparePrintPages(tickets) {
+  const printableTickets = Array.isArray(tickets) ? tickets.filter(Boolean) : [];
+  const pagesRoot = document.querySelector("[data-print-pages]");
+  if (!pagesRoot) return;
+
+  const pageSize = 24;
+  const emission = formatDate(new Date().toISOString());
+  const pages = [];
+  for (let index = 0; index < printableTickets.length; index += pageSize) {
+    pages.push(printableTickets.slice(index, index + pageSize));
+  }
+
+  pagesRoot.innerHTML = pages.map((pageTickets) => {
+    const eventKey = pageTickets[0]?.event_key || state.currentEventKey || "-";
+    const total = pageTickets.reduce((sum, ticket) => {
+      const price = Number(ticket?.price);
+      return Number.isFinite(price) ? sum + price : sum;
+    }, 0);
+
+    return `
+      <section class="ticket-print-page">
+        <header class="ticket-print-header">
+          <div class="ticket-print-header__brand">
+            <img src="/assets/img/white_logo.webp" alt="">
+            <strong>${escapeHTML(eventKey)}</strong>
+          </div>
+          <div>
+            <span>EMISIÓN</span>
+            <strong>${escapeHTML(emission)}</strong>
+          </div>
+          <div>
+            <span>PAGARÉ POR</span>
+            <strong>${escapeHTML(formatMoney(total))}</strong>
+          </div>
+        </header>
+        <div class="ticket-print-grid">
+          ${pageTickets.map(printTicketCardHTML).join("")}
+        </div>
+      </section>
+    `;
+  }).join("");
+
+  renderPrintQRs(printableTickets);
+}
+
+function printTicketCardHTML(ticket) {
+  const qrId = `print-qr-${safeId(ticket.folio)}`;
+  return `
+    <article class="ticket-print-card">
+      <div class="ticket-print-card__qr" id="${escapeHTML(qrId)}" aria-label="QR de ${escapeHTML(ticket.folio)}"></div>
+      <div class="ticket-print-card__meta">
+        <div>TICKET<strong>${escapeHTML(cleanTicketType(ticket.ticket_type))}</strong></div>
+        <div>Precio<strong>${formatMoney(ticket.price)}</strong></div>
+      </div>
+    </article>
+  `;
+}
+
+function renderPrintQRs(tickets) {
+  if (!window.QRCode) return;
+  tickets.forEach((ticket) => {
+    const container = document.getElementById(`print-qr-${safeId(ticket.folio)}`);
+    if (!container) return;
+    container.innerHTML = "";
+    new window.QRCode(container, {
+      text: ticket.qr_payload || buildValidationURL(ticket.folio),
+      width: 92,
+      height: 92,
+      colorDark: "#000000",
+      colorLight: "#ffffff",
+      correctLevel: window.QRCode.CorrectLevel.M,
+    });
+  });
 }
 
 function clearPrintState() {
@@ -366,6 +454,7 @@ function clearPrintState() {
   document.querySelectorAll("[data-print-selected]").forEach((card) => {
     delete card.dataset.printSelected;
   });
+  document.querySelector("[data-print-pages]")?.replaceChildren();
 }
 
 function syncEventInURL(eventKey) {
@@ -398,6 +487,18 @@ function hasAdminRole(rawRoles = "") {
 
 function normalizeEventKey(value) {
   return String(value || "").trim().toUpperCase();
+}
+
+function ticketTypeOptionsHTML(value) {
+  const current = cleanTicketType(value);
+  return TICKET_TYPES.map((type) => (
+    `<option value="${escapeHTML(type)}" ${current === type ? "selected" : ""}>${escapeHTML(type)}</option>`
+  )).join("");
+}
+
+function cleanTicketType(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return TICKET_TYPES.includes(normalized) ? normalized : "COVER";
 }
 
 function cleanOptional(value) {

@@ -5,6 +5,8 @@ const supabase = createClient(
   "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
 );
 
+const TICKET_TYPES = ["COVER", "ESTÁNDAR", "VIP", "2x1", "3x2", "3x1", "ACREDITACIÓN"];
+
 const state = {
   user: null,
   profile: null,
@@ -149,6 +151,7 @@ function renderValid() {
     <div class="validator-details">
       ${detailHTML("Folio", ticket.folio)}
       ${detailHTML("Evento", ticket.event_key)}
+      ${detailHTML("TICKET", cleanTicketType(ticket.ticket_type))}
       ${detailHTML("Precio", formatMoney(ticket.price))}
       ${ticket.customer_name ? detailHTML("Cliente", ticket.customer_name) : ""}
     </div>
@@ -240,6 +243,11 @@ function detailHTML(label, value) {
 
 function normalizeFolio(value) {
   return String(value || "").trim().toUpperCase();
+}
+
+function cleanTicketType(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return TICKET_TYPES.includes(normalized) ? normalized : "COVER";
 }
 
 function formatMoney(value) {

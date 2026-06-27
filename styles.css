@@ -2862,7 +2862,8 @@ body[data-hr-chrome] .success-brand {
     gap: 8px;
   }
 
-  .hr-global-drawer__guest a {
+  .hr-global-drawer__guest a,
+  .hr-global-drawer__guest button {
     min-height: 50px;
     display: grid;
     place-items: center;
@@ -2871,16 +2872,20 @@ body[data-hr-chrome] .success-brand {
     color: #fff;
     font: 500 9px var(--font-mono);
     letter-spacing: .1em;
+    appearance: none;
+    cursor: pointer;
     text-decoration: none;
     text-transform: uppercase;
   }
 
-  .hr-global-drawer__guest a:last-child {
+  .hr-global-drawer__guest a:last-child,
+  .hr-global-drawer__guest button:last-child {
     background: transparent;
     color: var(--hr-red);
   }
 
-  .hr-global-drawer__guest a:active {
+  .hr-global-drawer__guest a:active,
+  .hr-global-drawer__guest button:active {
     background: var(--hr-red-hover);
   }
 

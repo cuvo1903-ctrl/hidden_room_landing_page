@@ -32,6 +32,23 @@
 
     <div id="page-message" class="ticket-alert hr-card" role="status" aria-live="polite" hidden></div>
 
+    <section class="ticket-print-header" aria-hidden="true">
+      <div class="ticket-print-header__brand">
+        <img src="/assets/img/white_logo.webp" alt="">
+        <strong data-print-event>-</strong>
+      </div>
+      <div>
+        <span>EMISIÓN</span>
+        <strong data-print-user>-</strong>
+      </div>
+      <div>
+        <span>PAGARÉ POR</span>
+        <strong data-print-total>$0.00</strong>
+      </div>
+    </section>
+
+    <section class="ticket-print-pages" data-print-pages aria-hidden="true"></section>
+
     <section id="view-panel" class="ticket-view-toolbar hr-filterbar" hidden>
       <label class="ticket-field hr-field">
         <span>Evento</span>
