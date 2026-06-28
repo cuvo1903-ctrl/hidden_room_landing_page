@@ -1,0 +1,7 @@
+interface:
+  display_name: "Hidden Room Frontend"
+  short_description: "Static HTML and vanilla JS modules"
+  default_prompt: "Use $hiddenroom-frontend to modify a Hidden Room static frontend module."
+
+policy:
+  allow_implicit_invocation: true

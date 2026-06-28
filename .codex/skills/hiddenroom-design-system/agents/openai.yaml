@@ -1,0 +1,7 @@
+interface:
+  display_name: "Hidden Room Design System"
+  short_description: "hr-* tokens, CSS, and UI patterns"
+  default_prompt: "Use $hiddenroom-design-system to update UI while preserving the Hidden Room visual system."
+
+policy:
+  allow_implicit_invocation: true

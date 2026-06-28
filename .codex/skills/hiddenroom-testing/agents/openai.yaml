@@ -1,0 +1,7 @@
+interface:
+  display_name: "Hidden Room Testing"
+  short_description: "Syntax, routes, roles, and QA"
+  default_prompt: "Use $hiddenroom-testing to verify a Hidden Room change end to end."
+
+policy:
+  allow_implicit_invocation: true

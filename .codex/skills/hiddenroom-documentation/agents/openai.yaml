@@ -1,0 +1,7 @@
+interface:
+  display_name: "Hidden Room Docs"
+  short_description: "Setup, ops, and release docs"
+  default_prompt: "Use $hiddenroom-documentation to document a Hidden Room workflow or release."
+
+policy:
+  allow_implicit_invocation: true

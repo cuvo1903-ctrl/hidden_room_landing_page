@@ -1,0 +1,7 @@
+interface:
+  display_name: "Hidden Room Dashboard"
+  short_description: "Portal SPA sections and admin flows"
+  default_prompt: "Use $hiddenroom-dashboard to add or fix a Portal dashboard section."
+
+policy:
+  allow_implicit_invocation: true

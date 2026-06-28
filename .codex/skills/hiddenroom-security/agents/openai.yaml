@@ -1,0 +1,7 @@
+interface:
+  display_name: "Hidden Room Security"
+  short_description: "Auth, RLS, secrets, and data safety"
+  default_prompt: "Use $hiddenroom-security to review or implement a security-sensitive change."
+
+policy:
+  allow_implicit_invocation: true
