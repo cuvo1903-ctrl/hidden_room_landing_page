@@ -1,0 +1,75 @@
+.beat-store-page .beat-hero {
+  min-height: 68vh;
+  display: flex;
+  align-items: end;
+  border-bottom: 1px solid var(--hr-border);
+  padding-block: clamp(92px, 14vw, 150px) clamp(48px, 8vw, 86px);
+}
+
+.beat-hero__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, .72fr);
+  gap: clamp(28px, 6vw, 84px);
+  align-items: end;
+}
+
+.beat-hero h1 {
+  margin: 0;
+  font-size: clamp(48px, 10vw, 138px);
+  line-height: .9;
+  text-transform: uppercase;
+}
+
+.beat-hero__actions { gap: 12px; margin-top: 10px; }
+
+.beat-player {
+  padding: clamp(20px, 3vw, 34px);
+  border: 1px solid var(--hr-border);
+  background: linear-gradient(140deg, rgba(219, 1, 0, .14), rgba(0, 194, 198, .07)), rgba(17, 17, 17, .86);
+}
+
+.beat-player__meta { display: grid; gap: 12px; margin-bottom: 24px; }
+.beat-player h2 { margin: 0; font: 700 clamp(20px, 3vw, 34px)/1.05 var(--hr-font-display); text-transform: uppercase; }
+.beat-player p { margin: 0; color: var(--hr-muted); font-size: 12px; line-height: 1.7; }
+.beat-player audio { width: 100%; min-height: 42px; }
+
+.beat-tools { grid-template-columns: minmax(220px, 1fr) minmax(180px, .34fr); }
+
+.beat-card { position: relative; display: grid; gap: 16px; }
+.beat-card .product-description { min-height: 3.6em; }
+.beat-card__wave {
+  aspect-ratio: 16 / 7;
+  border: 1px solid var(--hr-border);
+  display: grid;
+  align-items: end;
+  grid-template-columns: repeat(28, 1fr);
+  gap: 3px;
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(0, 194, 198, .12), transparent 55%), #0b0b0b;
+  overflow: hidden;
+}
+
+.beat-card__wave span {
+  display: block;
+  min-height: 14%;
+  background: linear-gradient(180deg, var(--teal), var(--red));
+  opacity: .72;
+}
+
+.beat-card__meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.beat-card__status { color: var(--hr-muted); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+.beat-card__actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.beat-card__actions .primary-button, .beat-card__actions .secondary-button { flex: 1 1 140px; text-align: center; }
+.beat-card__file { margin: -4px 0 0; color: var(--hr-muted); font-size: 10px; word-break: break-word; }
+
+.beat-empty { grid-column: 1 / -1; }
+
+@media (max-width: 880px) {
+  .beat-hero__grid, .beat-tools { grid-template-columns: 1fr; }
+  .beat-store-page .beat-hero { min-height: auto; }
+}
+
+@media (max-width: 620px) {
+  .beat-card__actions { display: grid; }
+  .beat-card__actions .primary-button, .beat-card__actions .secondary-button { width: 100%; }
+}

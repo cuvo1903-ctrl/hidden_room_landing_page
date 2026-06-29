@@ -43,14 +43,40 @@ Persistencia sin sudo:
 @reboot /home/prodxdack/mysauth-cloud/run.sh >/dev/null 2>&1
 ```
 
+## Aislamiento por usuario
+
+El backend valida cada request con el access token de Supabase y consulta `public.users` para roles/perfil. El admin ve la raiz completa de Cloud; cualquier otro usuario queda forzado a su carpeta personal:
+
+```text
+/home/prodxdack/hiddenroom/users/{user_id}__{username_slug}/
+```
+
+Al iniciar sesion, el servidor crea automaticamente solo estas carpetas base si faltan:
+
+- `uploads/`
+- `downloads/`
+- `private/`
+- `beats/` solo si tiene permiso/modulo Beat Store o descarga Beat Store disponible.
+
+La UI recibe `/api/session` y oculta controles de escritura cuando `canUpload` es falso.
+
+## Permisos
+
+- `admin`: puede listar, descargar, subir, crear carpetas, renombrar y eliminar en toda la raiz cloud.
+- Usuario normal: puede listar y descargar dentro de su carpeta personal.
+- Usuario normal con `user_permissions.permission_key = cloud.upload`: tambien puede subir, crear carpetas, renombrar y eliminar dentro de su carpeta personal.
+
+El frontend solo oculta botones; la autorizacion real vive en `server.js`.
+
 ## Seguridad
 
 - El navegador usa Supabase publishable key.
 - La API exige `Authorization: Bearer <supabase access token>`.
-- El servidor verifica el usuario en Supabase y exige rol `admin` en `public.users.roles`.
 - La service role solo vive en `.env` del servidor Debian.
-- Todas las rutas se resuelven contra `CLOUD_HIDDENROOM_ROOT` y se bloquea escape por `..`.
+- Todas las rutas se resuelven contra la raiz autorizada del usuario, no contra input libre.
+- Se bloquean `..`, rutas absolutas y symlinks cuyo destino real salga de la raiz permitida.
 - Los nombres de archivo/carpeta rechazan slash, backslash, nombres vacios, `.`/`..` y caracteres de control.
+- El slug de usuario se normaliza sin acentos ni caracteres raros.
 
 ## Operaciones MVP
 
@@ -60,6 +86,17 @@ Persistencia sin sudo:
 - Crear carpeta.
 - Renombrar archivo/carpeta.
 - Eliminar archivo/carpeta.
+
+## Beat Store previews
+
+La tienda estatica `store/beat_store/` compra productos desde `public.store_products` con `category = beats` y reproduce previews desde Cloud sin hardcodear archivos.
+
+Endpoints publicos controlados en MysAuth Cloud:
+
+- `GET /api/beat-store`: lista archivos de audio en `/home/prodxdack/hiddenroom/beats_store`.
+- `GET /api/beat-store/stream?file=...`: streamea solo archivos de audio permitidos dentro de `beats_store`.
+
+El endpoint publico solo expone formatos de audio (`mp3`, `wav`, `m4a`, `ogg`, `flac`, `aac`) y valida root containment/symlinks contra `beats_store`.
 
 ## Validacion rapida
 

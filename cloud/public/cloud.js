@@ -4,7 +4,7 @@ const SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 const SUPABASE_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const state = { path: '/', entries: null };
+const state = { path: '/', entries: null, meta: null };
 const loginView = document.getElementById('login-view');
 const appView = document.getElementById('app-view');
 const loginForm = document.getElementById('login-form');
@@ -13,6 +13,8 @@ const statusMessage = document.getElementById('status-message');
 const fileBody = document.getElementById('file-body');
 const breadcrumb = document.getElementById('breadcrumb');
 const fileInput = document.getElementById('file-input');
+const uploadButton = document.querySelector('.upload-button');
+const folderButton = document.getElementById('folder-button');
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char]));
@@ -47,6 +49,15 @@ function setMessage(message, isError = false) {
   statusMessage.textContent = message || '';
   statusMessage.classList.toggle('error', Boolean(isError));
 }
+function setActionsEnabled(canUpload) {
+  if (uploadButton) uploadButton.hidden = !canUpload;
+  if (folderButton) folderButton.hidden = !canUpload;
+}
+function applyMeta(meta) {
+  if (!meta) return;
+  state.meta = meta;
+  setActionsEnabled(Boolean(meta.canUpload));
+}
 
 async function authHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
@@ -67,7 +78,7 @@ async function apiJson(path, options = {}) { return (await api(path, options)).j
 function renderBreadcrumb() {
   const current = normalizePath(state.path);
   const parts = current === '/' ? [] : current.slice(1).split('/');
-  const items = [{ label: 'Root', path: '/' }];
+  const items = [{ label: state.meta?.rootLabel || 'Root', path: '/' }];
   let walk = '';
   for (const part of parts) {
     walk += `/${part}`;
@@ -77,6 +88,9 @@ function renderBreadcrumb() {
 }
 function rowTemplate(item, type) {
   const isFolder = type === 'folder';
+  const writeActions = state.meta?.canUpload ? `
+        <button type="button" data-action="rename" data-type="${type}" data-name="${escapeHtml(item.name)}">Renombrar</button>
+        <button class="danger" type="button" data-action="delete" data-type="${type}" data-name="${escapeHtml(item.name)}">Eliminar</button>` : '';
   return `
     <tr>
       <td class="name">${escapeHtml(item.name)}</td>
@@ -85,8 +99,7 @@ function rowTemplate(item, type) {
       <td>${escapeHtml(formatDate(item.modified))}</td>
       <td><div class="row-actions">
         ${isFolder ? `<button type="button" data-action="open" data-name="${escapeHtml(item.name)}">Abrir</button>` : `<button type="button" data-action="download" data-name="${escapeHtml(item.name)}">Descargar</button>`}
-        <button type="button" data-action="rename" data-type="${type}" data-name="${escapeHtml(item.name)}">Renombrar</button>
-        <button class="danger" type="button" data-action="delete" data-type="${type}" data-name="${escapeHtml(item.name)}">Eliminar</button>
+        ${writeActions}
       </div></td>
     </tr>`;
 }
@@ -104,30 +117,34 @@ async function loadFiles(path = state.path) {
   state.path = normalizePath(path);
   setMessage('Cargando...');
   const data = await apiJson(`/api/files?path=${encodeURIComponent(state.path)}`);
+  applyMeta(data.meta);
   state.entries = data;
   renderFiles(data);
   setMessage('');
 }
 async function createFolder() {
+  if (!state.meta?.canUpload) return;
   const name = prompt('Nombre de la carpeta');
   if (!name) return;
   await apiJson('/api/folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: state.path, name }) });
   await loadFiles();
 }
 async function uploadFile(file) {
-  if (!file) return;
+  if (!file || !state.meta?.canUpload) return;
   setMessage(`Subiendo ${file.name}...`);
   await apiJson(`/api/upload?path=${encodeURIComponent(state.path)}`, { method: 'POST', headers: { 'X-File-Name': encodeURIComponent(file.name), 'Content-Type': file.type || 'application/octet-stream' }, body: file });
   fileInput.value = '';
   await loadFiles();
 }
 async function renameItem(type, name) {
+  if (!state.meta?.canUpload) return;
   const newName = prompt('Nuevo nombre', name);
   if (!newName || newName === name) return;
   await apiJson('/api/rename', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: state.path, type, name, newName }) });
   await loadFiles();
 }
 async function deleteItem(type, name) {
+  if (!state.meta?.canUpload) return;
   if (!confirm(`Eliminar ${name}?`)) return;
   await apiJson(`/api/item?path=${encodeURIComponent(state.path)}&type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}`, { method: 'DELETE' });
   await loadFiles();
@@ -151,13 +168,15 @@ async function showAppIfSession() {
   if (!session?.access_token) {
     loginView.hidden = false;
     appView.hidden = true;
+    setActionsEnabled(false);
     return;
   }
 
   loginView.hidden = true;
   appView.hidden = false;
   try {
-    await loadFiles('/');
+    applyMeta(await apiJson('/api/session'));
+    await loadFiles(state.meta?.homePath || '/');
   } catch (err) {
     setMessage(err.message || 'No se pudo cargar MysAuth Cloud.', true);
   }
@@ -175,7 +194,7 @@ loginForm.addEventListener('submit', async (event) => {
 });
 document.getElementById('logout-button').addEventListener('click', async () => { await supabase.auth.signOut(); location.reload(); });
 document.getElementById('refresh-button').addEventListener('click', () => loadFiles().catch((err) => setMessage(err.message, true)));
-document.getElementById('folder-button').addEventListener('click', () => createFolder().catch((err) => setMessage(err.message, true)));
+folderButton.addEventListener('click', () => createFolder().catch((err) => setMessage(err.message, true)));
 document.getElementById('up-button').addEventListener('click', () => loadFiles(parentPath()).catch((err) => setMessage(err.message, true)));
 fileInput.addEventListener('change', () => uploadFile(fileInput.files?.[0]).catch((err) => setMessage(err.message, true)));
 breadcrumb.addEventListener('click', (event) => {
@@ -191,4 +210,4 @@ fileBody.addEventListener('click', (event) => {
   if (action === 'rename') renameItem(type, name).catch((err) => setMessage(err.message, true));
   if (action === 'delete') deleteItem(type, name).catch((err) => setMessage(err.message, true));
 });
-showAppIfSession().catch((err) => { loginView.hidden = false; appView.hidden = true; loginMessage.textContent = err.message; });
+showAppIfSession().catch((err) => { loginView.hidden = false; appView.hidden = true; setActionsEnabled(false); loginMessage.textContent = err.message; });

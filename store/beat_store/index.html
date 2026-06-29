@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Beat Store de Hidden Room.">
+  <title>Beat Store | Hidden Room</title>
+  <link rel="icon" type="image/webp" href="../../assets/img/orange_logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../styles.css?v=20260620-store-system">
+  <link rel="stylesheet" href="../store.css?v=20260620-store-system">
+  <link rel="stylesheet" href="bs.css?v=20260628-beat-store">
+</head>
+<body class="store-page beat-store-page hr-page" data-page="beat-store" data-hr-chrome data-hr-context="store">
+  <div id="hr-global-nav"></div>
+
+  <main>
+    <section class="beat-hero hr-section" aria-labelledby="beat-store-title">
+      <div class="hr-container beat-hero__grid">
+        <div class="beat-hero__copy hr-stack">
+          <p class="eyebrow hr-eyebrow">Hidden Room Supply</p>
+          <h1 id="beat-store-title" class="hr-title-xl">Beat Store</h1>
+          <p class="hero-copy hr-subtitle">Reproduce previews desde MysAuth Cloud y compra licencias digitales con checkout seguro.</p>
+          <div class="beat-hero__actions hr-cluster">
+            <a class="primary-button hr-btn hr-btn-primary" href="#beat-grid">Explorar beats</a>
+            <a class="secondary-button hr-btn" href="../cart.html">Carrito <span class="cart-count">0</span></a>
+          </div>
+        </div>
+        <aside class="beat-player hr-panel" aria-label="Reproductor Beat Store">
+          <div class="beat-player__meta">
+            <span class="product-category">Preview</span>
+            <h2 id="player-title">Selecciona un beat</h2>
+            <p id="player-detail">Los audios se leen dinamicamente desde cloud/beats_store.</p>
+          </div>
+          <audio id="beat-audio" controls preload="none"></audio>
+        </aside>
+      </div>
+    </section>
+
+    <section class="catalog-section hr-section" aria-labelledby="beats-title">
+      <div class="hr-container hr-stack hr-stack-xl">
+        <div class="section-heading hr-grid hr-grid-2">
+          <div>
+            <p class="eyebrow hr-eyebrow">Catalogo</p>
+            <h2 id="beats-title" class="hr-section-title">Beats disponibles</h2>
+          </div>
+          <p>Los productos vienen de Supabase Store. Los previews vienen de MysAuth Cloud, carpeta <code>beats_store</code>.</p>
+        </div>
+
+        <div class="catalog-tools hr-filterbar beat-tools">
+          <label class="hr-search">
+            <span>Buscar</span>
+            <input id="beat-search" class="hr-search-input" type="search" placeholder="Nombre, genero, slug...">
+          </label>
+          <label class="hr-field">
+            <span>Orden</span>
+            <select id="beat-sort" class="hr-select">
+              <option value="featured">Destacados primero</option>
+              <option value="newest">Mas recientes</option>
+              <option value="price-asc">Precio menor</option>
+              <option value="price-desc">Precio mayor</option>
+              <option value="name">Nombre</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="beat-grid" class="beat-grid product-grid hr-card-grid" aria-live="polite">
+          <p class="hr-table-loading">Cargando Beat Store...</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="store-notice" class="notice" role="status" aria-live="polite"></div>
+
+  <footer class="store-footer">
+    <span>Hidden Room Beat Store</span>
+    <a href="../">Volver a la tienda</a>
+  </footer>
+
+  <script src="../../site.js?v=20260618-mobileauth"></script>
+  <script type="module" src="bs.js?v=20260628-beat-store"></script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 const SITE_STATUS = "BETA Sitio en contrucción";
-const SITE_VERSION = "V. 1.1.0";
+const SITE_VERSION = "V. 1.2.0";
 const GA_MEASUREMENT_ID = "G-VNHC1Z3FXZ";
 const HR_SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 const HR_SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
@@ -7,6 +7,7 @@ const ECOSYSTEM_LINKS = [
   ["games", "/minijuegos/", "Minijuegos"],
   ["media", "/media/", "Media"],
   ["store", "/store/", "Store"],
+  ["beat-store", "/store/beat_store/", "Beat Store"],
   ["kairen", "/kairen/", "Kairen AI"],
   ["tickets", "/tickets/", "Tickets"],
 ];
@@ -65,6 +66,7 @@ function renderSubNav(module) {
   if (module === "store") {
     return [
       item("/store/", "Tienda", page === "catalog" || page === "product"),
+      item("/store/beat_store/", "Beat Store", path.includes("/store/beat_store/")),
       item("/store/cart.html", 'Carrito <span class="cart-count">0</span>', page === "cart"),
       item(
         "/store/orders.html",
@@ -181,7 +183,7 @@ function renderGlobalDrawer(activeModule) {
       <p class="hr-global-drawer__label">Ecosistema</p>
       <nav class="hr-global-drawer__links" aria-label="Navegación móvil">
         ${ECOSYSTEM_LINKS.map(([key, href, label]) => `
-          <a href="${href}"${key === activeModule ? ' aria-current="page"' : ""}>
+          <a href="${href}"${(key === activeModule && !(activeModule === "store" && window.location.pathname.startsWith("/store/beat_store/"))) || (key === "beat-store" && window.location.pathname.startsWith("/store/beat_store/")) ? ' aria-current="page"' : ""}>
             <span>${label}</span>
           </a>
         `).join("")}
@@ -423,6 +425,7 @@ function renderGlobalNav() {
   const module = document.body.dataset.hrContext || "home";
   const accent = module === "media" ? "media" : "brand";
   const activeModule = module;
+  const navPath = window.location.pathname;
   const subnav = renderSubNav(module);
   const actionsClass = document.body.classList.contains("db-body")
     ? "hr-nav__actions db-topbar__actions"
@@ -437,7 +440,7 @@ function renderGlobalNav() {
         </a>
         <nav class="hr-nav__links" aria-label="Navegación principal">
           ${ECOSYSTEM_LINKS.map(([key, href, label]) => `
-            <a href="${href}"${key === activeModule ? ' aria-current="page"' : ""}>${label}</a>
+            <a href="${href}"${(key === activeModule && !(activeModule === "store" && navPath.startsWith("/store/beat_store/"))) || (key === "beat-store" && navPath.startsWith("/store/beat_store/")) ? ' aria-current="page"' : ""}>${label}</a>
           `).join("")}
         </nav>
         <div class="${actionsClass}">${renderNavActions(module)}</div>

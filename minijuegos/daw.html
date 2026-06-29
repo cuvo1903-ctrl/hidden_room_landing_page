@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Hidden Room Studio Mini</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#15171c;color:#eee;font-family:Arial, sans-serif}
+header{height:52px;background:#20242b;display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid #333}
+.logo{font-weight:900;color:#ff8a00}
+button,input,select{background:#2b3038;color:#fff;border:1px solid #444;border-radius:6px;padding:8px}
+button:hover{background:#3a414d;cursor:pointer}
+main{display:grid;grid-template-columns:220px 1fr 240px;height:calc(100vh - 52px)}
+.panel{border-right:1px solid #333;padding:12px;background:#191c21;overflow:auto}
+.center{padding:12px;overflow:auto}
+h3{margin:8px 0 12px;color:#ff8a00}
+.track{display:grid;grid-template-columns:100px repeat(16,32px);gap:5px;margin-bottom:8px;align-items:center}
+.name{font-weight:bold;font-size:13px}
+.step{width:32px;height:32px;background:#252a32;border:1px solid #3b414d;border-radius:5px}
+.step.on{background:#ff8a00}
+.step.play{outline:3px solid #fff}
+.piano{margin-top:20px}
+.keyrow{display:grid;grid-template-columns:70px repeat(16,32px);gap:5px;margin-bottom:5px}
+.note{font-size:12px;color:#aaa}
+.cell{height:24px;background:#232832;border:1px solid #363d48;border-radius:4px}
+.cell.on{background:#00d4ff}
+.mixer{display:flex;gap:12px;align-items:end;height:260px}
+.fader{width:40px;text-align:center}
+.slider{writing-mode:bt-lr;appearance:slider-vertical;height:170px}
+small{color:#aaa}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">HIDDEN ROOM STUDIO</div>
+  <button id="play">▶ Play</button>
+  <button id="stop">■ Stop</button>
+  <label>BPM <input id="bpm" type="number" value="120" min="60" max="200" style="width:70px"></label>
+  <small>Click en cuadros para programar</small>
+</header>
+
+<main>
+  <aside class="panel">
+    <h3>Browser</h3>
+    <p>Drums</p>
+    <p>808</p>
+    <p>Melody</p>
+    <p>FX</p>
+    <hr>
+    <small>Mini DAW hecha en HTML + JS</small>
+  </aside>
+
+  <section class="center">
+    <h3>Channel Rack</h3>
+    <div id="sequencer"></div>
+
+    <div class="piano">
+      <h3>Piano Roll</h3>
+      <div id="piano"></div>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <h3>Mixer</h3>
+    <div class="mixer" id="mixer"></div>
+  </aside>
+</main>
+
+<script>
+const ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+const tracks = [
+  {name:"Kick", type:"kick", vol:.9, steps:[1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0]},
+  {name:"Snare", type:"snare", vol:.7, steps:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0]},
+  {name:"Hat", type:"hat", vol:.45, steps:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0]},
+  {name:"808", type:"bass", vol:.7, steps:[1,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0]}
+];
+
+const notes = [
+  {name:"C5", freq:523.25, steps:Array(16).fill(0)},
+  {name:"A4", freq:440.00, steps:Array(16).fill(0)},
+  {name:"G4", freq:392.00, steps:Array(16).fill(0)},
+  {name:"E4", freq:329.63, steps:Array(16).fill(0)},
+  {name:"C4", freq:261.63, steps:Array(16).fill(0)}
+];
+
+let playing=false, step=0, timer=null;
+
+function gain(vol){
+  const g=ctx.createGain();
+  g.gain.value=vol;
+  g.connect(ctx.destination);
+  return g;
+}
+
+function playSound(type, vol=.7){
+  const t=ctx.currentTime;
+  const g=gain(vol);
+
+  if(type==="kick"){
+    const o=ctx.createOscillator();
+    o.type="sine";
+    o.frequency.setValueAtTime(140,t);
+    o.frequency.exponentialRampToValueAtTime(45,t+.15);
+    g.gain.setValueAtTime(vol,t);
+    g.gain.exponentialRampToValueAtTime(.001,t+.25);
+    o.connect(g); o.start(t); o.stop(t+.25);
+  }
+
+  if(type==="snare"){
+    const buffer=ctx.createBuffer(1,ctx.sampleRate*.18,ctx.sampleRate);
+    const data=buffer.getChannelData(0);
+    for(let i=0;i<data.length;i++) data[i]=Math.random()*2-1;
+    const src=ctx.createBufferSource(); src.buffer=buffer;
+    const filter=ctx.createBiquadFilter(); filter.type="highpass"; filter.frequency.value=1200;
+    g.gain.setValueAtTime(vol,t);
+    g.gain.exponentialRampToValueAtTime(.001,t+.18);
+    src.connect(filter); filter.connect(g); src.start(t);
+  }
+
+  if(type==="hat"){
+    const buffer=ctx.createBuffer(1,ctx.sampleRate*.05,ctx.sampleRate);
+    const data=buffer.getChannelData(0);
+    for(let i=0;i<data.length;i++) data[i]=Math.random()*2-1;
+    const src=ctx.createBufferSource(); src.buffer=buffer;
+    const filter=ctx.createBiquadFilter(); filter.type="highpass"; filter.frequency.value=7000;
+    g.gain.setValueAtTime(vol,t);
+    g.gain.exponentialRampToValueAtTime(.001,t+.05);
+    src.connect(filter); filter.connect(g); src.start(t);
+  }
+
+  if(type==="bass"){
+    playNote(55, vol, .25, "sine");
+  }
+}
+
+function playNote(freq, vol=.5, dur=.2, wave="square"){
+  const t=ctx.currentTime;
+  const o=ctx.createOscillator();
+  const g=gain(vol);
+  o.type=wave;
+  o.frequency.value=freq;
+  g.gain.setValueAtTime(vol,t);
+  g.gain.exponentialRampToValueAtTime(.001,t+dur);
+  o.connect(g); o.start(t); o.stop(t+dur);
+}
+
+function render(){
+  sequencer.innerHTML="";
+  tracks.forEach((tr,ti)=>{
+    const row=document.createElement("div");
+    row.className="track";
+    row.innerHTML=`<div class="name">${tr.name}</div>`;
+    tr.steps.forEach((v,i)=>{
+      const b=document.createElement("div");
+      b.className="step"+(v?" on":"");
+      b.onclick=()=>{tr.steps[i]=tr.steps[i]?0:1;render()};
+      row.appendChild(b);
+    });
+    sequencer.appendChild(row);
+  });
+
+  piano.innerHTML="";
+  notes.forEach((n,ni)=>{
+    const row=document.createElement("div");
+    row.className="keyrow";
+    row.innerHTML=`<div class="note">${n.name}</div>`;
+    n.steps.forEach((v,i)=>{
+      const c=document.createElement("div");
+      c.className="cell"+(v?" on":"");
+      c.onclick=()=>{n.steps[i]=n.steps[i]?0:1;render()};
+      row.appendChild(c);
+    });
+    piano.appendChild(row);
+  });
+
+  mixer.innerHTML="";
+  tracks.forEach((tr)=>{
+    const f=document.createElement("div");
+    f.className="fader";
+    f.innerHTML=`
+      <input class="slider" type="range" min="0" max="1" step=".01" value="${tr.vol}">
+      <small>${tr.name}</small>`;
+    f.querySelector("input").oninput=e=>tr.vol=parseFloat(e.target.value);
+    mixer.appendChild(f);
+  });
+}
+
+function tick(){
+  document.querySelectorAll(".step,.cell").forEach(x=>x.classList.remove("play"));
+
+  tracks.forEach((tr,ti)=>{
+    if(tr.steps[step]) playSound(tr.type,tr.vol);
+    const el=document.querySelectorAll(".track")[ti].children[step+1];
+    el.classList.add("play");
+  });
+
+  notes.forEach((n,ni)=>{
+    if(n.steps[step]) playNote(n.freq,.35,.22,"triangle");
+    const el=document.querySelectorAll(".keyrow")[ni].children[step+1];
+    el.classList.add("play");
+  });
+
+  step=(step+1)%16;
+}
+
+function start(){
+  ctx.resume();
+  if(playing)return;
+  playing=true;
+  const bpmVal=parseInt(bpm.value);
+  const interval=(60/bpmVal/4)*1000;
+  tick();
+  timer=setInterval(tick,interval);
+}
+
+function stop(){
+  playing=false;
+  clearInterval(timer);
+  step=0;
+  document.querySelectorAll(".step,.cell").forEach(x=>x.classList.remove("play"));
+}
+
+play.onclick=start;
+stop.onclick=stop;
+render();
+</script>
+</body>
+</html>

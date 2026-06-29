@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ================================================================
  *  HIDDEN ROOM / MYSAUTH - Dashboard Controller
  *  portal/dashboard.js
@@ -736,6 +736,7 @@ const AVAILABLE_ROLES = ['client', 'pr', 'collaborator', 'partner', 'admin'];
 const SECTION_LOADING_MIN_MS = 300;
 const SUGGESTED_PERMISSIONS = [
   'Kairen AI',
+  'cloud.upload',
   'media.posts',
   'scrum.view',
   'scrum.edit',
