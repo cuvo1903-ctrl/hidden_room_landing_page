@@ -21,7 +21,8 @@ description: "Hidden Room Cloud Agent skill for the cloud file manager architect
 - Queue: `public.cloud_jobs`.
 - Agent: `mysauth-cloud-agent.js` in repo docs/templates; live Debian install currently lives under `/home/prodxdack/mysauth-agents/cloud-agent/`.
 - Service template: `mysauth-cloud-agent.service`.
-- Docs: `docs/cloud-agent-installation.md`.
+- Docs: `docs/cloud-agent-installation.md` and `docs/mysauth-cloud.md`.
+- MysAuth Cloud app: `cloud/server.js` plus static UI under `cloud/public/` for the public custom file manager.
 
 ## Safety Rules
 

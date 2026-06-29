@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Hidden Room Miner 2D</title>
+<style>
+body{margin:0;overflow:hidden;background:#050509;font-family:Arial,sans-serif;color:white}
+canvas{display:block}
+#ui{position:fixed;top:10px;left:10px;background:rgba(0,0,0,.72);padding:12px;border:1px solid #9b5cff;border-radius:10px;font-size:14px;line-height:1.5;z-index:5}
+#hotbar{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:7px;z-index:5}
+.slot{width:58px;height:58px;background:rgba(0,0,0,.7);border:3px solid #444;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:bold}
+.slot.active{border-color:#d23cff;box-shadow:0 0 14px #d23cff}
+.icon{width:34px;height:34px;border:2px solid #111}
+</style>
+</head>
+<body>
+
+<div id="ui">
+<b>HIDDEN ROOM MINER</b><br>
+A/D mover · W/Espacio saltar<br>
+Click izq mantener: minar<br>
+Click der: colocar bloque<br>
+E: vender minerales<br>
+1 Tierra · 2 Piedra · 3 Neón · 4 Obsidiana<br>
+<br>
+Bloque: <span id="bloque">tierra</span><br>
+Hidden Coins: <span id="coins">0</span><br>
+Inventario: <span id="inv"></span>
+</div>
+
+<div id="hotbar"></div>
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+canvas.width = innerWidth;
+canvas.height = innerHeight;
+
+addEventListener("resize",()=>{
+  canvas.width=innerWidth;
+  canvas.height=innerHeight;
+});
+
+const TILE=40;
+const WORLD_W=260;
+const WORLD_H=90;
+
+const COLORS={
+  cielo:"#070711",
+  tierra:"#6b3f23",
+  piedra:"#666",
+  pasto:"#184d22",
+  neon:"#b026ff",
+  obsidiana:"#141018",
+  cristal:"#00eaff",
+  jugador:"#ff2d75",
+  madera:"#8a4b25"
+};
+
+const VALOR={
+  tierra:1,
+  piedra:3,
+  neon:15,
+  obsidiana:25,
+  cristal:60
+};
+
+const VIDA={
+  tierra:30,
+  pasto:25,
+  piedra:75,
+  neon:120,
+  obsidiana:180,
+  cristal:240,
+  madera:50
+};
+
+const bloquesDisponibles=["tierra","piedra","neon","obsidiana"];
+let bloqueActual="tierra";
+let coins=0;
+
+const inv={
+  tierra:0,
+  piedra:0,
+  pasto:0,
+  neon:0,
+  obsidiana:0,
+  cristal:0,
+  madera:0
+};
+
+const mundo=new Map();
+const keys={};
+const mouse={x:0,y:0,down:false,button:0};
+let camX=0,camY=0;
+let mining=null;
+
+const player={
+  x:500,y:300,w:26,h:54,
+  vx:0,vy:0,
+  speed:.8,maxSpeed:6,
+  jump:14,grounded:false
+};
+
+function k(x,y){return `${x},${y}`}
+function setBlock(x,y,t){if(x>=0&&y>=0&&x<WORLD_W&&y<WORLD_H)mundo.set(k(x,y),t)}
+function getBlock(x,y){return mundo.get(k(x,y))}
+function delBlock(x,y){mundo.delete(k(x,y))}
+
+function generarMundo(){
+  for(let x=0;x<WORLD_W;x++){
+    const altura=35+Math.floor(Math.sin(x*.12)*5)+Math.floor(Math.random()*3);
+    for(let y=altura;y<WORLD_H;y++){
+      let tipo="piedra";
+      if(y===altura) tipo="pasto";
+      else if(y<altura+5) tipo="tierra";
+      else if(Math.random()<.018) tipo="cristal";
+      else if(Math.random()<.04) tipo="neon";
+      else if(Math.random()<.035) tipo="obsidiana";
+      setBlock(x,y,tipo);
+    }
+    if(Math.random()<.055) crearPoste(x,altura-1);
+  }
+}
+
+function crearPoste(x,y){
+  for(let i=0;i<4;i++) setBlock(x,y-i,"madera");
+  setBlock(x,y-4,"neon");
+}
+
+generarMundo();
+
+function rect(a,b){
+  return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+}
+
+function bloquesCerca(obj){
+  const arr=[];
+  const sx=Math.floor(obj.x/TILE)-2;
+  const ex=Math.floor((obj.x+obj.w)/TILE)+2;
+  const sy=Math.floor(obj.y/TILE)-2;
+  const ey=Math.floor((obj.y+obj.h)/TILE)+2;
+  for(let y=sy;y<=ey;y++){
+    for(let x=sx;x<=ex;x++){
+      const tipo=getBlock(x,y);
+      if(tipo)arr.push({x:x*TILE,y:y*TILE,w:TILE,h:TILE,tx:x,ty:y,tipo});
+    }
+  }
+  return arr;
+}
+
+function mover(){
+  if(keys.a)player.vx-=player.speed;
+  if(keys.d)player.vx+=player.speed;
+
+  player.vx*=.82;
+  player.vx=Math.max(-player.maxSpeed,Math.min(player.maxSpeed,player.vx));
+
+  if((keys.w||keys[" "])&&player.grounded){
+    player.vy=-player.jump;
+    player.grounded=false;
+  }
+
+  player.vy+=.7;
+  player.vy=Math.min(player.vy,18);
+
+  player.x+=player.vx;
+  for(const b of bloquesCerca(player)){
+    if(rect(player,b)){
+      if(player.vx>0)player.x=b.x-player.w;
+      if(player.vx<0)player.x=b.x+b.w;
+      player.vx=0;
+    }
+  }
+
+  player.y+=player.vy;
+  player.grounded=false;
+  for(const b of bloquesCerca(player)){
+    if(rect(player,b)){
+      if(player.vy>0){
+        player.y=b.y-player.h;
+        player.grounded=true;
+      }
+      if(player.vy<0)player.y=b.y+b.h;
+      player.vy=0;
+    }
+  }
+
+  if(player.y>WORLD_H*TILE){
+    player.x=500;player.y=200;player.vx=0;player.vy=0;
+  }
+}
+
+function camara(){
+  camX=player.x+player.w/2-canvas.width/2;
+  camY=player.y+player.h/2-canvas.height/2;
+  camX=Math.max(0,Math.min(camX,WORLD_W*TILE-canvas.width));
+  camY=Math.max(0,Math.min(camY,WORLD_H*TILE-canvas.height));
+}
+
+function distanciaTile(tx,ty){
+  const cx=tx*TILE+TILE/2;
+  const cy=ty*TILE+TILE/2;
+  const px=player.x+player.w/2;
+  const py=player.y+player.h/2;
+  return Math.hypot(cx-px,cy-py);
+}
+
+function minar(){
+  if(!mouse.down || mouse.button!==0){
+    mining=null;
+    return;
+  }
+
+  const tx=Math.floor((mouse.x+camX)/TILE);
+  const ty=Math.floor((mouse.y+camY)/TILE);
+  const tipo=getBlock(tx,ty);
+
+  if(!tipo || distanciaTile(tx,ty)>190){
+    mining=null;
+    return;
+  }
+
+  const id=k(tx,ty);
+
+  if(!mining || mining.id!==id){
+    mining={id,tx,ty,tipo,vida:VIDA[tipo]||60,max:VIDA[tipo]||60};
+  }
+
+  mining.vida-=4;
+
+  if(mining.vida<=0){
+    delBlock(tx,ty);
+    inv[tipo]=(inv[tipo]||0)+1;
+    coins+=Math.floor((VALOR[tipo]||1)/2);
+    mining=null;
+    actualizarUI();
+  }
+}
+
+function colocar(){
+  const tx=Math.floor((mouse.x+camX)/TILE);
+  const ty=Math.floor((mouse.y+camY)/TILE);
+
+  if(distanciaTile(tx,ty)>190)return;
+  if(getBlock(tx,ty))return;
+  if((inv[bloqueActual]||0)<=0)return;
+
+  const nuevo={x:tx*TILE,y:ty*TILE,w:TILE,h:TILE};
+  if(rect(nuevo,player))return;
+
+  setBlock(tx,ty,bloqueActual);
+  inv[bloqueActual]--;
+  actualizarUI();
+}
+
+function vender(){
+  let total=0;
+  ["piedra","neon","obsidiana","cristal"].forEach(t=>{
+    total+=(inv[t]||0)*(VALOR[t]||1);
+    inv[t]=0;
+  });
+  coins+=total;
+  actualizarUI();
+}
+
+function fondo(){
+  const g=ctx.createLinearGradient(0,0,0,canvas.height);
+  g.addColorStop(0,"#06050f");
+  g.addColorStop(1,"#13001f");
+  ctx.fillStyle=g;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  ctx.fillStyle="rgba(210,60,255,.7)";
+  ctx.font="bold 34px Arial";
+  ctx.fillText("HIDDEN ROOM",canvas.width-290,60);
+
+  ctx.fillStyle="rgba(255,255,255,.08)";
+  for(let i=0;i<80;i++){
+    const x=(i*173-camX*.1)%(canvas.width+50);
+    const y=(i*91-camY*.08)%(canvas.height+50);
+    ctx.fillRect(x,y,2,2);
+  }
+}
+
+function dibujarMundo(){
+  const sx=Math.floor(camX/TILE);
+  const ex=Math.ceil((camX+canvas.width)/TILE);
+  const sy=Math.floor(camY/TILE);
+  const ey=Math.ceil((camY+canvas.height)/TILE);
+
+  for(let y=sy;y<=ey;y++){
+    for(let x=sx;x<=ex;x++){
+      const tipo=getBlock(x,y);
+      if(!tipo)continue;
+
+      const px=x*TILE-camX;
+      const py=y*TILE-camY;
+
+      ctx.fillStyle=COLORS[tipo];
+      ctx.fillRect(px,py,TILE,TILE);
+
+      if(tipo==="neon"||tipo==="cristal"){
+        ctx.shadowColor=COLORS[tipo];
+        ctx.shadowBlur=12;
+        ctx.fillRect(px+8,py+8,TILE-16,TILE-16);
+        ctx.shadowBlur=0;
+      }
+
+      ctx.strokeStyle="rgba(0,0,0,.35)";
+      ctx.strokeRect(px,py,TILE,TILE);
+
+      if(tipo==="pasto"){
+        ctx.fillStyle="rgba(255,255,255,.13)";
+        ctx.fillRect(px,py,TILE,7);
+      }
+    }
+  }
+}
+
+function jugador(){
+  const x=player.x-camX;
+  const y=player.y-camY;
+
+  ctx.fillStyle=COLORS.jugador;
+  ctx.fillRect(x,y,player.w,player.h);
+
+  ctx.fillStyle="#111";
+  ctx.fillRect(x+16,y+13,5,5);
+
+  ctx.strokeStyle="#d23cff";
+  ctx.strokeRect(x-2,y-2,player.w+4,player.h+4);
+}
+
+function cursor(){
+  const tx=Math.floor((mouse.x+camX)/TILE);
+  const ty=Math.floor((mouse.y+camY)/TILE);
+  const d=distanciaTile(tx,ty);
+
+  ctx.lineWidth=3;
+  ctx.strokeStyle=d<=190?"#fff":"#ff2d2d";
+  ctx.strokeRect(tx*TILE-camX,ty*TILE-camY,TILE,TILE);
+  ctx.lineWidth=1;
+
+  if(mining){
+    const p=1-mining.vida/mining.max;
+    const x=mining.tx*TILE-camX;
+    const y=mining.ty*TILE-camY-10;
+
+    ctx.fillStyle="rgba(0,0,0,.7)";
+    ctx.fillRect(x,y,TILE,6);
+    ctx.fillStyle="#d23cff";
+    ctx.fillRect(x,y,TILE*p,6);
+  }
+}
+
+function actualizarUI(){
+  document.getElementById("bloque").textContent=bloqueActual;
+  document.getElementById("coins").textContent=coins;
+  document.getElementById("inv").textContent=
+    ` tierra:${inv.tierra} piedra:${inv.piedra} neón:${inv.neon} obsidiana:${inv.obsidiana} cristal:${inv.cristal}`;
+
+  actualizarHotbar();
+}
+
+function actualizarHotbar(){
+  const h=document.getElementById("hotbar");
+  h.innerHTML="";
+  bloquesDisponibles.forEach((tipo,i)=>{
+    const s=document.createElement("div");
+    s.className="slot"+(tipo===bloqueActual?" active":"");
+    s.innerHTML=`<div><div class="icon" style="background:${COLORS[tipo]}"></div><div style="font-size:11px;text-align:center">${i+1}</div></div>`;
+    h.appendChild(s);
+  });
+}
+
+function loop(){
+  mover();
+  camara();
+  minar();
+
+  fondo();
+  dibujarMundo();
+  jugador();
+  cursor();
+
+  requestAnimationFrame(loop);
+}
+
+addEventListener("keydown",e=>{
+  keys[e.key.toLowerCase()]=true;
+  if(e.key===" ")keys[" "]=true;
+
+  const n=Number(e.key);
+  if(n>=1&&n<=bloquesDisponibles.length){
+    bloqueActual=bloquesDisponibles[n-1];
+    actualizarUI();
+  }
+
+  if(e.key.toLowerCase()==="e")vender();
+});
+
+addEventListener("keyup",e=>{
+  keys[e.key.toLowerCase()]=false;
+  if(e.key===" ")keys[" "]=false;
+});
+
+canvas.addEventListener("mousemove",e=>{
+  mouse.x=e.clientX;
+  mouse.y=e.clientY;
+});
+
+canvas.addEventListener("mousedown",e=>{
+  mouse.down=true;
+  mouse.button=e.button;
+  if(e.button===2)colocar();
+});
+
+canvas.addEventListener("mouseup",()=>{
+  mouse.down=false;
+  mining=null;
+});
+
+canvas.addEventListener("contextmenu",e=>e.preventDefault());
+
+actualizarUI();
+loop();
+</script>
+</body>
+</html>

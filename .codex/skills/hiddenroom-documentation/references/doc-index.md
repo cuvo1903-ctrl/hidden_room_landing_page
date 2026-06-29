@@ -5,6 +5,7 @@
 - Store: migration, secrets, checkout, webhook, products, admin panel.
 - Cloud agent: Debian service, env vars, queue behavior, staging bucket, operational logs.
 - Debian server/cloud routing: Tailscale SSH, cloudflared tunnel, Docker File Browser fallback, service units, ports, and safe diagnostics.
+- MysAuth Cloud app: custom Node UI/API, auth boundary, fallback File Browser, and production validation.
 - Design system: migrated modules, pending work, known risks, visual QA routes.
 - Supabase: migrations, RLS, generated types, functions, deployment steps.
 - Testing: syntax checks, static server routes, manual auth roles.

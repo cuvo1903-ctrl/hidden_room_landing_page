@@ -29,6 +29,7 @@ Look for overflow, overlapping nav, broken drawers, clipped buttons, unreadable 
 - Portal: login/register/recovery, section navigation, notifications, profile, membership and ERP tables.
 - Cloud: list, upload via staging, create folder, delete file/folder, pending job handling, and remote service health when approved.
 - Debian Cloud routing: if testing production, use `hiddenroom-debian-server` to verify `cloudflared`, Docker `filebrowser`, `mysauth-cloud-agent`, ports, and route probes without exposing secrets.
+- MysAuth Cloud app: `node --check cloud/server.js`, `node --check cloud/public/cloud.js`, `/health` returns 200, `/api/files` returns 401 without token, File Browser fallback returns 200 on `127.0.0.1:8081`.
 - Kairen: UI loads and Edge Function error states are handled.
 
 ## Remote Dependencies

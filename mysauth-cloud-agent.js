@@ -3,9 +3,29 @@ const fs = require('fs/promises');
 const path = require('path');
 const { URL } = require('url');
 
+function loadEnvFile(filePath) {
+  try {
+    const raw = require('fs').readFileSync(filePath, 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq === -1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      let value = trimmed.slice(eq + 1).trim();
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+      if (!process.env[key]) process.env[key] = value;
+    }
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+}
+
+loadEnvFile(require('path').join(__dirname, '.env'));
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const CLOUD_HIDDENROOM_ROOT = process.env.CLOUD_HIDDENROOM_ROOT;
+const CLOUD_HIDDENROOM_ROOT = process.env.CLOUD_HIDDENROOM_ROOT || process.env.CLOUD_ROOT;
 const CLOUD_HIDDENROOM_URL = process.env.CLOUD_HIDDENROOM_URL || 'https://cloud.hiddenroom.mx/files';
 const CLOUD_STAGING_BUCKET = process.env.CLOUD_STAGING_BUCKET || 'cloud-staging';
 const POLL_INTERVAL_MS = Number(process.env.CLOUD_JOBS_POLL_INTERVAL_MS || 2000);

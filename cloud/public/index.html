@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MysAuth Cloud</title>
+  <link rel="stylesheet" href="/cloud.css" />
+</head>
+<body>
+  <main class="cloud-shell">
+    <section class="cloud-login" id="login-view" hidden>
+      <div class="brand-block">
+        <p class="eyebrow">MysAuth OS</p>
+        <h1>MysAuth Cloud</h1>
+        <p>Acceso privado para administrar archivos de Hidden Room.</p>
+      </div>
+      <form class="login-form" id="login-form">
+        <label>Email<input id="login-email" type="email" autocomplete="email" required /></label>
+        <label>Password<input id="login-password" type="password" autocomplete="current-password" required /></label>
+        <button class="primary" type="submit">Entrar</button>
+        <p class="message" id="login-message" role="status"></p>
+      </form>
+    </section>
+
+    <section class="cloud-app" id="app-view" hidden>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Hidden Room</p>
+          <h1>MysAuth Cloud</h1>
+        </div>
+        <div class="topbar-actions">
+          <button type="button" id="refresh-button">Actualizar</button>
+          <button type="button" id="logout-button">Salir</button>
+        </div>
+      </header>
+
+      <section class="toolbar" aria-label="Herramientas cloud">
+        <label class="upload-button">Subir<input id="file-input" type="file" hidden /></label>
+        <button type="button" id="folder-button">Carpeta</button>
+        <button type="button" id="up-button">Subir nivel</button>
+      </section>
+
+      <nav class="breadcrumb" id="breadcrumb" aria-label="Ruta actual"></nav>
+      <p class="message" id="status-message" role="status"></p>
+
+      <section class="table-wrap" aria-label="Archivos">
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Tipo</th>
+              <th>Tamano</th>
+              <th>Modificado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="file-body"></tbody>
+        </table>
+      </section>
+    </section>
+  </main>
+  <script type="module" src="/cloud.js"></script>
+</body>
+</html>

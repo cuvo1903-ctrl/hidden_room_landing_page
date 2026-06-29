@@ -16,7 +16,7 @@ Use read-only diagnostics first. Redact secrets from any output before reporting
 The active public path is Cloudflare Tunnel, not Nginx:
 
 ```text
-Cloudflare -> cloudflared tunnel hiddenroom-cloud -> http://localhost:8080 -> Docker File Browser
+Cloudflare -> cloudflared tunnel hiddenroom-cloud -> http://localhost:8080 -> MysAuth Cloud Node app
 ```
 
 Observed config:
@@ -26,8 +26,9 @@ Observed config:
 - Tunnel UUID: `406771ae-f4c6-4083-91f3-c47736cab3d2`.
 - Tunnel name: `hiddenroom-cloud`.
 - Ingress: `cloud.hiddenroom.mx` -> `http://localhost:8080`.
+- Current listener on `8080`: `/home/prodxdack/mysauth-cloud/server.js`.
 
-No active `nginx.service` was found during diagnostics, and no Nginx site was found controlling `cloud.hiddenroom.mx`.
+No active `nginx.service` was found during diagnostics, and no Nginx site was found controlling `cloud.hiddenroom.mx`. The public route was switched to MysAuth Cloud without editing cloudflared because the tunnel already targets `localhost:8080`. The public route was switched to MysAuth Cloud without editing cloudflared because the tunnel already targets `localhost:8080`.
 
 ## File Browser Fallback
 
@@ -36,7 +37,7 @@ File Browser is running in Docker:
 - Container name: `filebrowser`.
 - Image: `filebrowser/filebrowser`.
 - Version label: `2.63.15`.
-- Host port: `8080`.
+- Fallback host port: `127.0.0.1:8081`.
 - Container port: `80`.
 - Process shape: `containerd-shim` -> `tini` -> `filebrowser --config=/config/settings.json`.
 
@@ -53,7 +54,27 @@ File Browser settings:
 - Root on host: `/home/prodxdack/hiddenroom`.
 - Database in container: `/database/filebrowser.db`.
 
-Treat File Browser as a temporary fallback. Do not remove it or repoint public traffic away from it without explicit approval.
+Treat File Browser as a temporary fallback. It is currently hidden from the public tunnel and remains reachable locally at `http://127.0.0.1:8081`.
+
+
+## MysAuth Cloud App
+
+Observed path:
+
+- App directory: `/home/prodxdack/mysauth-cloud/`.
+- Main file: `/home/prodxdack/mysauth-cloud/server.js`.
+- Static UI: `/home/prodxdack/mysauth-cloud/public/`.
+- Runtime env: `/home/prodxdack/mysauth-cloud/.env`.
+- Public port: `8080`.
+- Persistence without sudo: user crontab `@reboot /home/prodxdack/mysauth-cloud/run.sh >/dev/null 2>&1`.
+
+Implementation shape:
+
+- Node.js HTTP server with no external package dependency.
+- Browser login uses Supabase publishable key.
+- API verifies Supabase bearer token and requires `admin` in `public.users.roles`.
+- Filesystem root is fixed to `/home/prodxdack/hiddenroom`.
+- MVP operations: list, upload, download, create folder, rename, delete.
 
 ## MysAuth Cloud Agent
 
@@ -74,12 +95,9 @@ Implementation shape:
 
 Known live issue:
 
-- `mysauth-cloud-agent.service` is enabled but fails in auto-restart.
-- Logs report missing `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `CLOUD_HIDDENROOM_ROOT`.
-- `.env` exists but currently uses `CLOUD_ROOT`, while `agent.js` expects `CLOUD_HIDDENROOM_ROOT`.
-- The systemd unit does not declare `EnvironmentFile`; the code also did not show a `dotenv` load at the top during diagnostics.
+- `mysauth-cloud-agent.service` was fixed and observed active/running after loading `.env` from the agent directory and accepting `CLOUD_ROOT` as a legacy alias.
 
-Before starting or restarting the service, align env loading and variable names with the agent code and confirm the fixed root is `/home/prodxdack/hiddenroom`.
+Before future restarts, keep `.env` in `/home/prodxdack/mysauth-agents/cloud-agent/` and confirm the fixed root is `/home/prodxdack/hiddenroom`.
 
 ## Recommended Target Architecture
 
