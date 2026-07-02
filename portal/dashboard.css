@@ -2679,6 +2679,43 @@
   background: var(--hr-red-hover);
 }
 
+.db-download-action {
+  gap: var(--hr-space-xs);
+  white-space: nowrap;
+}
+
+.db-download-action__icon {
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.db-download-action__icon::before,
+.db-download-action__icon::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.db-download-action__icon::before {
+  top: 1px;
+  width: 6px;
+  height: 8px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateX(-50%) rotate(-45deg);
+}
+
+.db-download-action__icon::after {
+  bottom: 1px;
+  width: 12px;
+  height: 2px;
+  background: currentColor;
+}
+
 .db-card-list,
 .db-coupon-list,
 .db-activity-log {

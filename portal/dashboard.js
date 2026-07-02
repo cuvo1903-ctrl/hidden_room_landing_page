@@ -64,6 +64,8 @@ const CLOUD_HIDDENROOM_URL = 'https://cloud.hiddenroom.mx/';
 const CLOUD_FUNCTION_BASE = `${SUPABASE_URL}/functions/v1`;
 const CLOUD_STAGING_BUCKET = 'cloud-staging';
 const BEAT_STORE_CLOUD_PATH = '/beats_store';
+const BEAT_AUDIO_ACCEPT = '.mp3,.wav,.m4a,.aac,.ogg,.flac,.aif,.aiff,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/flac,audio/aiff';
+const BEAT_AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'aif', 'aiff']);
 
 function normalizeCloudPath(path) {
   if (!path || path === '/') return '/';
@@ -878,6 +880,15 @@ const TABLE_EDITOR_CONFIG = {
     lockedFields: ['id'],
     editableFields: ['user_id', 'name', 'storage_path', 'notes', 'type', 'release_mode', 'membership_id', 'membership_delivery_id', 'membership_cycle_number'],
     hiddenColumns: ['id'],
+  },
+  store_products: {
+    label: 'Beats a la venta',
+    primaryKey: 'id',
+    select: 'id, slug, name, description, category, price, currency, image_url, file_url, stock, is_digital, is_active, featured, stripe_price_id, created_at, updated_at',
+    defaultSort: { field: 'created_at', direction: 'desc' },
+    lockedFields: ['id', 'created_at', 'updated_at'],
+    editableFields: ['slug', 'name', 'description', 'category', 'price', 'currency', 'image_url', 'file_url', 'stock', 'is_digital', 'is_active', 'featured', 'stripe_price_id'],
+    hiddenColumns: ['id', 'updated_at'],
   },
   rewards: {
     label: 'Recompensas',
@@ -2336,9 +2347,7 @@ async function renderClientDownloads() {
         <td>${escapeHTML(p.release_mode === 'membership_delivery' ? `Membresía · Mes ${p.membership_cycle_number ?? '-'}` : 'Directa')}</td>
         <td>${escapeHTML(p.notes ?? '-')}</td>
         <td>
-          ${p.storage_path
-            ? `<a class="btn-primary" href="${escapeHTML(p.storage_path)}" target="_blank" rel="noopener noreferrer">Descargar</a>`
-            : '-'}
+          ${renderDownloadAction(p)}
         </td>
       </tr>
     `).join('');
@@ -2367,6 +2376,29 @@ async function renderClientDownloads() {
         </table>
       </div>
     </section>
+  `;
+}
+
+function isCloudDownloadUrl(value) {
+  if (!value) return false;
+  try {
+    const url = new URL(String(value), window.location.origin);
+    return url.hostname === 'cloud.hiddenroom.mx';
+  } catch {
+    return String(value).startsWith(CLOUD_HIDDENROOM_URL);
+  }
+}
+
+function renderDownloadAction(item) {
+  const href = String(item?.storage_path || '').trim();
+  if (!href) return '-';
+  const isCloudFile = isCloudDownloadUrl(href);
+  const label = isCloudFile ? 'Descarga directa' : 'Descargar';
+  return `
+    <a class="btn-primary db-download-action${isCloudFile ? ' db-download-action--cloud' : ''}" href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer"${isCloudFile ? ' download' : ''} aria-label="${escapeAttr(label)}">
+      ${isCloudFile ? '<span class="db-download-action__icon" aria-hidden="true"></span>' : ''}
+      <span>${escapeHTML(label)}</span>
+    </a>
   `;
 }
 
@@ -3696,7 +3728,7 @@ function renderBeatSaleOpsForm() {
         <label class="db-field"><span>Precio MXN</span><input name="price" type="number" min="0" step="0.01" required /></label>
         <label class="db-field"><span>Stock</span><input name="stock" type="number" min="0" step="1" placeholder="vacio = ilimitado" /></label>
       </div>
-      <label class="db-field"><span>Archivo de audio</span><input name="beat_file" type="file" accept="audio/*" required /></label>
+      <label class="db-field"><span>Archivo de audio</span><input name="beat_file" type="file" accept="${escapeAttr(BEAT_AUDIO_ACCEPT)}" required /></label>
       <label class="db-field"><span>Descripcion</span><textarea name="description" rows="3" placeholder="Licencia, mood, BPM o notas"></textarea></label>
       <div class="db-form__row">
         <label class="db-check"><input name="featured" type="checkbox" /> <span>Featured</span></label>
@@ -5271,14 +5303,25 @@ function fileBaseName(fileName) {
   return String(fileName || '').replace(/\.[^.]+$/, '');
 }
 
+function fileExtension(fileName) {
+  const match = String(fileName || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+  return match ? match[1] : '';
+}
+
+function isAllowedBeatAudioFile(file) {
+  const mime = String(file?.type || '').toLowerCase();
+  if (mime.startsWith('audio/')) return true;
+  return BEAT_AUDIO_EXTENSIONS.has(fileExtension(file?.name));
+}
+
 async function handleBeatSaleCreate(form, values) {
   const file = form.querySelector('input[name="beat_file"]')?.files?.[0];
   if (!file) {
     showToast('Selecciona un archivo de audio.', 'error');
     return;
   }
-  if (!String(file.type || '').startsWith('audio/')) {
-    showToast('El archivo debe ser audio.', 'error');
+  if (!isAllowedBeatAudioFile(file)) {
+    showToast('El archivo debe ser audio: mp3, wav, m4a, aac, ogg, flac, aif o aiff.', 'error');
     return;
   }
 
