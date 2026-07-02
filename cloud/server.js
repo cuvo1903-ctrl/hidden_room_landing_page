@@ -4,7 +4,9 @@
 const fs = require('fs');
 const fsp = require('fs/promises');
 const http = require('http');
+const os = require('os');
 const path = require('path');
+const { execFile } = require('child_process');
 const { URL } = require('url');
 
 const APP_DIR = __dirname;
@@ -15,6 +17,10 @@ const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const CLOUD_ROOT = process.env.CLOUD_HIDDENROOM_ROOT || process.env.CLOUD_ROOT;
 const PORT = Number(process.env.CLOUD_PORT || process.env.PORT || 3001);
 const MAX_UPLOAD_BYTES = Number(process.env.CLOUD_MAX_UPLOAD_BYTES || 100 * 1024 * 1024);
+const SERVER_STATUS_INTERVAL_MS = Number(process.env.SERVER_STATUS_INTERVAL_MS || 20_000);
+const SERVER_STATUS_HISTORY_LIMIT = Number(process.env.SERVER_STATUS_HISTORY_LIMIT || 50);
+const SERVER_STATUS_TABLE = process.env.SERVER_STATUS_TABLE || 'server_status_history';
+const SERVER_STATUS_DISK_PATH = process.env.SERVER_STATUS_DISK_PATH || CLOUD_ROOT || '/';
 const CLOUD_UPLOAD_PERMISSION = 'cloud.upload';
 const BEAT_PERMISSION_KEYS = ['beat.store', 'beats.store', 'store.beats', 'store.beat', 'beat_store', 'beats', 'Beat Store', 'module.beats', 'module.beat-store'];
 const BEAT_STORE_DIR = 'beats_store';
@@ -26,6 +32,15 @@ const PUBLIC_CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Range, Content-Type',
   'Access-Control-Expose-Headers': 'Accept-Ranges, Content-Length, Content-Range',
 };
+const API_CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-File-Name',
+};
+let lastCpuSnapshot = null;
+let latestServerStatus = null;
+let serverStatusHistory = [];
+let serverStatusPersisting = false;
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -63,7 +78,7 @@ function send(res, status, body, headers = {}) {
   res.writeHead(status, { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...headers });
   res.end(body);
 }
-function sendJson(res, status, body) { send(res, status, JSON.stringify(body), { 'Content-Type': 'application/json; charset=utf-8' }); }
+function sendJson(res, status, body) { send(res, status, JSON.stringify(body), { ...API_CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8' }); }
 function sendPublicJson(res, status, body) { send(res, status, JSON.stringify(body), { ...PUBLIC_CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8' }); }
 function fail(res, status, message) { sendJson(res, status, { success: false, error: message }); }
 function failPublic(res, status, message) { sendPublicJson(res, status, { success: false, error: message }); }
@@ -494,6 +509,259 @@ async function streamBeatFile(req, res, url) {
   if (req.method === 'HEAD') return res.end();
   return fs.createReadStream(resolved).pipe(res);
 }
+
+function execFileText(command, args = [], options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { timeout: options.timeout || 2500 }, (error, stdout) => {
+      if (error) return reject(error);
+      resolve(String(stdout || '').trim());
+    });
+  });
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value)) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size >= 10 || unitIndex === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function formatUptime(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  return `${days} d ${hours} h ${minutes} m`;
+}
+
+function readCpuSnapshot() {
+  const totals = os.cpus().map((cpu) => {
+    const times = cpu.times;
+    const idle = times.idle;
+    const total = Object.values(times).reduce((sum, value) => sum + value, 0);
+    return { idle, total };
+  });
+  const idle = totals.reduce((sum, item) => sum + item.idle, 0);
+  const total = totals.reduce((sum, item) => sum + item.total, 0);
+  return { idle, total };
+}
+
+function readCpuPercent() {
+  const current = readCpuSnapshot();
+  if (!lastCpuSnapshot) {
+    lastCpuSnapshot = current;
+    return null;
+  }
+  const idleDelta = current.idle - lastCpuSnapshot.idle;
+  const totalDelta = current.total - lastCpuSnapshot.total;
+  lastCpuSnapshot = current;
+  if (totalDelta <= 0) return null;
+  return Math.max(0, Math.min(100, (1 - idleDelta / totalDelta) * 100));
+}
+
+function findTemperaturesInObject(value, readings = []) {
+  if (!value || typeof value !== 'object') return readings;
+  for (const [key, child] of Object.entries(value)) {
+    if (typeof child === 'number' && /(^|_)temp\d*_input$|^temp\d+_input$/i.test(key)) {
+      readings.push(child);
+      continue;
+    }
+    if (child && typeof child === 'object') findTemperaturesInObject(child, readings);
+  }
+  return readings;
+}
+
+function parseSensorsText(output) {
+  const preferred = [];
+  const fallback = [];
+  String(output || '').split(/\r?\n/).forEach((line) => {
+    const match = line.match(/^\s*([^:]+):\s*\+?(-?\d+(?:\.\d+)?)\s*(?:°\s*)?C\b/i);
+    if (!match) return;
+    const label = match[1].toLowerCase();
+    const value = Number(match[2]);
+    if (!Number.isFinite(value)) return;
+    if (/package|tctl|tdie|cpu|composite|temp1/.test(label)) preferred.push(value);
+    else fallback.push(value);
+  });
+  const values = preferred.length ? preferred : fallback;
+  return values.length ? Math.max(...values) : null;
+}
+
+async function readSysTemperature() {
+  const root = '/sys/class/thermal';
+  try {
+    const entries = await fsp.readdir(root, { withFileTypes: true });
+    const readings = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !entry.name.startsWith('thermal_zone')) continue;
+      const raw = await fsp.readFile(path.join(root, entry.name, 'temp'), 'utf8').catch(() => '');
+      const value = Number(String(raw).trim());
+      if (Number.isFinite(value)) readings.push(value > 1000 ? value / 1000 : value);
+    }
+    return readings.length ? Math.max(...readings) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readTemperatureCelsius() {
+  const rawEnvTemperature = String(process.env.SERVER_STATUS_TEMPERATURE || '').trim();
+  const envTemperature = rawEnvTemperature ? Number(rawEnvTemperature.replace(/[^\d.-]/g, '')) : NaN;
+  if (Number.isFinite(envTemperature)) return envTemperature;
+
+  try {
+    const sensorsJson = await execFileText('sensors', ['-j']);
+    const readings = findTemperaturesInObject(JSON.parse(sensorsJson));
+    if (readings.length) return Math.max(...readings);
+  } catch {
+    // Fall back to classic lm-sensors text output.
+  }
+
+  try {
+    const sensorsText = await execFileText('sensors');
+    const parsed = parseSensorsText(sensorsText);
+    if (parsed !== null) return parsed;
+  } catch {
+    // Fall back to sysfs thermal zones.
+  }
+
+  return readSysTemperature();
+}
+
+async function readDiskUsage() {
+  try {
+    const output = await execFileText('df', ['-Pk', SERVER_STATUS_DISK_PATH || '/']);
+    const lines = output.split(/\r?\n/).filter(Boolean);
+    const parts = lines[1]?.trim().split(/\s+/) ?? [];
+    const total = Number(parts[1]) * 1024;
+    const used = Number(parts[2]) * 1024;
+    const available = Number(parts[3]) * 1024;
+    const percent = total > 0 ? (used / total) * 100 : null;
+    return { total, used, available, percent };
+  } catch {
+    return null;
+  }
+}
+
+async function readTailscaleIp() {
+  try {
+    const ip = await execFileText('tailscale', ['ip', '-4'], { timeout: 1500 });
+    if (ip) return ip.split(/\s+/)[0];
+  } catch {
+    // hostname -I is enough as a fallback.
+  }
+  try {
+    const ips = await execFileText('hostname', ['-I'], { timeout: 1500 });
+    return ips.split(/\s+/).find((item) => item.startsWith('100.')) || ips.split(/\s+/).find(Boolean) || null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeMetricSample(status) {
+  return {
+    at: status.checkedAt,
+    cpu: status.cpuPercent,
+    ram: status.memory?.percent ?? null,
+    disk: status.diskUsage?.percent ?? null,
+    temperature: status.temperatureCelsius,
+  };
+}
+
+async function persistServerStatus(status) {
+  if (serverStatusPersisting) return;
+  serverStatusPersisting = true;
+  try {
+    const payload = {
+      created_at: status.checkedAt,
+      hostname: status.hostname,
+      cpu_percent: status.cpuPercent,
+      ram_percent: status.memory?.percent ?? null,
+      disk_percent: status.diskUsage?.percent ?? null,
+      temperature_celsius: status.temperatureCelsius,
+      payload: status,
+    };
+    await supabaseFetch(`/rest/v1/${SERVER_STATUS_TABLE}`, {
+      method: 'POST',
+      headers: { ...supabaseHeaders(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify(payload),
+    });
+
+    const oldRows = await supabaseFetch(`/rest/v1/${SERVER_STATUS_TABLE}?select=id&order=created_at.desc&offset=${SERVER_STATUS_HISTORY_LIMIT}`, {
+      headers: supabaseHeaders(),
+    }).catch(() => []);
+    const oldIds = Array.isArray(oldRows) ? oldRows.map((row) => row.id).filter(Boolean) : [];
+    if (oldIds.length) {
+      await supabaseFetch(`/rest/v1/${SERVER_STATUS_TABLE}?id=in.(${oldIds.join(',')})`, {
+        method: 'DELETE',
+        headers: supabaseHeaders(),
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('Server status Supabase history skipped:', err.message || err);
+  } finally {
+    serverStatusPersisting = false;
+  }
+}
+
+async function collectServerStatus({ persist = true } = {}) {
+  const cpuPercent = readCpuPercent();
+  const totalMemory = os.totalmem();
+  const freeMemory = os.freemem();
+  const usedMemory = totalMemory - freeMemory;
+  const memoryPercent = totalMemory > 0 ? (usedMemory / totalMemory) * 100 : null;
+  const [diskUsage, temperatureCelsius, tailscaleIp] = await Promise.all([
+    readDiskUsage(),
+    readTemperatureCelsius(),
+    readTailscaleIp(),
+  ]);
+  const checkedAt = new Date().toISOString();
+  const status = {
+    online: true,
+    hostname: os.hostname(),
+    tailscaleIp,
+    uptime: formatUptime(os.uptime()),
+    uptimeSeconds: Math.floor(os.uptime()),
+    platform: `${os.type()} ${os.release()} ${os.arch()}`,
+    checkedAt,
+    cpu: cpuPercent === null ? `${os.cpus().length} nucleos` : `${Math.round(cpuPercent)}% / ${os.cpus().length} nucleos`,
+    cpuPercent,
+    loadAverage: os.loadavg(),
+    cores: os.cpus().length,
+    ram: `${formatBytes(usedMemory)} / ${formatBytes(totalMemory)}`,
+    memory: { total: totalMemory, used: usedMemory, free: freeMemory, percent: memoryPercent },
+    memoryPercent,
+    disk: diskUsage ? `${formatBytes(diskUsage.used)} / ${formatBytes(diskUsage.total)}` : null,
+    diskUsage,
+    diskPercent: diskUsage?.percent ?? null,
+    temperature: temperatureCelsius === null ? 'Sin sensor' : `${temperatureCelsius.toFixed(1)} C`,
+    temperatureCelsius,
+  };
+
+  serverStatusHistory = [...serverStatusHistory, normalizeMetricSample(status)].slice(-SERVER_STATUS_HISTORY_LIMIT);
+  latestServerStatus = { ...status, samples: serverStatusHistory };
+  if (persist) persistServerStatus(status);
+  return latestServerStatus;
+}
+
+function startServerStatusCollector() {
+  collectServerStatus({ persist: true }).catch((err) => console.warn('Initial server status failed:', err.message || err));
+  setInterval(() => {
+    collectServerStatus({ persist: true }).catch((err) => console.warn('Server status collection failed:', err.message || err));
+  }, Math.max(5000, SERVER_STATUS_INTERVAL_MS));
+}
+
+async function serverStatus(user, res) {
+  if (!user.isAdmin) { const err = new Error('Solo admin puede leer estado de servidor.'); err.status = 403; throw err; }
+  const status = latestServerStatus || await collectServerStatus({ persist: false });
+  sendJson(res, 200, status);
+}
 async function downloadFile(user, res, url) {
   const baseRoot = getCloudBaseRoot(user);
   const { name, child } = await resolveSafeChild(baseRoot, url.searchParams.get('path'), url.searchParams.get('name'), { mustExist: true });
@@ -543,8 +811,10 @@ async function route(req, res) {
       return failPublic(res, 404, 'Ruta Beat Store no encontrada.');
     }
     if (url.pathname.startsWith('/api/')) {
+      if (req.method === 'OPTIONS') return send(res, 204, '', API_CORS_HEADERS);
       const user = await requireCloudUser(req);
       if (req.method === 'GET' && url.pathname === '/api/session') return sendJson(res, 200, sessionPayload(user));
+      if (req.method === 'GET' && url.pathname === '/api/server-status') return await serverStatus(user, res);
       if (req.method === 'GET' && url.pathname === '/api/files') return await listFiles(user, res, url);
       if (req.method === 'POST' && url.pathname === '/api/folders') return await createFolder(user, req, res);
       if (req.method === 'POST' && url.pathname === '/api/upload') return await uploadFile(user, req, res, url);
@@ -563,4 +833,5 @@ async function route(req, res) {
 http.createServer(route).listen(PORT, '0.0.0.0', () => {
   console.log(`MysAuth Cloud listening on ${PORT}`);
   console.log(`Cloud root: ${path.resolve(CLOUD_ROOT)}`);
+  startServerStatusCollector();
 });

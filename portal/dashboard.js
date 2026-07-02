@@ -818,6 +818,14 @@ const EVENT_STATUS_OPTIONS = ['draft', 'active', 'closed', 'cancelled'];
 
 const ADMIN_TABLE_FETCH_SIZE = 1000;
 
+const ADMIN_TABLE_SUMMARY_COLUMN_GROUPS = [
+  ['type', 'movement_type', 'category', 'entity_type', 'role', 'status', 'release_mode'],
+  ['username', 'display_name', 'email', 'user_id', 'from_user_id', 'to_user_id', 'owner_user_id'],
+  ['date', 'movement_date', 'session_date', 'created_at', 'fecha_de_sesion', 'fecha_de_saldo', 'delivered_at', 'start_date', 'end_date', 'updated_at'],
+  ['amount', 'price', 'cost', 'stock', 'quantity', 'weekly_price', 'saldo', 'participation_percent', 'sessions_per_week', 'membership_cycle_number'],
+  ['hour', 'sc_end', 'time'],
+];
+
 const TABLE_EDITOR_CONFIG = {
   users: {
     label: 'Usuarios',
@@ -889,6 +897,12 @@ const TABLE_EDITOR_CONFIG = {
     lockedFields: ['id', 'created_at', 'updated_at'],
     editableFields: ['slug', 'name', 'description', 'category', 'price', 'currency', 'image_url', 'file_url', 'stock', 'is_digital', 'is_active', 'featured', 'stripe_price_id'],
     hiddenColumns: ['id', 'updated_at'],
+    rowFilter: (row) => String(row.category ?? '').toLowerCase() === 'beats',
+    pdfColumnLabels: {
+      category: 'tipo',
+      created_at: 'fecha',
+      price: 'cantidad',
+    },
   },
   rewards: {
     label: 'Recompensas',
@@ -2020,10 +2034,10 @@ async function loadAndRenderNotifications() {
   }
 
   list.innerHTML = notifications.map((n) => `
-    <li class="db-notifications__item db-notifications__item--${n.type}${n.read ? ' db-notifications__item--read' : ''}" data-notif-id="${n.id}">
-      <span class="db-notifications__dot" aria-hidden="true"></span>
-      <span class="db-notifications__msg">${escapeHTML(n.message)}</span>
-      <time class="db-notifications__time" datetime="${new Date(n.ts).toISOString()}">${relativeTime(n.ts)}</time>
+    <li class="hr-notice hr-notice--${escapeAttr(n.type)} db-notifications__item db-notifications__item--${n.type}${n.read ? ' db-notifications__item--read' : ''}" data-notif-id="${n.id}">
+      <span class="hr-notice__dot db-notifications__dot" aria-hidden="true"></span>
+      <span class="hr-notice__message db-notifications__msg">${escapeHTML(n.message)}</span>
+      <time class="hr-notice__time db-notifications__time" datetime="${new Date(n.ts).toISOString()}">${relativeTime(n.ts)}</time>
     </li>
   `).join('');
 }
@@ -2060,16 +2074,19 @@ function showToast(message, type = 'info', duration = 4000) {
   if (!region) return;
 
   const toast = document.createElement('div');
-  toast.className = `db-toast db-toast--${type}`;
+  toast.className = `hr-toast hr-toast--${type} db-toast db-toast--${type}`;
   toast.setAttribute('role', 'status');
-  toast.textContent = message;
+  toast.innerHTML = `
+    <span class="hr-toast__dot" aria-hidden="true"></span>
+    <span class="hr-toast__message">${escapeHTML(message)}</span>
+  `;
 
   region.appendChild(toast);
 
-  requestAnimationFrame(() => toast.classList.add('db-toast--visible'));
+  requestAnimationFrame(() => toast.classList.add('hr-toast--visible', 'db-toast--visible'));
 
   setTimeout(() => {
-    toast.classList.remove('db-toast--visible');
+    toast.classList.remove('hr-toast--visible', 'db-toast--visible');
     toast.addEventListener('transitionend', () => toast.remove(), { once: true });
   }, duration);
 }
@@ -3310,7 +3327,7 @@ async function renderErpInfrastructure() {
       ${renderServerMetricCard('Disco', serverStatus?.disk ?? percentDisplay(diskPercent), diskPercent, samples.map((sample) => sample.disk), '%', { chart: 'pie' })}
       ${renderServerMetricCard('Temperatura', serverStatus?.temperature ?? 'Sin sensor', tempC, samples.map((sample) => sample.temperature), 'C', { max: 100, chart: 'line' })}
     </div>
-    <p class="db-note">Esta vista solo es visible para administradores. El historial de graficas se conserva durante la sesion del navegador.</p>
+    <p class="db-note">Esta vista solo es visible para administradores. El agente conserva las ultimas 50 muestras; si no hay historial remoto, el navegador usa muestras de la sesion.</p>
   `);
 }
 
@@ -3733,6 +3750,15 @@ function renderBeatSaleOpsForm() {
       <div class="db-form__row">
         <label class="db-check"><input name="featured" type="checkbox" /> <span>Featured</span></label>
         <label class="db-check"><input name="is_active" type="checkbox" checked /> <span>Activo en tienda</span></label>
+      </div>
+      <div class="db-upload-progress" data-beat-upload-progress hidden>
+        <div class="db-upload-progress__head">
+          <span data-beat-upload-progress-label>Esperando archivo</span>
+          <strong data-beat-upload-progress-value>0%</strong>
+        </div>
+        <div class="db-upload-progress__track" aria-hidden="true">
+          <span data-beat-upload-progress-bar style="width:0%"></span>
+        </div>
       </div>
       <button class="btn-primary" type="submit">Subir beat y publicar</button>
     </form>
@@ -4790,11 +4816,19 @@ async function renderAdminTableEditor() {
     `);
   }
 
+  if (typeof config.rowFilter === 'function') {
+    data = (data ?? []).filter(config.rowFilter);
+  }
+
   state.data.adminTableRows = data ?? [];
 
   const columns = [...config.lockedFields, ...config.editableFields]
     .filter((field, index, arr) => arr.indexOf(field) === index);
   const visibleColumns = columns.filter((field) => !(config.hiddenColumns ?? []).includes(field));
+  const showAllColumns = persistedDataValue(`adminTableShowAll:${tableName}`, '0') === '1';
+  const summaryColumns = getAdminTableSummaryColumns(visibleColumns);
+  const displayedColumns = showAllColumns ? visibleColumns : summaryColumns;
+  const canToggleColumns = tableName !== 'membership_dashboard' && visibleColumns.length > summaryColumns.length;
   const tableId = `admin-${tableName}`;
   const defaultSort = config.defaultSort ?? { field: '', direction: 'asc' };
   const activeSort = getTableSort(tableId, defaultSort.field, defaultSort.direction);
@@ -4823,6 +4857,7 @@ async function renderAdminTableEditor() {
   const rows = sortedData.length
     ? sortedData.map((row, index) => renderAdminTableEditorRow(tableName, config, row, index, {
       hidden: Boolean(searchQuery) && !rowMatchesSearch(row, columns, searchQuery),
+      visibleColumns: displayedColumns,
     })).join('')
     : `<tr class="db-table__empty-row hr-table-empty"><td colspan="99" class="db-empty hr-table-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin filas disponibles.'}</td></tr>`;
   const membershipDashboardTable = isMembershipDashboard
@@ -4838,6 +4873,12 @@ async function renderAdminTableEditor() {
         </select>
       </label>
       ${searchControl}
+      ${canToggleColumns ? `
+      <label class="db-column-toggle">
+        <input type="checkbox" data-action="admin-table-toggle-columns" data-table-name="${escapeAttr(tableName)}" ${showAllColumns ? 'checked' : ''} />
+        <span>${showAllColumns ? 'Ocultar columnas' : 'Mostrar todas las columnas'}</span>
+      </label>
+      ` : ''}
       ${config.readOnly && !isMembershipDashboard ? '' : '<button class="db-btn-secondary" type="button" data-action="admin-table-save-all">GUARDAR</button>'}
       ${isMembershipDashboard ? '' : `<button class="db-btn-secondary" type="button" data-action="export-admin-pdf" data-table-label="${escapeAttr(config.label)}">Exportar PDF</button>`}
     </div>
@@ -4849,7 +4890,7 @@ async function renderAdminTableEditor() {
       <table class="db-table hr-table hr-table-editable db-table--editor" aria-label="Editor de ${escapeAttr(config.label)}">
         <thead>
           <tr>
-            ${visibleColumns.map((field) => renderSortableHeader(tableId, field, adminFieldLabel(config, field), activeSort)).join('')}
+            ${displayedColumns.map((field) => renderSortableHeader(tableId, field, adminFieldLabel(config, field), activeSort)).join('')}
             ${config.readOnly ? '' : '<th scope="col">Acciones</th>'}
           </tr>
         </thead>
@@ -4892,10 +4933,24 @@ function renderMembershipDashboardUserPicker(selectedUserId = '') {
   return picker;
 }
 
+function getAdminTableSummaryColumns(visibleColumns = []) {
+  const selected = [];
+  const available = new Set(visibleColumns);
+
+  ADMIN_TABLE_SUMMARY_COLUMN_GROUPS.forEach((group) => {
+    group.forEach((field) => {
+      if (available.has(field) && !selected.includes(field)) selected.push(field);
+    });
+  });
+
+  return selected.length ? selected : visibleColumns.slice(0, 5);
+}
+
 function renderAdminTableEditorRow(tableName, config, row, index, options = {}) {
   const columns = [...config.lockedFields, ...config.editableFields]
     .filter((field, fieldIndex, arr) => arr.indexOf(field) === fieldIndex);
-  const visibleColumns = columns.filter((field) => !(config.hiddenColumns ?? []).includes(field));
+  const visibleColumns = options.visibleColumns
+    ?? columns.filter((field) => !(config.hiddenColumns ?? []).includes(field));
 
   const original = encodeURIComponent(JSON.stringify(row));
   const searchText = columns
@@ -5314,7 +5369,69 @@ function isAllowedBeatAudioFile(file) {
   return BEAT_AUDIO_EXTENSIONS.has(fileExtension(file?.name));
 }
 
+function setBeatUploadProgress(form, percent, label) {
+  const progress = form.querySelector('[data-beat-upload-progress]');
+  const bar = form.querySelector('[data-beat-upload-progress-bar]');
+  const labelEl = form.querySelector('[data-beat-upload-progress-label]');
+  const valueEl = form.querySelector('[data-beat-upload-progress-value]');
+  const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+  if (progress) progress.hidden = false;
+  if (bar) bar.style.width = `${safePercent}%`;
+  if (labelEl) labelEl.textContent = label;
+  if (valueEl) valueEl.textContent = `${Math.round(safePercent)}%`;
+}
+
+function resetBeatUploadProgress(form) {
+  setBeatUploadProgress(form, 0, 'Esperando archivo');
+  const progress = form.querySelector('[data-beat-upload-progress]');
+  if (progress) progress.hidden = true;
+}
+
+function slugWithAttempt(slug, attempt) {
+  return attempt <= 1 ? slug : `${slug}-${attempt}`;
+}
+
+function isDuplicateSlugError(error) {
+  return error?.code === '23505'
+    && String(error?.message || error?.details || '').includes('store_products_slug_key');
+}
+
+async function insertBeatStoreProductWithUniqueSlug(payload) {
+  for (let attempt = 1; attempt <= 20; attempt += 1) {
+    const candidate = {
+      ...payload,
+      slug: slugWithAttempt(payload.slug, attempt),
+    };
+    const { data, error } = await supabase
+      .from('store_products')
+      .insert(candidate)
+      .select('id, slug')
+      .maybeSingle();
+
+    if (!error) {
+      showToast(
+        candidate.slug === payload.slug
+          ? 'Beat publicado en tienda.'
+          : `Beat publicado como ${candidate.slug}.`,
+        'success'
+      );
+      return { ok: true, data, slug: candidate.slug };
+    }
+
+    if (!isDuplicateSlugError(error)) {
+      console.error('[HR] store_products insert:', error);
+      showToast('No se pudo guardar. Revisa permisos/RLS.', 'error');
+      return { ok: false, data: null, error };
+    }
+  }
+
+  showToast('No se pudo generar un slug disponible para el beat.', 'error');
+  return { ok: false, data: null };
+}
+
 async function handleBeatSaleCreate(form, values) {
+  const submitButton = form.querySelector('button[type="submit"]');
+  const originalButtonText = submitButton?.textContent ?? '';
   const file = form.querySelector('input[name="beat_file"]')?.files?.[0];
   if (!file) {
     showToast('Selecciona un archivo de audio.', 'error');
@@ -5333,24 +5450,49 @@ async function handleBeatSaleCreate(form, values) {
     return;
   }
 
-  await ensureCloudFolderPath(BEAT_STORE_CLOUD_PATH);
-  const upload = await uploadCloudFileToPath(file, BEAT_STORE_CLOUD_PATH);
-  const payload = {
-    slug,
-    name,
-    description: String(values.description || '').trim() || null,
-    category: 'beats',
-    price,
-    currency: 'MXN',
-    file_url: upload?.url || buildCloudFileFallbackUrl(BEAT_STORE_CLOUD_PATH, file.name),
-    stock: values.stock !== null && values.stock !== undefined && values.stock !== '' ? Number(values.stock) : null,
-    is_digital: true,
-    is_active: values.is_active === 'on',
-    featured: values.featured === 'on',
-  };
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = 'Subiendo...';
+  }
 
-  const result = await insertRow('store_products', payload, 'Beat publicado en tienda.');
-  if (result.ok) form.reset();
+  try {
+    setBeatUploadProgress(form, 8, 'Validando audio');
+    showToast('Subiendo beat a Cloud...', 'info');
+    setBeatUploadProgress(form, 18, 'Preparando carpeta');
+    await ensureCloudFolderPath(BEAT_STORE_CLOUD_PATH);
+    setBeatUploadProgress(form, 38, 'Subiendo audio');
+    const upload = await uploadCloudFileToPath(file, BEAT_STORE_CLOUD_PATH);
+    setBeatUploadProgress(form, 78, 'Publicando producto');
+    const payload = {
+      slug,
+      name,
+      description: String(values.description || '').trim() || null,
+      category: 'beats',
+      price,
+      currency: 'MXN',
+      file_url: upload?.url || buildCloudFileFallbackUrl(BEAT_STORE_CLOUD_PATH, file.name),
+      stock: values.stock !== null && values.stock !== undefined && values.stock !== '' ? Number(values.stock) : null,
+      is_digital: true,
+      is_active: values.is_active === 'on',
+      featured: values.featured === 'on',
+    };
+
+    const result = await insertBeatStoreProductWithUniqueSlug(payload);
+    if (result.ok) {
+      setBeatUploadProgress(form, 100, 'Publicado');
+      form.reset();
+      setTimeout(() => resetBeatUploadProgress(form), 1200);
+    }
+  } catch (err) {
+    console.error('[HR] beat sale upload:', err);
+    setBeatUploadProgress(form, 100, 'Error al subir');
+    showToast(err?.message || 'No se pudo subir el beat.', 'error');
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = originalButtonText || 'Subir beat y publicar';
+    }
+  }
 }
 
 function updateDownloadMembershipOptions(form, userId = '') {
@@ -6242,18 +6384,45 @@ async function fetchServerStatus() {
     throw new Error('Sesion de Supabase no disponible');
   }
 
-  const statusUrl = `${CLOUD_HIDDENROOM_URL.replace(/\/$/, '')}/api/server-status`;
-  const response = await fetch(statusUrl, {
-    method: 'GET',
-    headers: {
-      'Accept': 'application/json',
-      'Authorization': `Bearer ${token}`,
+  const headers = {
+    'Accept': 'application/json',
+    'Authorization': `Bearer ${token}`,
+  };
+  const statusSources = [
+    {
+      label: 'mysauth-cloud',
+      url: `${CLOUD_HIDDENROOM_URL.replace(/\/$/, '')}/api/server-status`,
     },
-  });
+    {
+      label: 'supabase-fallback',
+      url: `${CLOUD_FUNCTION_BASE}/server-status`,
+    },
+  ];
+  let payload = null;
+  let sourceLabel = '';
+  let lastError = null;
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload?.error || `No se pudo obtener el estado del servidor (${response.status})`);
+  for (const source of statusSources) {
+    try {
+      const response = await fetch(source.url, { method: 'GET', headers });
+      const responsePayload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = responsePayload?.error || `No se pudo obtener el estado del servidor (${response.status})`;
+        if (response.status === 401 || response.status === 403) throw new Error(message);
+        lastError = new Error(message);
+        continue;
+      }
+      payload = responsePayload;
+      sourceLabel = source.label;
+      break;
+    } catch (err) {
+      lastError = err;
+      if (source.label !== 'mysauth-cloud') throw err;
+    }
+  }
+
+  if (!payload) {
+    throw lastError || new Error('No se pudo obtener el estado del servidor.');
   }
   if (!payload || typeof payload !== 'object') {
     throw new Error('Respuesta invalida de estado de servidor');
@@ -6277,9 +6446,24 @@ async function fetchServerStatus() {
     diskUsage: payload.diskUsage ?? payload.disk_usage ?? null,
     temperature: payload.temperature ?? payload.temp ?? null,
     temperatureCelsius: payload.temperatureCelsius ?? payload.temperature_celsius ?? null,
+    source: payload.source ?? sourceLabel,
     fetchedAt: Date.now(),
   };
-  serverStatus.samples = appendServerStatusSample(serverStatus);
+  const remoteSamples = Array.isArray(payload.samples)
+    ? payload.samples.map((sample) => ({
+      at: sample.at ?? sample.checkedAt ?? sample.checked_at ?? Date.now(),
+      cpu: numberOrNull(sample.cpu ?? sample.cpuPercent ?? sample.cpu_percent),
+      ram: numberOrNull(sample.ram ?? sample.memoryPercent ?? sample.memory_percent ?? sample.ramPercent ?? sample.ram_percent),
+      disk: numberOrNull(sample.disk ?? sample.diskPercent ?? sample.disk_percent),
+      temperature: numberOrNull(sample.temperature ?? sample.temperatureCelsius ?? sample.temperature_celsius),
+    })).filter((sample) => sample.cpu !== null || sample.ram !== null || sample.disk !== null || sample.temperature !== null).slice(-50)
+    : [];
+  if (remoteSamples.length) {
+    state.data.serverStatusSamples = remoteSamples;
+    serverStatus.samples = remoteSamples;
+  } else {
+    serverStatus.samples = appendServerStatusSample(serverStatus);
+  }
 
   state.data.serverStatus = serverStatus;
   return serverStatus;
@@ -8651,6 +8835,13 @@ function attachMainDelegation() {
     if (tableSelect) {
       persistAdminTableSearchFromDOM();
       setAdminTableName(tableSelect.value);
+      navigate('admin-table-editor');
+      return;
+    }
+
+    const tableColumnToggle = e.target.closest('input[data-action="admin-table-toggle-columns"][data-table-name]');
+    if (tableColumnToggle) {
+      setPersistedDataValue(`adminTableShowAll:${tableColumnToggle.dataset.tableName}`, tableColumnToggle.checked ? '1' : '0');
       navigate('admin-table-editor');
       return;
     }

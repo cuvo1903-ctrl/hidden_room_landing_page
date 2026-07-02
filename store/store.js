@@ -470,10 +470,13 @@ function errorState(message) {
 function showNotice(message) {
   const notice = document.getElementById("store-notice");
   if (!notice) return;
-  notice.textContent = message;
-  notice.classList.add("visible");
+  notice.className = "notice hr-toast hr-toast--success visible hr-toast--visible";
+  notice.innerHTML = '<span class="hr-toast__dot" aria-hidden="true"></span><span class="hr-toast__message"></span>';
+  notice.querySelector(".hr-toast__message").textContent = message;
   window.clearTimeout(showNotice.timeout);
-  showNotice.timeout = window.setTimeout(() => notice.classList.remove("visible"), 2200);
+  showNotice.timeout = window.setTimeout(() => {
+    notice.classList.remove("visible", "hr-toast--visible");
+  }, 2200);
 }
 
 export function escapeHtml(value) {

@@ -1,4 +1,4 @@
-const SITE_STATUS = "BETA Sitio en contrucción";
+﻿const SITE_STATUS = "BETA Sitio en contrucciÃ³n";
 const SITE_VERSION = "V. 1.3.0";
 const GA_MEASUREMENT_ID = "G-VNHC1Z3FXZ";
 const HR_SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
@@ -53,7 +53,7 @@ function renderSubNav(module) {
   if (module === "media") {
     return [
       item("/media/", "Publicaciones", !path.includes("/admin")),
-      item("/media/#media-filters", "Categorías"),
+      item("/media/#media-filters", "CategorÃ­as"),
       item(
         "/media/admin.html",
         "CMS",
@@ -80,7 +80,7 @@ function renderSubNav(module) {
   if (module === "media" && document.body.classList.contains("media-admin")) {
     return `
       <a class="hr-nav__action" href="/media/" target="_blank" rel="noopener">Ver Media</a>
-      <button class="hr-nav__action" id="logout-button" type="button">Cerrar sesión</button>
+      <button class="hr-nav__action" id="logout-button" type="button">Cerrar sesiÃ³n</button>
     `;
   }
 
@@ -118,16 +118,16 @@ function renderNavActions(module) {
       </button>
       <button class="hr-nav__account hr-nav__account--button" id="js-user-menu-toggle"
         aria-haspopup="true" aria-expanded="false"
-        aria-controls="js-user-menu js-sidebar" aria-label="Abrir menú">
+        aria-controls="js-user-menu js-sidebar" aria-label="Abrir menÃº">
         <span class="hr-nav__avatar" id="js-user-avatar" aria-hidden="true"></span>
-        <span class="hr-nav__hello" id="js-user-display-name">—</span>
+        <span class="hr-nav__hello" id="js-user-display-name">â€”</span>
       </button>
-      <nav class="db-user-menu" id="js-user-menu" aria-label="Menú de usuario" hidden>
+      <nav class="db-user-menu" id="js-user-menu" aria-label="MenÃº de usuario" hidden>
         <ul class="db-user-menu__list" role="list">
           <li><a class="db-user-menu__item" href="/">Volver al sitio</a></li>
           <li><button class="db-user-menu__item" data-action="profile">Perfil</button></li>
           <li><button class="db-user-menu__item" data-action="settings">Ajustes</button></li>
-          <li><button class="db-user-menu__item db-user-menu__item--danger" data-action="logout">Cerrar sesión</button></li>
+          <li><button class="db-user-menu__item db-user-menu__item--danger" data-action="logout">Cerrar sesiÃ³n</button></li>
         </ul>
       </nav>
     `;
@@ -170,18 +170,18 @@ function renderGlobalDrawer(activeModule) {
 
   return `
     <button class="hr-global-drawer__backdrop" type="button"
-      data-global-drawer-close aria-label="Cerrar menú" hidden></button>
+      data-global-drawer-close aria-label="Cerrar menÃº" hidden></button>
     <aside class="hr-global-drawer" id="hr-global-drawer"
-      aria-label="Menú principal" aria-hidden="true" hidden>
+      aria-label="MenÃº principal" aria-hidden="true" hidden>
       <header class="hr-global-drawer__header">
         <a class="hr-global-drawer__brand" href="/" aria-label="Hidden Room, inicio">
           <img src="/assets/img/white_logo.webp" alt="Hidden Room">
         </a>
         <button class="hr-global-drawer__close" type="button"
-          data-global-drawer-close aria-label="Cerrar menú">×</button>
+          data-global-drawer-close aria-label="Cerrar menÃº">Ã—</button>
       </header>
       <p class="hr-global-drawer__label">Ecosistema</p>
-      <nav class="hr-global-drawer__links" aria-label="Navegación móvil">
+      <nav class="hr-global-drawer__links" aria-label="NavegaciÃ³n mÃ³vil">
         ${ECOSYSTEM_LINKS.map(([key, href, label]) => `
           <a href="${href}"${(key === activeModule && !(activeModule === "store" && window.location.pathname.startsWith("/store/beat_store/"))) || (key === "beat-store" && window.location.pathname.startsWith("/store/beat_store/")) ? ' aria-current="page"' : ""}>
             <span>${label}</span>
@@ -264,10 +264,10 @@ function renderGlobalNotifications(items) {
 
   list.innerHTML = items.length
     ? items.map((item) => `
-        <li class="hr-global-notifications__item${item.read ? " is-read" : ""}">
-          <span class="hr-global-notifications__dot" aria-hidden="true"></span>
-          <span class="hr-global-notifications__message">${escapeNavText(item.message || "Notificación")}</span>
-          <time>${escapeNavText(globalNotificationTime(item.created_at))}</time>
+        <li class="hr-notice hr-notice--${escapeNavText(item.type || "info")} hr-global-notifications__item${item.read ? " is-read" : ""}">
+          <span class="hr-notice__dot hr-global-notifications__dot" aria-hidden="true"></span>
+          <span class="hr-notice__message hr-global-notifications__message">${escapeNavText(item.message || "NotificaciÃ³n")}</span>
+          <time class="hr-notice__time">${escapeNavText(globalNotificationTime(item.created_at))}</time>
         </li>
       `).join("")
     : '<li class="hr-global-notifications__empty">Sin notificaciones nuevas.</li>';
@@ -345,7 +345,7 @@ async function hydrateGlobalSession() {
     });
     renderGlobalNotifications(notifications);
   } catch (error) {
-    console.info("[HR] No fue posible hidratar la sesión global:", error?.message || error);
+    console.info("[HR] No fue posible hidratar la sesiÃ³n global:", error?.message || error);
   }
 }
 
@@ -438,18 +438,18 @@ function renderGlobalNav() {
           <img src="/assets/img/white_logo.webp" alt="">
           <span>Hidden Room</span>
         </a>
-        <nav class="hr-nav__links" aria-label="Navegación principal">
+        <nav class="hr-nav__links" aria-label="NavegaciÃ³n principal">
           ${ECOSYSTEM_LINKS.map(([key, href, label]) => `
             <a href="${href}"${(key === activeModule && !(activeModule === "store" && navPath.startsWith("/store/beat_store/"))) || (key === "beat-store" && navPath.startsWith("/store/beat_store/")) ? ' aria-current="page"' : ""}>${label}</a>
           `).join("")}
         </nav>
         <div class="${actionsClass}">${renderNavActions(module)}</div>
-        <button class="hr-nav__mobile-toggle" type="button" aria-label="Abrir menú"
+        <button class="hr-nav__mobile-toggle" type="button" aria-label="Abrir menÃº"
           aria-controls="hr-global-drawer" aria-expanded="false">
           <span></span><span></span><span></span>
         </button>
       </div>
-      ${subnav ? `<nav class="hr-nav__sub" aria-label="Navegación contextual">${subnav}</nav>` : ""}
+      ${subnav ? `<nav class="hr-nav__sub" aria-label="NavegaciÃ³n contextual">${subnav}</nav>` : ""}
     </header>
     ${renderGlobalDrawer(activeModule)}
     <aside class="hr-global-notifications" id="hr-global-notifications"
@@ -459,10 +459,10 @@ function renderGlobalNav() {
           <span>Cuenta</span>
           <strong>Notificaciones</strong>
         </div>
-        <button type="button" data-hr-notifications-close aria-label="Cerrar notificaciones">×</button>
+        <button type="button" data-hr-notifications-close aria-label="Cerrar notificaciones">Ã—</button>
       </header>
       <ul data-hr-notifications-list>
-        <li class="hr-global-notifications__empty">Cargando notificaciones…</li>
+        <li class="hr-global-notifications__empty">Cargando notificacionesâ€¦</li>
       </ul>
     </aside>
   `;

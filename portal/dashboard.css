@@ -1510,6 +1510,43 @@
   font-size: var(--text-xs);
 }
 
+.db-column-toggle {
+  width: auto;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: end;
+  padding: 8px 10px;
+  border: 1px solid var(--hr-border, rgba(255, 255, 255, .14));
+  background: color-mix(in srgb, var(--hr-surface-2, #141414) 86%, transparent);
+  color: var(--hr-muted, var(--white-dim));
+  font-family: var(--hr-font-mono, var(--font-mono));
+  font-size: var(--hr-text-xs, var(--text-xs));
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.db-column-toggle:hover,
+.db-column-toggle:focus-within {
+  border-color: var(--hr-red, var(--red));
+  color: var(--hr-text, var(--white));
+}
+
+.db-column-toggle input {
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
+  min-height: 14px;
+  margin: 0;
+  accent-color: var(--hr-red, var(--red));
+}
+
+.db-column-toggle span {
+  white-space: nowrap;
+}
+
 .db-table-input,
 .db-toolbar input,
 .db-toolbar select {
@@ -2716,6 +2753,47 @@
   background: currentColor;
 }
 
+.db-upload-progress {
+  display: grid;
+  gap: var(--hr-space-xs);
+  padding: var(--hr-space-sm);
+  border: 1px solid var(--hr-border);
+  background: var(--hr-surface-2);
+}
+
+.db-upload-progress[hidden] {
+  display: none;
+}
+
+.db-upload-progress__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hr-space-sm);
+  color: var(--hr-muted);
+  font-family: var(--hr-font-mono);
+  font-size: var(--hr-text-xs);
+  text-transform: uppercase;
+}
+
+.db-upload-progress__head strong {
+  color: var(--hr-text);
+}
+
+.db-upload-progress__track {
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid var(--hr-border);
+  background: color-mix(in srgb, var(--hr-surface) 80%, transparent);
+}
+
+.db-upload-progress__track span {
+  display: block;
+  height: 100%;
+  background: var(--hr-red);
+  transition: width var(--hr-duration-normal);
+}
+
 .db-card-list,
 .db-coupon-list,
 .db-activity-log {
@@ -2982,6 +3060,11 @@ input[data-user-search] {
   .db-task-card__actions > * {
     width: 100%;
   }
+
+  .db-toolbar > .db-column-toggle {
+    width: fit-content;
+    max-width: 100%;
+  }
 }
 
 /* ================================================================
@@ -3122,4 +3205,82 @@ input[data-user-search] {
   align-items: center;
   color: var(--white-faint);
   font-size: var(--text-xs);
+}
+
+/* Shared notification/toast visual bridge */
+.db-toast-region {
+  z-index: var(--hr-z-toast);
+}
+
+.db-toast.hr-toast {
+  width: min(420px, calc(100vw - 32px));
+  min-height: 54px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  border: 1px solid var(--hr-border);
+  border-left: 3px solid var(--hr-notice-accent);
+  background: color-mix(in srgb, var(--hr-surface) 92%, black);
+  color: var(--hr-text);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .38);
+  font-family: var(--hr-font-mono);
+  font-size: var(--hr-text-sm);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.db-toast.hr-toast--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (max-width: 760px) {
+  .db-toast-region {
+    right: var(--hr-space-sm, 12px);
+    left: var(--hr-space-sm, 12px);
+    bottom: calc(var(--hr-bottom-nav-height, 74px) + var(--hr-space-md, 16px));
+    align-items: stretch;
+  }
+
+  .db-toast.hr-toast {
+    width: auto;
+    max-width: none;
+  }
+}
+
+.db-notifications__item.hr-notice {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  border: 1px solid var(--hr-border);
+  border-left: 3px solid var(--hr-notice-accent);
+  background: color-mix(in srgb, var(--hr-surface) 92%, black);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .22);
+}
+
+.db-notifications__dot.hr-notice__dot {
+  width: 9px;
+  height: 9px;
+  margin-top: 4px;
+  border: 1px solid var(--hr-notice-accent);
+  border-radius: 0;
+  background: var(--hr-notice-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--hr-notice-accent) 16%, transparent);
+}
+
+.db-notifications__dot.hr-notice__dot::before,
+.db-notifications__dot.hr-notice__dot::after {
+  display: none;
+}
+
+.db-notifications__msg.hr-notice__message {
+  color: var(--hr-text);
+  font-size: var(--hr-text-sm);
+  line-height: 1.55;
+}
+
+.db-notifications__time.hr-notice__time {
+  color: var(--hr-muted);
+  font-family: var(--hr-font-mono);
+  font-size: var(--hr-text-xs);
 }

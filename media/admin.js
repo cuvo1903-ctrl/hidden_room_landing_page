@@ -37,11 +37,15 @@ MEDIA_CATEGORIES.forEach((category) => {
 });
 
 function showToast(message, type = "success") {
-  toast.textContent = message;
-  toast.style.borderColor = type === "error" ? "var(--hr-danger-dim)" : "var(--hr-accent-dim)";
+  toast.className = `admin-toast hr-toast hr-toast--${type} hr-toast--visible`;
+  toast.innerHTML = '<span class="hr-toast__dot" aria-hidden="true"></span><span class="hr-toast__message"></span>';
+  toast.querySelector(".hr-toast__message").textContent = message;
   toast.hidden = false;
   clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => { toast.hidden = true; }, 4200);
+  showToast.timer = setTimeout(() => {
+    toast.classList.remove("hr-toast--visible");
+    toast.hidden = true;
+  }, 4200);
 }
 
 function currentView() {

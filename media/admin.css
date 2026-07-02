@@ -330,13 +330,6 @@
   position: fixed;
   right: 24px;
   bottom: 24px;
-  z-index: 100;
-  max-width: 360px;
-  border-color: var(--hr-accent-dim);
-  background: var(--hr-surface);
-  color: var(--hr-text);
-  font-size: 11px;
-  padding: 15px 18px;
 }
 
 @media (max-width: 900px) {

@@ -332,14 +332,7 @@ html { color-scheme: dark; }
   position: fixed;
   right: 20px;
   bottom: 20px;
-  z-index: var(--hr-z-toast);
-  max-width: min(380px, calc(100vw - 40px));
-  padding: 14px 18px;
-  background: var(--red);
-  color: white;
-  font-size: 11px;
   transform: translateY(140%);
-  transition: transform .25s ease;
 }
 
 .notice.visible { transform: translateY(0); }
