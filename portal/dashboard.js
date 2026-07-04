@@ -513,7 +513,12 @@ const hasAnyPermission = (permissions) =>
 /**
  * Returns true when the active user can mutate SCRUM tasks.
  */
-const canEditScrum = () => hasPermission('scrum.edit');
+const canEditScrum = (event = null) =>
+  hasPermission('scrum.edit') && (hasRole('admin') || Boolean(event?.can_edit_scrum));
+
+const canViewScrum = (event = null) =>
+  hasAnyPermission(['scrum.view', 'scrum.edit'])
+    && (hasRole('admin') || Boolean(event?.can_view_scrum || event?.can_edit_scrum));
 
 /**
  * Shows sidebar nav groups whose data-role-gate the user satisfies.
@@ -613,7 +618,7 @@ const SECTIONS = {
   'collab-tasks': {
     label: 'SCRUM / Tareas',
     roleRequired: 'collaborator',
-    permissionRequired: 'scrum.view',
+    permissionAnyRequired: ['scrum.view', 'scrum.edit'],
     render: renderCollabTasks,
   },
   'collab-log': {
@@ -647,6 +652,12 @@ const SECTIONS = {
     label: 'Beneficios',
     roleRequired: 'pr',
     render: renderRrppBenefits,
+  },
+  'rrpp-scrum': {
+    label: 'SCRUM / Tareas',
+    roleRequired: 'pr',
+    permissionAnyRequired: ['scrum.view', 'scrum.edit'],
+    render: () => renderCollabTasks('Embajador'),
   },
 
   /* -- ERP / ADMIN -------------------------------------- */
@@ -718,7 +729,7 @@ const PORTAL_NAV_GROUPS = [
     items: [
       { label: 'Documentos/Contratos', section: 'collab-docs', icon: 'folder' },
       { label: 'Financiero', section: 'collab-finance', icon: 'receipt' },
-      { label: 'SCRUM / Tareas', section: 'collab-tasks', icon: 'check', permission: 'scrum.view' },
+      { label: 'SCRUM / Tareas', section: 'collab-tasks', icon: 'check', permissionAny: ['scrum.view', 'scrum.edit'] },
       { label: 'Actividad', section: 'collab-log', icon: 'activity' },
       { label: 'Boletera', href: '../tickets/', icon: 'ticket' },
     ],
@@ -733,6 +744,7 @@ const PORTAL_NAV_GROUPS = [
       { label: 'Campañas', section: 'rrpp-campaigns', icon: 'broadcast' },
       { label: 'Lista de invitados', section: 'rrpp-guestlist', icon: 'list' },
       { label: 'Beneficios', section: 'rrpp-benefits', icon: 'gift' },
+      { label: 'SCRUM / Tareas', section: 'rrpp-scrum', icon: 'check', permissionAny: ['scrum.view', 'scrum.edit'] },
     ],
   },
   {
@@ -1512,6 +1524,11 @@ function navigate(sectionKey) {
     return;
   }
 
+  if (section.permissionAnyRequired && !hasAnyPermission(section.permissionAnyRequired)) {
+    showToast('No tienes permiso para ver este modulo.', 'error');
+    return;
+  }
+
   setState({ activeSection: sectionKey });
   persistActiveSection(sectionKey);
   updateSidebarActiveState(sectionKey);
@@ -1760,11 +1777,13 @@ function canShowPortalGroup(group) {
 
 function canShowPortalItem(item) {
   if (item.permission && !hasPermission(item.permission)) return false;
+  if (item.permissionAny && !hasAnyPermission(item.permissionAny)) return false;
   if (item.section) {
     const section = SECTIONS[item.section];
     if (!section) return false;
     if (section.roleRequired && !hasRole(section.roleRequired)) return false;
     if (section.permissionRequired && !hasPermission(section.permissionRequired)) return false;
+    if (section.permissionAnyRequired && !hasAnyPermission(section.permissionAnyRequired)) return false;
   }
   return true;
 }
@@ -2910,38 +2929,51 @@ function renderCollabFinanceEventFilter(events = [], selectedEventId = '') {
   `;
 }
 
-async function renderCollabTasks() {
-  if (!hasPermission('scrum.view')) {
-    return sectionShell('Colaborador', 'SCRUM / Tareas', 'title-tasks', `
+async function renderCollabTasks(contextLabel = 'Colaborador') {
+  if (!hasAnyPermission(['scrum.view', 'scrum.edit'])) {
+    return sectionShell(contextLabel, 'SCRUM / Tareas', 'title-tasks', `
       <p class="db-empty db-empty--error">No tienes permiso para ver este modulo.</p>
     `);
   }
 
-  const editable = canEditScrum();
-  const [{ data: users, error: usersError }, { data: events, error: eventsError }] = await Promise.all([
+  const [{ data: users, error: usersError }, eventsResult] = await Promise.all([
     supabase
       .from('users')
       .select('user_id, display_name, username, email')
       .order('display_name', { ascending: true }),
-    supabase
-      .from('events')
-      .select('id, name, event_date, date')
-      .order('event_date', { ascending: false }),
+    fetchScrumEvents(),
   ]);
+  const { data: events, error: eventsError } = eventsResult;
 
   if (usersError || eventsError) {
     console.error('[HR] renderCollabTasks:', usersError || eventsError);
-    return sectionShell('Colaborador', 'SCRUM / Tareas', 'title-tasks', `
+    return sectionShell(contextLabel, 'SCRUM / Tareas', 'title-tasks', `
       <p class="db-empty db-empty--error">Error al cargar tareas. Intenta de nuevo.</p>
     `);
   }
 
+  const scrumEvents = normalizeEventFinanceOptions(events ?? []);
   state.data.users = uniqueUsers(users);
-  state.data.events = events ?? [];
+  state.data.scrumEvents = scrumEvents;
   if (state.data.scrumEventId === undefined) {
     state.data.scrumEventId = persistedDataValue('scrumEventId', '');
   }
-  if (!state.data.scrumEventId && (events ?? []).length) setPersistedDataValue('scrumEventId', String(events[0].id));
+  if (state.data.scrumEventId && !scrumEvents.some((event) => String(event.id) === String(state.data.scrumEventId))) {
+    state.data.scrumEventId = '';
+    setPersistedDataValue('scrumEventId', '');
+  }
+  if (!state.data.scrumEventId && scrumEvents.length) {
+    state.data.scrumEventId = String(scrumEvents[0].id);
+    setPersistedDataValue('scrumEventId', state.data.scrumEventId);
+  }
+
+  const selectedEvent = scrumEvents.find((event) => String(event.id) === String(state.data.scrumEventId));
+  if (!selectedEvent || !canViewScrum(selectedEvent)) {
+    return sectionShell(contextLabel, 'SCRUM / Tareas', 'title-tasks', `
+      <p class="db-empty">No tienes eventos SCRUM asignados.</p>
+    `);
+  }
+  const editable = canEditScrum(selectedEvent);
 
   let taskQuery = supabase
     .from('tasks')
@@ -2953,7 +2985,7 @@ async function renderCollabTasks() {
   const { data: tasks, error: tasksError } = await taskQuery;
   if (tasksError) {
     console.error('[HR] renderCollabTasks:', tasksError);
-    return sectionShell('Colaborador', 'SCRUM / Tareas', 'title-tasks', `
+    return sectionShell(contextLabel, 'SCRUM / Tareas', 'title-tasks', `
       <p class="db-empty db-empty--error">Error al cargar tareas para el evento seleccionado.</p>
     `);
   }
@@ -2986,14 +3018,14 @@ async function renderCollabTasks() {
   return `
     <section class="db-section db-section--wide" aria-labelledby="title-tasks">
       <header class="db-section__header">
-        <p class="section-label">Colaborador</p>
+        <p class="section-label">${escapeHTML(contextLabel)}</p>
         <h1 class="db-section__title" id="title-tasks">SCRUM / Tareas</h1>
       </header>
       <div class="db-toolbar">
         <label class="db-field db-field--compact">
           <span>Evento</span>
           <select data-action="scrum-event-change" aria-label="Cambiar evento SCRUM">
-            ${(events ?? []).map((event) => optionHTML(String(event.id), eventLabel(event), state.data.scrumEventId ?? '')).join('')}
+            ${scrumEvents.map((event) => optionHTML(String(event.id), eventLabel(event), state.data.scrumEventId ?? '')).join('')}
           </select>
         </label>
       </div>
@@ -6388,15 +6420,18 @@ async function fetchServerStatus() {
     'Accept': 'application/json',
     'Authorization': `Bearer ${token}`,
   };
-  const statusSources = [
-    {
-      label: 'mysauth-cloud',
-      url: `${CLOUD_HIDDENROOM_URL.replace(/\/$/, '')}/api/server-status`,
-    },
-    {
-      label: 'supabase-fallback',
-      url: `${CLOUD_FUNCTION_BASE}/server-status`,
-    },
+  const cloudStatusSource = {
+    label: 'mysauth-cloud',
+    url: `${CLOUD_HIDDENROOM_URL.replace(/\/$/, '')}/api/server-status`,
+  };
+  const supabaseStatusSource = {
+    label: 'supabase-fallback',
+    url: `${CLOUD_FUNCTION_BASE}/server-status`,
+  };
+  const isLocalDev = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+  const statusSources = isLocalDev ? [supabaseStatusSource] : [
+    cloudStatusSource,
+    supabaseStatusSource,
   ];
   let payload = null;
   let sourceLabel = '';
@@ -6477,6 +6512,70 @@ function eventLabel(event) {
 
 async function fetchEventFinanceOptions(context = 'finance') {
   return fetchAdminEventFinanceOptions(context);
+}
+
+function isMissingSupabaseRelationError(error) {
+  const text = String([
+    error?.code,
+    error?.status,
+    error?.message,
+    error?.details,
+  ].filter(Boolean).join(' ')).toLowerCase();
+  return text.includes('404')
+    || text.includes('42p01')
+    || text.includes('pgrst205')
+    || text.includes('could not find')
+    || text.includes('does not exist');
+}
+
+async function fetchScrumEvents() {
+  const direct = await supabase
+    .from('hr_scrum_events')
+    .select('id, event_key, name, event_date, status, can_view_scrum, can_edit_scrum')
+    .order('event_date', { ascending: false });
+
+  if (!direct.error) return direct;
+  if (!isMissingSupabaseRelationError(direct.error)) return direct;
+
+  console.info('[HR] hr_scrum_events unavailable; using event permission fallback until migrations are applied.');
+
+  if (hasRole('admin')) {
+    const adminEvents = await supabase
+      .from('events')
+      .select('id, event_key, name, event_date, status')
+      .order('event_date', { ascending: false });
+
+    return {
+      data: (adminEvents.data ?? []).map((event) => ({
+        ...event,
+        can_view_scrum: true,
+        can_edit_scrum: true,
+      })),
+      error: adminEvents.error,
+    };
+  }
+
+  if (!state.user?.user_id) return { data: [], error: null };
+
+  const assigned = await supabase
+    .from('event_user_permissions')
+    .select('event_id, can_view_scrum, can_edit_scrum, events:event_id(id, event_key, name, event_date, status)')
+    .eq('user_id', state.user.user_id)
+    .or('can_view_scrum.eq.true,can_edit_scrum.eq.true');
+
+  if (assigned.error) return { data: null, error: assigned.error };
+
+  return {
+    data: (assigned.data ?? [])
+      .map((permission) => ({
+        ...(permission.events ?? {}),
+        id: permission.events?.id ?? permission.event_id,
+        can_view_scrum: permission.can_view_scrum,
+        can_edit_scrum: permission.can_edit_scrum,
+      }))
+      .filter((event) => event.id),
+    error: null,
+  };
 }
 
 async function fetchAdminEventFinanceOptions(context = 'finance') {
@@ -6561,6 +6660,15 @@ function normalizeEventFinanceOptions(events = []) {
     .sort((a, b) => (b.event_date ?? '').localeCompare(a.event_date ?? '') || a.name.localeCompare(b.name, 'es'));
 }
 
+function scrumEventForId(eventId) {
+  return (state.data.scrumEvents ?? [])
+    .find((event) => String(event.id ?? event.event_id) === String(eventId));
+}
+
+function canEditScrumEventId(eventId) {
+  return canEditScrum(scrumEventForId(eventId));
+}
+
 function hasEventKeyCache(events) {
   return Array.isArray(events)
     && events.length > 0
@@ -6600,21 +6708,21 @@ async function insertRow(table, payload, successMessage, options = {}) {
 }
 
 async function handleTaskCreate(form) {
-  if (!canEditScrum()) return showToast('No tienes permiso para editar SCRUM.', 'error');
   const payload = formValues(form);
+  if (!canEditScrumEventId(payload.event_id)) return showToast('No tienes permiso para editar SCRUM en este evento.', 'error');
   payload.created_by = state.user?.user_id ?? null;
   if (payload.due_date) payload.due_date = formatDateOnly(payload.due_date);
 
   const result = await insertRow('tasks', payload, 'Tarea creada.');
   if (result.ok) {
     form.reset();
-    navigate('collab-tasks');
+    navigate(state.activeSection || 'collab-tasks');
   }
 }
 
 async function handleTaskUpdate(form) {
-  if (!canEditScrum()) return showToast('No tienes permiso para editar SCRUM.', 'error');
   const { id, ...payload } = formValues(form);
+  if (!canEditScrumEventId(payload.event_id)) return showToast('No tienes permiso para editar SCRUM en este evento.', 'error');
   payload.updated_at = new Date().toISOString();
   if (payload.due_date) payload.due_date = formatDateOnly(payload.due_date);
 
@@ -6626,11 +6734,12 @@ async function handleTaskUpdate(form) {
   }
 
   showToast('Tarea actualizada.', 'success');
-  navigate('collab-tasks');
+  navigate(state.activeSection || 'collab-tasks');
 }
 
 async function handleTaskStatus(taskId, status) {
-  if (!canEditScrum()) return showToast('No tienes permiso para editar SCRUM.', 'error');
+  const task = (state.data.tasks ?? []).find((item) => String(item.id) === String(taskId));
+  if (!canEditScrumEventId(task?.event_id)) return showToast('No tienes permiso para editar SCRUM en este evento.', 'error');
   const { error } = await supabase
     .from('tasks')
     .update({ status, updated_at: new Date().toISOString() })
@@ -6642,11 +6751,12 @@ async function handleTaskStatus(taskId, status) {
     return;
   }
 
-  navigate('collab-tasks');
+  navigate(state.activeSection || 'collab-tasks');
 }
 
 async function handleTaskDelete(taskId) {
-  if (!canEditScrum()) return showToast('No tienes permiso para editar SCRUM.', 'error');
+  const task = (state.data.tasks ?? []).find((item) => String(item.id) === String(taskId));
+  if (!canEditScrumEventId(task?.event_id)) return showToast('No tienes permiso para editar SCRUM en este evento.', 'error');
   if (!window.confirm('Borrar esta tarea?')) return;
 
   const { error } = await supabase.from('tasks').delete().eq('id', taskId);
@@ -6657,7 +6767,7 @@ async function handleTaskDelete(taskId) {
   }
 
   showToast('Tarea borrada.', 'success');
-  navigate('collab-tasks');
+  navigate(state.activeSection || 'collab-tasks');
 }
 
 async function prepareDownloadValues(form, values) {
@@ -8680,7 +8790,7 @@ function attachMainDelegation() {
     }
 
     if (action === 'task-cancel') {
-      navigate('collab-tasks');
+      navigate(state.activeSection || 'collab-tasks');
     }
 
     if (taskCard && action === 'task-delete') {
@@ -8856,7 +8966,8 @@ function attachMainDelegation() {
     const scrumEvent = e.target.closest('select[data-action="scrum-event-change"]');
     if (scrumEvent) {
       setPersistedDataValue('scrumEventId', scrumEvent.value);
-      navigate('collab-tasks');
+      state.data.scrumEventId = scrumEvent.value;
+      navigate(state.activeSection || 'collab-tasks');
       return;
     }
 

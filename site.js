@@ -1,8 +1,9 @@
 ﻿const SITE_STATUS = "BETA Sitio en contrucciÃ³n";
-const SITE_VERSION = "V. 1.3.0";
+const SITE_VERSION = "V. 1.4.0";
 const GA_MEASUREMENT_ID = "G-VNHC1Z3FXZ";
 const HR_SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 const HR_SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
+const HR_SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 const ECOSYSTEM_LINKS = [
   ["games", "/minijuegos/", "Minijuegos"],
   ["media", "/media/", "Media"],
@@ -11,6 +12,28 @@ const ECOSYSTEM_LINKS = [
   ["kairen", "/kairen/", "Kairen AI"],
   ["tickets", "/tickets/", "Tickets"],
 ];
+
+function getHiddenRoomSupabaseClient() {
+  if (window.__hiddenRoomSupabaseClient) {
+    return Promise.resolve(window.__hiddenRoomSupabaseClient);
+  }
+
+  if (!window.__hiddenRoomSupabaseClientPromise) {
+    window.__hiddenRoomSupabaseClientPromise = import(HR_SUPABASE_CDN).then(({ createClient }) => {
+      window.__hiddenRoomSupabaseClient = window.__hiddenRoomSupabaseClient
+        || createClient(HR_SUPABASE_URL, HR_SUPABASE_ANON_KEY);
+      return window.__hiddenRoomSupabaseClient;
+    });
+  }
+
+  return window.__hiddenRoomSupabaseClientPromise;
+}
+
+window.HiddenRoomSupabase = window.HiddenRoomSupabase || {
+  url: HR_SUPABASE_URL,
+  anonKey: HR_SUPABASE_ANON_KEY,
+  getClient: getHiddenRoomSupabaseClient,
+};
 
 function initAnalytics() {
   window.dataLayer = window.dataLayer || [];
@@ -214,10 +237,27 @@ function firstName(value, fallback = "Usuario") {
   return String(value || fallback).trim().split(/\s+/)[0] || fallback;
 }
 
+function globalAvatarSrc(value) {
+  const fallback = "/assets/img/np-negative.png";
+  const avatar = String(value || "").trim();
+  if (!/^https?:\/\//i.test(avatar)) return fallback;
+
+  try {
+    const url = new URL(avatar);
+    const host = url.hostname.toLowerCase();
+    const blockedHosts = ["cdninstagram.com", "fbcdn.net", "facebook.com", "fbsbx.com"];
+    if (blockedHosts.some((blocked) => host === blocked || host.endsWith(`.${blocked}`))) {
+      return fallback;
+    }
+    return url.href;
+  } catch (_error) {
+    return fallback;
+  }
+}
+
 function authenticatedHeaderMarkup(profile, user, unread = 0, drawer = false) {
   const name = firstName(profile?.display_name || profile?.username || user?.email?.split("@")[0]);
-  const avatar = String(profile?.avatar_url || "").trim();
-  const avatarSrc = /^https?:\/\//i.test(avatar) ? avatar : "/assets/img/np-negative.png";
+  const avatarSrc = globalAvatarSrc(profile?.avatar_url);
   const avatarMarkup = `<img src="${escapeNavText(avatarSrc)}" alt=""
     referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='/assets/img/np-negative.png'">`;
 
@@ -243,6 +283,25 @@ function authenticatedHeaderMarkup(profile, user, unread = 0, drawer = false) {
       <span class="hr-nav__avatar">${avatarMarkup}</span>
       <span class="hr-nav__hello">Hola, <strong>${escapeNavText(name)}</strong></span>
     </a>
+  `;
+}
+
+function guestHeaderMarkup(drawer = false) {
+  if (drawer) {
+    return `
+      <div class="hr-global-drawer__guest">
+        <a href="/portal/">Ingresar</a>
+        <a href="/portal/?mode=register">Registrarse</a>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="hr-nav__guest">
+      <a href="/portal/">Ingresar</a>
+      <span aria-hidden="true">|</span>
+      <a href="/portal/?mode=register">Registrarse</a>
+    </div>
   `;
 }
 
@@ -313,10 +372,19 @@ async function hydrateGlobalSession() {
   if (!sessionTargets.length && !drawerTargets.length) return;
 
   try {
-    const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm");
-    const supabase = createClient(HR_SUPABASE_URL, HR_SUPABASE_ANON_KEY);
+    const supabase = await getHiddenRoomSupabaseClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      sessionTargets.forEach((target) => {
+        target.innerHTML = guestHeaderMarkup();
+      });
+      drawerTargets.forEach((target) => {
+        target.innerHTML = guestHeaderMarkup(true);
+      });
+      renderGlobalNotifications([]);
+      toggleGlobalNotifications(false);
+      return;
+    }
 
     const { data: profile } = await supabase
       .from("users")
@@ -346,6 +414,19 @@ async function hydrateGlobalSession() {
     renderGlobalNotifications(notifications);
   } catch (error) {
     console.info("[HR] No fue posible hidratar la sesiÃ³n global:", error?.message || error);
+  }
+}
+
+async function attachGlobalSessionSync() {
+  if (document.body.classList.contains("db-body")) return;
+
+  try {
+    const supabase = await getHiddenRoomSupabaseClient();
+    supabase.auth.onAuthStateChange(() => {
+      window.setTimeout(hydrateGlobalSession, 0);
+    });
+  } catch (error) {
+    console.info("[HR] No fue posible sincronizar la sesion global:", error?.message || error);
   }
 }
 
@@ -584,6 +665,7 @@ function initGlobalFooter() {
 renderGlobalNav();
 attachGlobalNotificationListeners();
 hydrateGlobalSession();
+attachGlobalSessionSync();
 initGlobalFooter();
 
 document.querySelectorAll(".site-status").forEach(el => {

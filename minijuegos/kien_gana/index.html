@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Predicciones de partidos para la comunidad Hidden Room." />
+  <meta property="og:title" content="Kien Gana | Hidden Room">
+  <meta property="og:description" content="Predice ganador, marcador y compite por Hidden Coins.">
+  <meta property="og:image" content="https://hiddenroom.mx/assets/img/social_preview.webp">
+  <meta property="og:url" content="https://hiddenroom.mx/minijuegos/kien_gana/">
+  <meta property="og:type" content="website">
+  <title>Kien Gana | Hidden Room</title>
+  <link rel="icon" type="image/webp" href="../../assets/img/orange_logo.webp">
+  <link rel="stylesheet" href="../../styles.css?v=20260701-notifications" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body class="predictor-page hr-page" data-hr-chrome data-hr-context="games">
+  <div id="hr-global-nav"></div>
+  <div class="app-shell hr-container">
+    <div class="session-card predictor-session" id="sessionCard">
+      <span id="sessionLabel">Verificando sesion...</span>
+      <button id="logoutBtn" class="hr-btn hr-btn--ghost hidden" type="button">Salir</button>
+    </div>
+
+    <section id="authView" class="hr-card auth-card hidden">
+      <h2>Entrar</h2>
+      <p>Usa tu cuenta de Hidden Room / MysAuth.</p>
+      <label>Email</label>
+      <input id="emailInput" type="email" autocomplete="email" placeholder="tu@email.com" />
+      <label>Contrasena</label>
+      <input id="passwordInput" type="password" autocomplete="current-password" placeholder="********" />
+      <button id="loginBtn" class="hr-btn" type="button">Iniciar sesion</button>
+      <a id="signupBtn" class="hr-btn hr-btn--ghost" href="../../portal/?mode=register">Crear cuenta</a>
+      <p class="tiny">Tambien puedes entrar desde el Portal y regresar al juego.</p>
+    </section>
+
+    <main id="gameView" class="hidden">
+      <nav class="tabs" aria-label="Vistas del juego">
+        <button class="tab active" data-tab="predict" type="button">Predicciones</button>
+        <button class="tab hidden" id="rankingTabButton" data-tab="ranking" type="button">Ranking</button>
+        <button class="tab" data-tab="profile" type="button">Perfil</button>
+        <button class="tab hidden" id="adminTab" data-tab="admin" type="button">Admin</button>
+      </nav>
+
+      <section id="predictTab" class="tab-panel active">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow hr-eyebrow">Partidos abiertos</p>
+            <h2>Haz tu prediccion</h2>
+          </div>
+          <div class="section-actions">
+            <button id="saveAllPredictionsBtn" class="hr-btn" type="button">Guardar cambios</button>
+            <button id="refreshBtn" class="hr-btn hr-btn--ghost" type="button">Actualizar</button>
+          </div>
+        </div>
+        <div id="matchesList" class="match-grid"></div>
+      </section>
+
+      <section id="rankingTab" class="tab-panel">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow hr-eyebrow">Global</p>
+            <h2>Leaderboard</h2>
+          </div>
+        </div>
+        <div id="leaderboard" class="leaderboard"></div>
+      </section>
+
+      <section id="profileTab" class="tab-panel">
+        <div class="profile-card hr-card">
+          <p class="eyebrow hr-eyebrow">Tu perfil</p>
+          <h2 id="profileName">Jugador</h2>
+          <div class="stats">
+            <div><strong id="statPoints">0</strong><span>puntos</span></div>
+            <div><strong id="statCoins">0</strong><span>coins</span></div>
+            <div><strong id="statHits">0%</strong><span>acierto</span></div>
+          </div>
+          <h3>Insignias</h3>
+          <div id="badges" class="badges"></div>
+        </div>
+      </section>
+
+      <section id="adminTabPanel" class="tab-panel">
+        <div class="hr-card">
+          <p class="eyebrow hr-eyebrow">Admin</p>
+          <h2>Crear partido</h2>
+          <div class="form-grid">
+            <input id="adminHome" placeholder="Local, ej. Mexico" />
+            <input id="adminAway" placeholder="Visitante, ej. Inglaterra" />
+            <input id="adminKickoff" type="datetime-local" />
+            <input id="adminStage" placeholder="Fase, ej. Octavos" />
+          </div>
+          <button id="createMatchBtn" class="hr-btn" type="button">Crear partido</button>
+        </div>
+
+        <div class="hr-card">
+          <p class="eyebrow hr-eyebrow">Finalizar</p>
+          <h2>Registrar resultado</h2>
+          <select id="adminMatchSelect"></select>
+          <div class="form-grid small-grid">
+            <input id="adminHomeScore" type="number" min="0" placeholder="Goles local" />
+            <input id="adminAwayScore" type="number" min="0" placeholder="Goles visitante" />
+          </div>
+          <button id="finalizeMatchBtn" class="hr-btn" type="button">Finalizar y puntuar</button>
+        </div>
+
+        <div class="hr-card admin-table-card">
+          <div class="section-head section-head--compact">
+            <div>
+              <p class="eyebrow hr-eyebrow">BB.DD</p>
+              <h2>Partidos</h2>
+            </div>
+            <div class="section-actions">
+              <button id="saveAllMatchesBtn" class="hr-btn" type="button">Guardar cambios</button>
+              <button id="adminMatchesRefreshBtn" class="hr-btn hr-btn--ghost" type="button">Actualizar</button>
+            </div>
+          </div>
+          <div id="adminMatchesTable" class="admin-table-shell"></div>
+        </div>
+
+        <div class="hr-card admin-table-card">
+          <div class="section-head section-head--compact">
+            <div>
+              <p class="eyebrow hr-eyebrow">BB.DD</p>
+              <h2>Predicciones</h2>
+            </div>
+            <button id="adminPredictionsRefreshBtn" class="hr-btn hr-btn--ghost" type="button">Actualizar</button>
+          </div>
+          <div id="adminPredictionsTable" class="admin-table-shell"></div>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <template id="matchTemplate">
+    <article class="match-card hr-card">
+      <div class="match-top">
+        <span class="stage"></span>
+        <span class="lock"></span>
+      </div>
+      <div class="versus">
+        <div class="team homeTeam"></div>
+        <div class="vs">VS</div>
+        <div class="team awayTeam"></div>
+      </div>
+      <p class="kickoff"></p>
+      <div class="prediction-form">
+        <label>Ganador</label>
+        <div class="winner-row"></div>
+        <label>Marcador</label>
+        <div class="score-row">
+          <input class="pred-home-score" type="number" min="0" max="20" value="1" />
+          <span>-</span>
+          <input class="pred-away-score" type="number" min="0" max="20" value="0" />
+        </div>
+        <button class="save-pred hr-btn" type="button">Confirmar prediccion</button>
+      </div>
+      <div class="prediction-result hidden"></div>
+    </article>
+  </template>
+
+  <script src="../../site.js?v=20260704-kiengana-auth"></script>
+  <script type="module" src="./app.js?v=20260704-kiengana-no-flags"></script>
+</body>
+</html>

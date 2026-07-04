@@ -1,9 +1,29 @@
-﻿import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+const SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
+const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
-const supabase = createClient(
-  "https://rpcunbkstadgngqrjafp.supabase.co",
-  "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
-);
+async function getSupabaseClient() {
+  if (window.HiddenRoomSupabase?.getClient) {
+    return window.HiddenRoomSupabase.getClient();
+  }
+
+  if (window.__hiddenRoomSupabaseClient) {
+    return window.__hiddenRoomSupabaseClient;
+  }
+
+  if (!window.__hiddenRoomSupabaseClientPromise) {
+    window.__hiddenRoomSupabaseClientPromise = import(SUPABASE_CDN).then(({ createClient }) => {
+      window.__hiddenRoomSupabaseClient = window.__hiddenRoomSupabaseClient
+        || createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      return window.__hiddenRoomSupabaseClient;
+    });
+  }
+
+  return window.__hiddenRoomSupabaseClientPromise;
+}
+
+const supabase = await getSupabaseClient();
+localStorage.removeItem("session");
 
 let registerMode = new URLSearchParams(window.location.search).get("mode") === "register";
 let passwordResetCooldownUntil = 0;
@@ -20,8 +40,8 @@ const getSafeRedirect = () => {
   return allowedReturnPaths.some((path) => returnTo.startsWith(path)) ? returnTo : fallback;
 };
 
-const { data: { session } } = await supabase.auth.getSession();
-if (session) {
+const { data: { user } } = await supabase.auth.getUser();
+if (user) {
   window.location.href = getSafeRedirect();
 }
 
@@ -96,14 +116,14 @@ function syncRegisterMode() {
   enhancePasswordToggles();
 }
 
-document.addEventListener("input", (e) => {
-  if (e.target?.id === "whatsapp") {
-    e.target.value = e.target.value.replace(/\D/g, "");
+document.addEventListener("input", (event) => {
+  if (event.target?.id === "whatsapp") {
+    event.target.value = event.target.value.replace(/\D/g, "");
   }
 });
 
-document.addEventListener("click", (e) => {
-  const button = e.target.closest('[data-action="toggle-password"]');
+document.addEventListener("click", (event) => {
+  const button = event.target.closest('[data-action="toggle-password"]');
   if (!button) return;
 
   const input = button.closest(".password-field")?.querySelector("input");
@@ -196,8 +216,8 @@ function setPasswordResetBusy(isBusy) {
   }
 }
 
-passwordResetLink?.addEventListener("click", async (e) => {
-  e.preventDefault();
+passwordResetLink?.addEventListener("click", async (event) => {
+  event.preventDefault();
 
   if (passwordResetBusy || Date.now() < passwordResetCooldownUntil) return;
 
@@ -221,25 +241,25 @@ passwordResetLink?.addEventListener("click", async (e) => {
     });
 
     if (error) {
-      alert(error.message || "No se pudo enviar el email de recuperaci\u00f3n.");
+      alert(error.message || "No se pudo enviar el email de recuperación.");
       return;
     }
 
     setPasswordResetCooldown(60);
-    alert("Email de recuperaci\u00f3n enviado.");
+    alert("Email de recuperación enviado.");
   } finally {
     setPasswordResetBusy(false);
   }
 });
 
-registerLink?.addEventListener("click", (e) => {
-  e.preventDefault();
+registerLink?.addEventListener("click", (event) => {
+  event.preventDefault();
   registerMode = !registerMode;
   syncRegisterMode();
 });
 
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
 
   const email = document.getElementById("usuario").value.trim();
   const password = document.getElementById("password").value;
@@ -273,12 +293,11 @@ form.addEventListener("submit", async (e) => {
     }
 
     if (signUpData?.session) {
-      localStorage.setItem("session", JSON.stringify(signUpData.session));
       window.location.href = getSafeRedirect();
       return;
     }
 
-    const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+    const { error: loginError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -288,12 +307,11 @@ form.addEventListener("submit", async (e) => {
       return;
     }
 
-    localStorage.setItem("session", JSON.stringify(loginData.session));
     window.location.href = getSafeRedirect();
     return;
   }
 
-  const { data, error } = await supabase.auth.signInWithPassword({
+  const { error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
@@ -303,7 +321,6 @@ form.addEventListener("submit", async (e) => {
     return;
   }
 
-  localStorage.setItem("session", JSON.stringify(data.session));
   window.location.href = getSafeRedirect();
 });
 

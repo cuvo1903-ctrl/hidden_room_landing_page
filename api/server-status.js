@@ -1,5 +1,11 @@
 const { createClient } = require('@supabase/supabase-js');
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+};
+
 function parseCookie(cookieHeader = '') {
   return cookieHeader.split(';').reduce((cookies, cookie) => {
     const [name, ...rest] = cookie.split('=');
@@ -57,6 +63,7 @@ function getMockServerStatus() {
 function sendJson(res, body, status = 200) {
   res.status(status);
   res.setHeader('Content-Type', 'application/json');
+  Object.entries(CORS_HEADERS).forEach(([key, value]) => res.setHeader(key, value));
   return res.end(JSON.stringify(body));
 }
 
@@ -74,6 +81,7 @@ function hasAdminRole(rawRoles) {
 
 module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') {
+    Object.entries(CORS_HEADERS).forEach(([key, value]) => res.setHeader(key, value));
     res.setHeader('Allow', 'GET,OPTIONS');
     return res.status(204).end();
   }
