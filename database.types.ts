@@ -1844,6 +1844,10 @@ export type Database = {
         Args: { p_match_id: string }
         Returns: boolean
       }
+      predictor_prediction_exists: {
+        Args: { p_match_id: string; p_user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
