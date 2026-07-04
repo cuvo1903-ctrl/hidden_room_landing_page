@@ -2,6 +2,7 @@ const SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
 const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 const LOGIN_RETURN_KEY = "hr_return_after_login";
+const DRAFTS_KEY = "hr_kien_gana_prediction_drafts";
 
 async function getSupabaseClient() {
   if (window.HiddenRoomSupabase?.getClient) {
@@ -33,6 +34,7 @@ const state = {
   predictions: new Map(),
   adminPredictions: [],
   selectedWinner: new Map(),
+  drafts: new Map(),
 };
 
 const $ = (id) => document.getElementById(id);
@@ -48,12 +50,11 @@ function setSessionLoading(isLoading) {
 function resetAuthenticatedState() {
   state.profile = null;
   state.canAdmin = false;
-  state.matches = [];
   state.predictions = new Map();
   state.adminPredictions = [];
-  state.selectedWinner = new Map();
   $("adminTab")?.classList.add("hidden");
   $("rankingTabButton")?.classList.add("hidden");
+  if ($("profileName")) $("profileName").textContent = "Invitado";
   $("adminMatchesTable")?.replaceChildren();
   $("adminPredictionsTable")?.replaceChildren();
 }
@@ -106,6 +107,52 @@ function scoreFromRaw(raw) {
   return Number.isInteger(value) && value >= 0 ? value : null;
 }
 
+function loadStoredDrafts() {
+  try {
+    const raw = sessionStorage.getItem(DRAFTS_KEY);
+    const entries = raw ? JSON.parse(raw) : [];
+    state.drafts = new Map(Array.isArray(entries) ? entries : []);
+    state.selectedWinner = new Map(
+      Array.from(state.drafts.entries())
+        .filter(([, draft]) => draft?.predictedWinner)
+        .map(([matchId, draft]) => [matchId, draft.predictedWinner]),
+    );
+  } catch (_error) {
+    state.drafts = new Map();
+  }
+}
+
+function persistDrafts() {
+  sessionStorage.setItem(DRAFTS_KEY, JSON.stringify(Array.from(state.drafts.entries())));
+}
+
+function setDraft(matchId, patch) {
+  const current = state.drafts.get(matchId) || {};
+  const next = { ...current, ...patch };
+  state.drafts.set(matchId, next);
+  if (next.predictedWinner) state.selectedWinner.set(matchId, next.predictedWinner);
+  persistDrafts();
+  return next;
+}
+
+function removeDraft(matchId) {
+  state.drafts.delete(matchId);
+  state.selectedWinner.delete(matchId);
+  persistDrafts();
+}
+
+function removeDraftsForSavedPredictions() {
+  let changed = false;
+  state.predictions.forEach((_prediction, matchId) => {
+    if (state.drafts.has(matchId)) {
+      state.drafts.delete(matchId);
+      state.selectedWinner.delete(matchId);
+      changed = true;
+    }
+  });
+  if (changed) persistDrafts();
+}
+
 function makeText(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -136,6 +183,13 @@ function confirmPredictionDrafts(drafts) {
   );
 }
 
+function requestLoginToSave(drafts) {
+  drafts.forEach(({ match, draft }) => setDraft(match.id, draft));
+  $("authView")?.classList.remove("hidden");
+  $("authView")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  toast("Inicia sesion para guardar. Tus cambios no se perdieron.");
+}
+
 function withTimeout(promise, ms, fallback = null) {
   let timer;
   const timeout = new Promise((resolve) => {
@@ -154,6 +208,7 @@ async function ensureSupabaseClient() {
 }
 
 async function boot() {
+  loadStoredDrafts();
   bindUI();
   setSessionLoading(true);
   try {
@@ -214,10 +269,14 @@ function attachAuthStateListener() {
 async function renderSession() {
   if (!state.user) {
     resetAuthenticatedState();
-    $("authView").classList.remove("hidden");
-    $("gameView").classList.add("hidden");
+    $("authView").classList.add("hidden");
+    $("gameView").classList.remove("hidden");
     $("logoutBtn").classList.add("hidden");
-    $("sessionLabel").textContent = "No conectado";
+    $("sessionLabel").textContent = "Invitado: juega ahora, inicia sesion al guardar";
+    if (["ranking", "admin"].includes(document.querySelector(".tab.active")?.dataset.tab)) {
+      switchTab("predict");
+    }
+    await loadGame();
     return;
   }
 
@@ -250,7 +309,8 @@ async function login() {
     return;
   }
 
-  toast("Sesion iniciada");
+  $("authView").classList.add("hidden");
+  toast(state.drafts.size ? "Sesion iniciada. Revisa y guarda tus predicciones." : "Sesion iniciada");
 }
 
 async function logout() {
@@ -325,8 +385,8 @@ async function loadProfile() {
 }
 
 async function loadGame() {
-  if (!state.user) return;
-  const loaders = [loadMatches(), loadPredictions()];
+  const loaders = [loadMatches()];
+  if (state.user) loaders.push(loadPredictions());
   if (state.canAdmin) loaders.push(loadLeaderboard(), loadAdminPredictions());
   await Promise.all(loaders);
   renderMatches();
@@ -362,6 +422,7 @@ async function loadPredictions() {
   }
 
   state.predictions = new Map((data ?? []).map((prediction) => [prediction.match_id, prediction]));
+  removeDraftsForSavedPredictions();
 }
 
 async function loadAdminPredictions() {
@@ -403,6 +464,7 @@ function renderMatches() {
   state.matches.forEach((match) => {
     const node = template.content.firstElementChild.cloneNode(true);
     const prediction = state.predictions.get(match.id);
+    const draft = state.drafts.get(match.id);
     const matchLocked = new Date(match.kickoff_at) <= new Date() || match.status !== "open";
     const userLocked = Boolean(prediction);
     const locked = matchLocked || userLocked;
@@ -418,7 +480,7 @@ function renderMatches() {
     node.querySelector(".kickoff").textContent = formatDate(match.kickoff_at);
 
     const winnerRow = node.querySelector(".winner-row");
-    const currentWinner = prediction?.predicted_winner || state.selectedWinner.get(match.id) || "";
+    const currentWinner = prediction?.predicted_winner || draft?.predictedWinner || state.selectedWinner.get(match.id) || "";
     if (currentWinner) state.selectedWinner.set(match.id, currentWinner);
 
     [
@@ -433,7 +495,7 @@ function renderMatches() {
       button.textContent = label;
       button.disabled = locked;
       button.addEventListener("click", () => {
-        state.selectedWinner.set(match.id, value);
+        setDraft(match.id, { predictedWinner: value });
         winnerRow.querySelectorAll(".pick").forEach((pick) => pick.classList.remove("active"));
         button.classList.add("active");
       });
@@ -445,10 +507,16 @@ function renderMatches() {
     node.querySelector(".prediction-form")?.classList.toggle("hidden", locked);
     homeScore.dataset.scoreField = "home";
     awayScore.dataset.scoreField = "away";
-    homeScore.value = prediction?.home_score ?? "";
-    awayScore.value = prediction?.away_score ?? "";
+    homeScore.value = prediction?.home_score ?? draft?.homeScore ?? "";
+    awayScore.value = prediction?.away_score ?? draft?.awayScore ?? "";
     homeScore.disabled = locked;
     awayScore.disabled = locked;
+    homeScore.addEventListener("input", () => {
+      setDraft(match.id, { homeScore: homeScore.value });
+    });
+    awayScore.addEventListener("input", () => {
+      setDraft(match.id, { awayScore: awayScore.value });
+    });
 
     const saveButton = node.querySelector(".save-pred");
     saveButton.disabled = locked;
@@ -545,6 +613,13 @@ async function savePrediction(match, homeScoreRaw, awayScoreRaw, options = {}) {
   }
 
   const draft = { predictedWinner, homeScore, awayScore };
+  setDraft(match.id, draft);
+
+  if (!state.user) {
+    requestLoginToSave([{ match, draft }]);
+    return;
+  }
+
   if (!options.skipConfirm && !confirmPredictionDrafts([{ match, draft }])) {
     return;
   }
@@ -574,6 +649,7 @@ async function savePrediction(match, homeScoreRaw, awayScoreRaw, options = {}) {
     ...(data ?? {}),
   };
   state.predictions.set(match.id, savedPrediction);
+  removeDraft(match.id);
   if (options.button) {
     options.button.textContent = "Prediccion enviada";
     options.button.disabled = true;
@@ -593,19 +669,23 @@ async function savePrediction(match, homeScoreRaw, awayScoreRaw, options = {}) {
 }
 
 async function saveAllPredictions() {
-  if (!state.user) return;
-
   const cards = Array.from(document.querySelectorAll(".match-card[data-match-id]"));
   const editableCards = cards.filter((card) => {
     const match = state.matches.find((item) => item.id === card.dataset.matchId);
+    const hasDraft = state.drafts.has(card.dataset.matchId);
+    const hasInput =
+      Boolean(card.querySelector(".pick.active"))
+      || String(card.querySelector('[data-score-field="home"]')?.value || "").trim() !== ""
+      || String(card.querySelector('[data-score-field="away"]')?.value || "").trim() !== "";
     return match
       && match.status === "open"
       && new Date(match.kickoff_at) > new Date()
-      && !state.predictions.has(match.id);
+      && !state.predictions.has(match.id)
+      && (hasDraft || hasInput);
   });
 
   if (!editableCards.length) {
-    toast("No hay predicciones abiertas para guardar.");
+    toast("No hay cambios de prediccion para guardar.");
     return;
   }
 
@@ -633,6 +713,13 @@ async function saveAllPredictions() {
     }
 
     drafts.push({ match, card, draft: { predictedWinner, homeScore, awayScore } });
+  }
+
+  drafts.forEach(({ match, draft }) => setDraft(match.id, draft));
+
+  if (!state.user) {
+    requestLoginToSave(drafts);
+    return;
   }
 
   if (!confirmPredictionDrafts(drafts)) return;
