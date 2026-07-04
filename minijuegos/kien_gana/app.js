@@ -107,6 +107,24 @@ function scoreFromRaw(raw) {
   return Number.isInteger(value) && value >= 0 ? value : null;
 }
 
+function scoreDraftFromRaw(homeRaw, awayRaw) {
+  const homeBlank = String(homeRaw).trim() === "";
+  const awayBlank = String(awayRaw).trim() === "";
+
+  if (homeBlank && awayBlank) {
+    return { error: "missing" };
+  }
+
+  const homeScore = homeBlank ? 0 : scoreFromRaw(homeRaw);
+  const awayScore = awayBlank ? 0 : scoreFromRaw(awayRaw);
+
+  if (homeScore === null || awayScore === null) {
+    return { error: "invalid" };
+  }
+
+  return { homeScore, awayScore };
+}
+
 function loadStoredDrafts() {
   try {
     const raw = sessionStorage.getItem(DRAFTS_KEY);
@@ -583,8 +601,7 @@ function labelWinner(match, value) {
 }
 
 async function savePrediction(match, homeScoreRaw, awayScoreRaw, options = {}) {
-  const homeScore = scoreFromRaw(homeScoreRaw);
-  const awayScore = scoreFromRaw(awayScoreRaw);
+  const scoreDraft = scoreDraftFromRaw(homeScoreRaw, awayScoreRaw);
   const predictedWinner = state.selectedWinner.get(match.id);
 
   if (!predictedWinner) {
@@ -592,10 +609,21 @@ async function savePrediction(match, homeScoreRaw, awayScoreRaw, options = {}) {
     return;
   }
 
-  if (homeScore === null || awayScore === null) {
+  if (scoreDraft.error === "missing") {
+    toast("Añade marcador antes de guardar.");
+    return;
+  }
+
+  if (scoreDraft.error === "invalid") {
     toast("Marcador invalido");
     return;
   }
+
+  const { homeScore, awayScore } = scoreDraft;
+  const homeInput = options.card?.querySelector('[data-score-field="home"]');
+  const awayInput = options.card?.querySelector('[data-score-field="away"]');
+  if (homeInput) homeInput.value = homeScore;
+  if (awayInput) awayInput.value = awayScore;
 
   if (!winnerMatchesScore(predictedWinner, homeScore, awayScore)) {
     toast("El ganador debe coincidir con el marcador.");
@@ -694,18 +722,28 @@ async function saveAllPredictions() {
     const match = state.matches.find((item) => item.id === card.dataset.matchId);
     const activePick = card.querySelector(".pick.active");
     const predictedWinner = activePick?.dataset.winner || state.selectedWinner.get(match.id);
-    const homeScore = scoreFromRaw(card.querySelector('[data-score-field="home"]')?.value);
-    const awayScore = scoreFromRaw(card.querySelector('[data-score-field="away"]')?.value);
+    const homeInput = card.querySelector('[data-score-field="home"]');
+    const awayInput = card.querySelector('[data-score-field="away"]');
+    const scoreDraft = scoreDraftFromRaw(homeInput?.value, awayInput?.value);
 
     if (!predictedWinner) {
       toast(`Elige ganador para ${match.home_team} vs ${match.away_team}.`);
       return;
     }
 
-    if (homeScore === null || awayScore === null) {
+    if (scoreDraft.error === "missing") {
+      toast(`Añade marcador para ${match.home_team} vs ${match.away_team}.`);
+      return;
+    }
+
+    if (scoreDraft.error === "invalid") {
       toast(`Marcador invalido en ${match.home_team} vs ${match.away_team}.`);
       return;
     }
+
+    const { homeScore, awayScore } = scoreDraft;
+    if (homeInput) homeInput.value = homeScore;
+    if (awayInput) awayInput.value = awayScore;
 
     if (!winnerMatchesScore(predictedWinner, homeScore, awayScore)) {
       toast(`El ganador no coincide con el marcador en ${match.home_team} vs ${match.away_team}.`);
