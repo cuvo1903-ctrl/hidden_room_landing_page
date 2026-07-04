@@ -431,7 +431,13 @@
   }
 
   .predictor-page .section-head {
+    display: grid;
     align-items: flex-start;
+  }
+
+  .predictor-page .section-actions,
+  .predictor-page .section-actions .hr-btn {
+    width: 100%;
   }
 
   .predictor-page .winner-row,

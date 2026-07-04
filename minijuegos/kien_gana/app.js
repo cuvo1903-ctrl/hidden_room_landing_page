@@ -100,6 +100,12 @@ function winnerMatchesScore(predictedWinner, homeScore, awayScore) {
   return winnerFromScore(homeScore, awayScore) === predictedWinner;
 }
 
+function scoreFromRaw(raw) {
+  if (String(raw).trim() === "") return null;
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
 function makeText(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -110,6 +116,24 @@ function makeText(tag, className, text) {
 function renderTeamLabel(node, name) {
   node.replaceChildren();
   node.append(document.createTextNode(String(name || "").trim()));
+}
+
+function predictionSummaryLine(match, draft) {
+  return `${match.home_team} vs ${match.away_team}: ${labelWinner(match, draft.predictedWinner)} ${draft.homeScore}-${draft.awayScore}`;
+}
+
+function confirmPredictionDrafts(drafts) {
+  if (!drafts.length) return false;
+
+  const summary = drafts
+    .map(({ match, draft }) => `- ${predictionSummaryLine(match, draft)}`)
+    .join("\n");
+
+  return window.confirm(
+    "¿Confirmar predicción? No podrás editar tus predicciones más adelante.\n\n"
+    + "Resumen de tus predicciones:\n"
+    + summary,
+  );
 }
 
 function withTimeout(promise, ms, fallback = null) {
@@ -394,8 +418,8 @@ function renderMatches() {
     node.querySelector(".kickoff").textContent = formatDate(match.kickoff_at);
 
     const winnerRow = node.querySelector(".winner-row");
-    const currentWinner = prediction?.predicted_winner || state.selectedWinner.get(match.id) || "home";
-    state.selectedWinner.set(match.id, currentWinner);
+    const currentWinner = prediction?.predicted_winner || state.selectedWinner.get(match.id) || "";
+    if (currentWinner) state.selectedWinner.set(match.id, currentWinner);
 
     [
       ["home", match.home_team],
@@ -421,8 +445,8 @@ function renderMatches() {
     node.querySelector(".prediction-form")?.classList.toggle("hidden", locked);
     homeScore.dataset.scoreField = "home";
     awayScore.dataset.scoreField = "away";
-    homeScore.value = prediction?.home_score ?? 1;
-    awayScore.value = prediction?.away_score ?? 0;
+    homeScore.value = prediction?.home_score ?? "";
+    awayScore.value = prediction?.away_score ?? "";
     homeScore.disabled = locked;
     awayScore.disabled = locked;
 
@@ -491,11 +515,16 @@ function labelWinner(match, value) {
 }
 
 async function savePrediction(match, homeScoreRaw, awayScoreRaw, options = {}) {
-  const homeScore = Number(homeScoreRaw);
-  const awayScore = Number(awayScoreRaw);
-  const predictedWinner = state.selectedWinner.get(match.id) || winnerFromScore(homeScore, awayScore);
+  const homeScore = scoreFromRaw(homeScoreRaw);
+  const awayScore = scoreFromRaw(awayScoreRaw);
+  const predictedWinner = state.selectedWinner.get(match.id);
 
-  if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) {
+  if (!predictedWinner) {
+    toast("Elige un ganador.");
+    return;
+  }
+
+  if (homeScore === null || awayScore === null) {
     toast("Marcador invalido");
     return;
   }
@@ -512,6 +541,11 @@ async function savePrediction(match, homeScoreRaw, awayScoreRaw, options = {}) {
 
   if (state.predictions.has(match.id)) {
     toast("Ya registraste una prediccion para este partido.");
+    return;
+  }
+
+  const draft = { predictedWinner, homeScore, awayScore };
+  if (!options.skipConfirm && !confirmPredictionDrafts([{ match, draft }])) {
     return;
   }
 
@@ -575,21 +609,43 @@ async function saveAllPredictions() {
     return;
   }
 
-  let saved = 0;
+  const drafts = [];
   for (const card of editableCards) {
     const match = state.matches.find((item) => item.id === card.dataset.matchId);
     const activePick = card.querySelector(".pick.active");
-    if (activePick?.dataset.winner) {
-      state.selectedWinner.set(match.id, activePick.dataset.winner);
+    const predictedWinner = activePick?.dataset.winner || state.selectedWinner.get(match.id);
+    const homeScore = scoreFromRaw(card.querySelector('[data-score-field="home"]')?.value);
+    const awayScore = scoreFromRaw(card.querySelector('[data-score-field="away"]')?.value);
+
+    if (!predictedWinner) {
+      toast(`Elige ganador para ${match.home_team} vs ${match.away_team}.`);
+      return;
     }
 
-    const homeScore = card.querySelector('[data-score-field="home"]')?.value;
-    const awayScore = card.querySelector('[data-score-field="away"]')?.value;
-    const result = await savePrediction(match, homeScore, awayScore, {
+    if (homeScore === null || awayScore === null) {
+      toast(`Marcador invalido en ${match.home_team} vs ${match.away_team}.`);
+      return;
+    }
+
+    if (!winnerMatchesScore(predictedWinner, homeScore, awayScore)) {
+      toast(`El ganador no coincide con el marcador en ${match.home_team} vs ${match.away_team}.`);
+      return;
+    }
+
+    drafts.push({ match, card, draft: { predictedWinner, homeScore, awayScore } });
+  }
+
+  if (!confirmPredictionDrafts(drafts)) return;
+
+  let saved = 0;
+  for (const { match, card, draft } of drafts) {
+    state.selectedWinner.set(match.id, draft.predictedWinner);
+    const result = await savePrediction(match, draft.homeScore, draft.awayScore, {
       card,
       button: card.querySelector(".save-pred"),
       resultBox: card.querySelector(".prediction-result"),
       silent: true,
+      skipConfirm: true,
     });
 
     if (result) saved += 1;
