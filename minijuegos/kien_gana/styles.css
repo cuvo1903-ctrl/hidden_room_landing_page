@@ -198,13 +198,22 @@
 }
 
 .predictor-page .match-loading {
-  grid-column: 1 / -1;
-  min-height: 220px;
+  position: fixed;
+  inset: 0;
+  z-index: var(--hr-z-popover);
+  min-height: 100vh;
   display: grid;
   align-content: center;
   justify-items: center;
   text-align: center;
   gap: var(--hr-space-sm);
+  padding: 24px;
+  border: 0;
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(219, 1, 0, .18), transparent 18rem),
+    rgba(5, 5, 5, .92);
+  backdrop-filter: blur(10px);
 }
 
 .predictor-page .match-loading-spinner {
