@@ -3474,12 +3474,14 @@ async function renderErpInstagramMentionRank() {
         </div>
       </article>
 
-      <article class="db-card">
-        <div class="db-card__inner">
-          <header class="db-card__header"><span class="section-label">Publicaciones</span></header>
-          ${media.length ? `<div class="db-ig-media-grid">${media.map(renderIgMediaCard).join('')}</div>` : '<p class="db-empty">Carga publicaciones para elegir una y analizar comentarios.</p>'}
-        </div>
-      </article>
+      ${analysis ? '' : `
+        <article class="db-card">
+          <div class="db-card__inner">
+            <header class="db-card__header"><span class="section-label">Publicaciones</span></header>
+            ${media.length ? `<div class="db-ig-media-grid">${media.map(renderIgMediaCard).join('')}</div>` : '<p class="db-empty">Carga publicaciones para elegir una y analizar comentarios.</p>'}
+          </div>
+        </article>
+      `}
 
       ${analysis ? renderIgAnalysisSummary(analysis, igState.selectedMedia) : ''}
       ${analysis ? renderIgRankingTables(analysis) : ''}
@@ -3518,11 +3520,31 @@ function renderIgAnalysisSummary(analysis, media) {
           ${renderStatCard('Usuarios arrobados', analysis.unique_mentions_count ?? 0)}
         </div>
         <p class="db-note">Media: <code>${escapeHTML(media?.id || '')}</code>${analysis.saved_analysis_id ? ` · Guardado: <code>${escapeHTML(analysis.saved_analysis_id)}</code>` : ''}</p>
+        <p class="db-note">Paginas: ${escapeHTML(analysis.pages_fetched ?? 0)} · Replies incluidos: ${escapeHTML(analysis.replies_count ?? 0)} · Comentarios con @: ${escapeHTML(analysis.comments_with_mentions_count ?? 0)}</p>
+        ${Number(analysis.mentions_count ?? 0) === 0 ? renderIgMentionDebug(analysis.mention_debug) : ''}
+        <div class="db-form__actions">
+          <button class="db-btn-secondary" type="button" data-action="ig-reset-analysis">Analizar otra publicacion</button>
+        </div>
       </div>
     </article>
   `;
 }
 
+function renderIgMentionDebug(debug) {
+  const withAt = Array.isArray(debug?.sample_texts_with_at) ? debug.sample_texts_with_at : [];
+  const samples = Array.isArray(debug?.sample_texts) ? debug.sample_texts : [];
+  const rows = withAt.length ? withAt : samples;
+  if (!rows.length) return '<p class="db-note">Meta no devolvio texto de comentarios para diagnosticar menciones.</p>';
+
+  return `
+    <div class="db-note">
+      <strong>Muestras enmascaradas recibidas por la API:</strong>
+      <ul>
+        ${rows.map((item) => `<li>${escapeHTML(item)}</li>`).join('')}
+      </ul>
+    </div>
+  `;
+}
 function renderIgRankingTables(analysis) {
   return `
     <div class="db-grid db-grid--2col db-ig-ranking-grid">
@@ -9141,6 +9163,15 @@ function attachMainDelegation() {
       return;
     }
 
+    if (action === 'ig-reset-analysis') {
+      const igState = getIgMentionState();
+      igState.analysis = null;
+      igState.selectedMedia = null;
+      igState.error = '';
+      renderSection('erp-ig-mention-rank');
+      return;
+    }
+
     if (action === 'refresh-session') {
       handleRefreshSession();
     }
@@ -9632,6 +9663,7 @@ export {
   hasPermission,
   hasAnyPermission,
 };
+
 
 
 

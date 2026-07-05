@@ -1,27 +1,85 @@
 const SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
 const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+const SUPABASE_FALLBACK_CDN = "https://esm.sh/@supabase/supabase-js@2";
+const SUPABASE_BOOT_TIMEOUT_MS = 8000;
+const SUPABASE_REST_TIMEOUT_MS = 9000;
 const LOGIN_RETURN_KEY = "hr_return_after_login";
 const DRAFTS_KEY = "hr_kien_gana_prediction_drafts";
 
-async function getSupabaseClient() {
-  if (window.HiddenRoomSupabase?.getClient) {
-    return window.HiddenRoomSupabase.getClient();
-  }
+function bootTimeout(label, ms = SUPABASE_BOOT_TIMEOUT_MS) {
+  return new Promise((_resolve, reject) => {
+    window.setTimeout(() => reject(new Error(`${label} tardo demasiado`)), ms);
+  });
+}
 
+function restTimeout(label, controller, ms = SUPABASE_REST_TIMEOUT_MS) {
+  return window.setTimeout(() => {
+    controller.abort();
+    console.info(`[Kien Gana] ${label} tardo demasiado`);
+  }, ms);
+}
+
+async function fetchSupabaseRest(path) {
+  const controller = new AbortController();
+  const timer = restTimeout(path, controller);
+
+  try {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`REST ${response.status}: ${await response.text()}`);
+    }
+
+    return response.json();
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+async function importSupabaseFrom(url) {
+  const { createClient } = await Promise.race([
+    import(url),
+    bootTimeout(`Supabase CDN ${url}`),
+  ]);
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
+
+async function getSupabaseClient() {
   if (window.__hiddenRoomSupabaseClient) {
     return window.__hiddenRoomSupabaseClient;
   }
 
-  if (!window.__hiddenRoomSupabaseClientPromise) {
-    window.__hiddenRoomSupabaseClientPromise = import(SUPABASE_CDN).then(({ createClient }) => {
-      window.__hiddenRoomSupabaseClient = window.__hiddenRoomSupabaseClient
-        || createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  if (window.HiddenRoomSupabase?.getClient) {
+    try {
+      window.__hiddenRoomSupabaseClient = await Promise.race([
+        window.HiddenRoomSupabase.getClient(),
+        bootTimeout("Supabase global"),
+      ]);
       return window.__hiddenRoomSupabaseClient;
-    });
+    } catch (error) {
+      console.info("[Kien Gana] Supabase global no respondio, usando fallback:", error?.message || error);
+    }
   }
 
-  return window.__hiddenRoomSupabaseClientPromise;
+  const cdns = [SUPABASE_FALLBACK_CDN, SUPABASE_CDN];
+  let lastError = null;
+  for (const url of cdns) {
+    try {
+      window.__hiddenRoomSupabaseClient = await importSupabaseFrom(url);
+      return window.__hiddenRoomSupabaseClient;
+    } catch (error) {
+      lastError = error;
+      console.info("[Kien Gana] No se pudo cargar Supabase desde", url, error?.message || error);
+    }
+  }
+
+  throw lastError || new Error("No se pudo cargar Supabase");
 }
 
 let sb = null;
@@ -44,8 +102,16 @@ function setSessionLoading(isLoading) {
   const label = $("sessionLabel");
   if (label && isLoading) label.textContent = "Verificando sesion...";
   $("authView")?.classList.add("hidden");
-  $("gameView")?.classList.add("hidden");
   $("logoutBtn")?.classList.add("hidden");
+
+  if (isLoading) {
+    state.isLoadingGame = true;
+    $("gameView")?.classList.remove("hidden");
+    renderMatches();
+    return;
+  }
+
+  $("gameView")?.classList.add("hidden");
 }
 
 function resetAuthenticatedState() {
@@ -209,20 +275,10 @@ function requestLoginToSave(drafts) {
   toast("Inicia sesion para guardar. Tus cambios no se perdieron.");
 }
 
-function withTimeout(promise, ms, fallback = null) {
-  let timer;
-  const timeout = new Promise((resolve) => {
-    timer = window.setTimeout(() => resolve(fallback), ms);
-  });
-
-  return Promise.race([promise, timeout]).finally(() => {
-    window.clearTimeout(timer);
-  });
-}
 
 async function ensureSupabaseClient() {
   if (sb) return sb;
-  sb = await withTimeout(getSupabaseClient(), 5000, null);
+  sb = await getSupabaseClient();
   return sb;
 }
 
@@ -230,6 +286,13 @@ async function boot() {
   loadStoredDrafts();
   bindUI();
   setSessionLoading(true);
+  await loadGame({ publicOnly: true });
+  hydrateSession().catch((error) => {
+    console.info("[Kien Gana] No se pudo hidratar la sesion:", error?.message || error);
+  });
+}
+
+async function hydrateSession() {
   try {
     await ensureSupabaseClient();
     attachAuthStateListener();
@@ -245,8 +308,8 @@ async function resolveCurrentUser() {
   const { data: sessionData } = await sb.auth.getSession();
   if (sessionData?.session?.user) return sessionData.session.user;
 
-  const userResult = await withTimeout(sb.auth.getUser(), 3500, { data: { user: null }, error: null });
-  return userResult?.data?.user ?? null;
+  const { data } = await sb.auth.getUser();
+  return data?.user ?? null;
 }
 
 function bindUI() {
@@ -403,16 +466,20 @@ async function loadProfile() {
     state.profile.display_name || state.profile.username || state.profile.email || "Jugador";
 }
 
-async function loadGame() {
+async function loadGame(options = {}) {
   state.isLoadingGame = true;
   renderMatches();
 
-  const loaders = [loadMatches()];
-  if (state.user) loaders.push(loadPredictions());
-  if (state.canAdmin) loaders.push(loadLeaderboard(), loadAdminPredictions());
-
   try {
-    await Promise.all(loaders);
+    if (options.publicOnly) {
+      await loadMatches({ preferRest: true });
+    } else {
+      await ensureSupabaseClient();
+      const loaders = [loadMatches()];
+      if (state.user) loaders.push(loadPredictions());
+      if (state.canAdmin) loaders.push(loadLeaderboard(), loadAdminPredictions());
+      await Promise.all(loaders);
+    }
   } catch (error) {
     console.info("[Kien Gana] loadGame:", error?.message || error);
     toast("No se pudieron cargar las predicciones. Intenta de nuevo.");
@@ -427,7 +494,13 @@ async function loadGame() {
   renderProfileStats();
 }
 
-async function loadMatches() {
+async function loadMatches(options = {}) {
+  if (options.preferRest || !sb) {
+    const data = await fetchSupabaseRest("predictor_matches?select=*&order=kickoff_at.asc");
+    state.matches = data ?? [];
+    return;
+  }
+
   const { data, error } = await sb
     .from("predictor_matches")
     .select("*")

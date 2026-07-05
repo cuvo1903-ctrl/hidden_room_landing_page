@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,7 +7,8 @@ const corsHeaders = {
 };
 
 const INSTAGRAM_API_VERSION = "v24.0";
-const MENTION_PATTERN = /@[a-zA-Z0-9._]+/g;
+const MENTION_PATTERN = /[@＠][a-zA-Z0-9._]+/g;
+const ZERO_WIDTH_PATTERN = /[\u200B-\u200D\uFEFF]/g;
 const COMMENTS_PAGE_LIMIT = 100;
 const MAX_PAGES = 500;
 
@@ -16,6 +17,10 @@ type CommentRow = {
   text?: string;
   username?: string;
   timestamp?: string;
+  replies?: {
+    data?: CommentRow[];
+    paging?: { next?: string };
+  };
 };
 
 type MentionTotal = {
@@ -76,8 +81,18 @@ function friendlyMetaError(status: number, data: Record<string, unknown>) {
   return message;
 }
 
+function normalizeCommentText(value: unknown) {
+  return String(value ?? "").normalize("NFKC").replace(ZERO_WIDTH_PATTERN, "");
+}
+
+function maskCommentSample(value: string) {
+  return value
+    .replace(MENTION_PATTERN, (mention) => `${mention.slice(0, 1)}***`)
+    .slice(0, 160);
+}
+
 function normalizeMention(value: string) {
-  return value.trim().toLowerCase();
+  return value.trim().replace(/^＠/, "@").toLowerCase();
 }
 
 function normalizeAuthor(value: unknown, fallback: string) {
@@ -131,18 +146,59 @@ async function requireAdmin(req: Request) {
   return { user: authData.user, adminClient };
 }
 
-async function fetchAllComments(mediaId: string, accessToken: string) {
-  const firstUrl = new URL(`https://graph.instagram.com/${INSTAGRAM_API_VERSION}/${encodeURIComponent(mediaId)}/comments`);
+async function fetchCommentReplies(commentId: string, accessToken: string) {
+  const replies: CommentRow[] = [];
+  const firstUrl = new URL(`https://graph.instagram.com/${INSTAGRAM_API_VERSION}/${encodeURIComponent(commentId)}/replies`);
   firstUrl.searchParams.set("fields", "id,text,username,timestamp");
   firstUrl.searchParams.set("limit", String(COMMENTS_PAGE_LIMIT));
   firstUrl.searchParams.set("access_token", accessToken);
 
+  let nextUrl: string | null = firstUrl.toString();
+  const seenUrls = new Set<string>();
+  let page = 0;
+
+  while (nextUrl && page < MAX_PAGES) {
+    if (seenUrls.has(nextUrl)) break;
+    seenUrls.add(nextUrl);
+    page += 1;
+
+    const response = await fetch(nextUrl);
+    const data = await readResponseBody(response);
+    if (!response.ok) {
+      const errorMessage = friendlyMetaError(response.status, data);
+      if (/no se encontro|no pertenece|permisos insuficientes/i.test(errorMessage)) return replies;
+      throw new Error(errorMessage);
+    }
+
+    if (Array.isArray(data?.data)) replies.push(...data.data);
+    nextUrl = typeof data?.paging?.next === "string" ? data.paging.next : null;
+  }
+
+  return replies;
+}
+
+async function fetchAllComments(mediaId: string, accessToken: string) {
+  const firstUrl = new URL(`https://graph.instagram.com/${INSTAGRAM_API_VERSION}/${encodeURIComponent(mediaId)}/comments`);
+  firstUrl.searchParams.set("fields", "id,text,username,timestamp,replies{id,text,username,timestamp}");
+  firstUrl.searchParams.set("limit", String(COMMENTS_PAGE_LIMIT));
+  firstUrl.searchParams.set("access_token", accessToken);
+
   const comments: CommentRow[] = [];
+  const seenCommentIds = new Set<string>();
+  let repliesCount = 0;
   let nextUrl: string | null = firstUrl.toString();
   const seenUrls = new Set<string>();
   let page = 0;
   let truncated = false;
   let warning: string | null = null;
+
+  const appendComment = (comment: CommentRow) => {
+    const id = String(comment?.id ?? "");
+    if (id && seenCommentIds.has(id)) return false;
+    if (id) seenCommentIds.add(id);
+    comments.push(comment);
+    return true;
+  };
 
   while (nextUrl) {
     if (seenUrls.has(nextUrl)) {
@@ -163,22 +219,48 @@ async function fetchAllComments(mediaId: string, accessToken: string) {
       throw new Error(friendlyMetaError(response.status, data));
     }
 
-    if (Array.isArray(data?.data)) comments.push(...data.data);
+    if (Array.isArray(data?.data)) {
+      for (const comment of data.data as CommentRow[]) {
+        appendComment(comment);
+
+        const inlineReplies = Array.isArray(comment?.replies?.data) ? comment.replies.data : [];
+        for (const reply of inlineReplies) {
+          if (appendComment(reply)) repliesCount += 1;
+        }
+
+        if (comment?.id) {
+          const pagedReplies = await fetchCommentReplies(comment.id, accessToken);
+          for (const reply of pagedReplies) {
+            if (appendComment(reply)) repliesCount += 1;
+          }
+        }
+      }
+    }
     nextUrl = typeof data?.paging?.next === "string" ? data.paging.next : null;
   }
 
-  return { comments, pages: page, truncated, warning };
+  return { comments, pages: page, repliesCount, truncated, warning };
 }
 
 function analyzeComments(comments: CommentRow[]) {
   const totalCounts = new Map<string, number>();
   const uniqueAuthors = new Map<string, Set<string>>();
   let mentionsCount = 0;
+  let commentsWithMentionsCount = 0;
+  let commentsWithoutTextCount = 0;
+  const sampleTexts: string[] = [];
+  const sampleTextsWithAt: string[] = [];
 
   for (const comment of comments) {
-    const text = String(comment?.text ?? "");
+    const text = normalizeCommentText(comment?.text);
+    if (!text) commentsWithoutTextCount += 1;
+    if (text && sampleTexts.length < 5) sampleTexts.push(maskCommentSample(text));
+    if ((text.includes("@") || text.includes("＠")) && sampleTextsWithAt.length < 5) {
+      sampleTextsWithAt.push(maskCommentSample(text));
+    }
     const mentions = text.match(MENTION_PATTERN) ?? [];
     if (!mentions.length) continue;
+    commentsWithMentionsCount += 1;
 
     const author = normalizeAuthor(comment?.username, `comment:${comment?.id ?? "unknown"}`);
 
@@ -207,6 +289,12 @@ function analyzeComments(comments: CommentRow[]) {
     comments_count: comments.length,
     mentions_count: mentionsCount,
     unique_mentions_count: totalCounts.size,
+    comments_with_mentions_count: commentsWithMentionsCount,
+    comments_without_text_count: commentsWithoutTextCount,
+    mention_debug: {
+      sample_texts: sampleTexts,
+      sample_texts_with_at: sampleTextsWithAt,
+    },
     ranking_total: rankingTotal,
     ranking_unique_authors: rankingUniqueAuthors,
   };
@@ -253,9 +341,10 @@ Deno.serve(async (req) => {
       ok: true,
       ...analysis,
       pages_fetched: commentsResult.pages,
+      replies_count: commentsResult.repliesCount,
       comments_page_limit: COMMENTS_PAGE_LIMIT,
       analysis_truncated: commentsResult.truncated,
-      analysis_warning: commentsResult.warning,
+      analysis_warning: commentsResult.warning || (analysis.comments_count > 0 && analysis.mentions_count === 0 ? "Meta devolvio comentarios, pero ninguno contiene @usuario en el campo text. Revisa si las menciones estan en otro formato o si Instagram las oculta para este token." : null),
       saved_analysis_id: saveError ? null : saved?.id ?? null,
       save_warning: saveError ? `El analisis se genero, pero no se pudo guardar en Supabase: ${saveError.message}` : null,
     });
@@ -268,3 +357,8 @@ Deno.serve(async (req) => {
     }, 502);
   }
 });
+
+
+
+
+
