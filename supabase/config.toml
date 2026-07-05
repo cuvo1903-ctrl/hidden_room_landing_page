@@ -25,3 +25,13 @@ entrypoint = "./functions/stripe-webhook/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/server-status/index.ts"
+
+[functions.ig-list-media]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/ig-list-media/index.ts"
+
+[functions.ig-analyze-comments]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/ig-analyze-comments/index.ts"

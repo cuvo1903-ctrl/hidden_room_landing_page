@@ -8,7 +8,8 @@ const corsHeaders = {
 
 const INSTAGRAM_API_VERSION = "v24.0";
 const MENTION_PATTERN = /@[a-zA-Z0-9._]+/g;
-const MAX_PAGES = 100;
+const COMMENTS_PAGE_LIMIT = 100;
+const MAX_PAGES = 500;
 
 type CommentRow = {
   id?: string;
@@ -133,19 +134,24 @@ async function requireAdmin(req: Request) {
 async function fetchAllComments(mediaId: string, accessToken: string) {
   const firstUrl = new URL(`https://graph.instagram.com/${INSTAGRAM_API_VERSION}/${encodeURIComponent(mediaId)}/comments`);
   firstUrl.searchParams.set("fields", "id,text,username,timestamp");
+  firstUrl.searchParams.set("limit", String(COMMENTS_PAGE_LIMIT));
   firstUrl.searchParams.set("access_token", accessToken);
 
   const comments: CommentRow[] = [];
   let nextUrl: string | null = firstUrl.toString();
   const seenUrls = new Set<string>();
   let page = 0;
+  let truncated = false;
+  let warning: string | null = null;
 
   while (nextUrl) {
     if (seenUrls.has(nextUrl)) {
       throw new Error("La paginacion de Meta regreso una pagina repetida.");
     }
     if (page >= MAX_PAGES) {
-      throw new Error("La paginacion excedio el limite seguro de paginas.");
+      truncated = true;
+      warning = `Se analizaron ${comments.length} comentarios en ${MAX_PAGES} paginas. La publicacion tiene mas paginas disponibles; exporta con cautela porque el ranking puede ser parcial.`;
+      break;
     }
 
     seenUrls.add(nextUrl);
@@ -161,7 +167,7 @@ async function fetchAllComments(mediaId: string, accessToken: string) {
     nextUrl = typeof data?.paging?.next === "string" ? data.paging.next : null;
   }
 
-  return comments;
+  return { comments, pages: page, truncated, warning };
 }
 
 function analyzeComments(comments: CommentRow[]) {
@@ -225,8 +231,8 @@ Deno.serve(async (req) => {
   if (!mediaId) return json({ error: "Falta media_id." }, 400);
 
   try {
-    const comments = await fetchAllComments(mediaId, accessToken);
-    const analysis = analyzeComments(comments);
+    const commentsResult = await fetchAllComments(mediaId, accessToken);
+    const analysis = analyzeComments(commentsResult.comments);
 
     const { data: saved, error: saveError } = await auth.adminClient
       .from("ig_mention_analyses")
@@ -246,8 +252,12 @@ Deno.serve(async (req) => {
     return json({
       ok: true,
       ...analysis,
+      pages_fetched: commentsResult.pages,
+      comments_page_limit: COMMENTS_PAGE_LIMIT,
+      analysis_truncated: commentsResult.truncated,
+      analysis_warning: commentsResult.warning,
       saved_analysis_id: saveError ? null : saved?.id ?? null,
-      save_warning: saveError ? "El analisis se genero, pero no se pudo guardar en Supabase." : null,
+      save_warning: saveError ? `El analisis se genero, pero no se pudo guardar en Supabase: ${saveError.message}` : null,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

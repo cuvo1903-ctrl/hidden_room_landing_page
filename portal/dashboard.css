@@ -3284,3 +3284,56 @@ input[data-user-search] {
   font-family: var(--hr-font-mono);
   font-size: var(--hr-text-xs);
 }
+
+/* Instagram Mention Rank */
+.db-ig-rank {
+  gap: 18px;
+}
+
+.db-ig-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.db-ig-media-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 210px;
+  padding: 14px;
+  border: 1px solid var(--db-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.db-ig-media-card h3 {
+  margin: 8px 0;
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.db-ig-media-card code,
+.db-ig-ranking-grid code {
+  overflow-wrap: anywhere;
+}
+
+.db-ig-media-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.db-ig-ranking-grid {
+  align-items: start;
+}
+
+.db-ig-ranking-grid .db-card__inner {
+  gap: 12px;
+}
+
+.db-ig-ranking-grid .db-table-wrap {
+  max-height: 520px;
+  overflow: auto;
+}

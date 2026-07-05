@@ -3510,6 +3510,7 @@ function renderIgAnalysisSummary(analysis, media) {
     <article class="db-card">
       <div class="db-card__inner">
         <header class="db-card__header"><span class="section-label">Resultado</span></header>
+        ${analysis.analysis_warning ? `<p class="db-empty db-empty--error">${escapeHTML(analysis.analysis_warning)}</p>` : ''}
         ${analysis.save_warning ? `<p class="db-empty db-empty--error">${escapeHTML(analysis.save_warning)}</p>` : ''}
         <div class="db-grid db-grid--3col">
           ${renderStatCard('Comentarios', analysis.comments_count ?? 0)}
