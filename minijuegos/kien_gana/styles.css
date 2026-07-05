@@ -197,6 +197,31 @@
   gap: var(--hr-space-md);
 }
 
+.predictor-page .match-loading {
+  grid-column: 1 / -1;
+  min-height: 220px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+  gap: var(--hr-space-sm);
+}
+
+.predictor-page .match-loading-spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid rgba(255, 255, 255, .18);
+  border-top-color: var(--hr-accent);
+  border-radius: 50%;
+  animation: predictor-spin .8s linear infinite;
+}
+
+@keyframes predictor-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .predictor-page .match-top,
 .predictor-page .versus,
 .predictor-page .score-row,

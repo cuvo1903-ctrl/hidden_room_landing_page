@@ -1,6 +1,6 @@
 # Debian Server Map
 
-Last verified by SSH diagnostic session: 2026-06-28 local project context / 2026-06-29 UTC command output.
+Last verified by SSH diagnostic session: 2026-07-04 CST production checks.
 
 ## Access
 
@@ -8,8 +8,56 @@ Last verified by SSH diagnostic session: 2026-06-28 local project context / 2026
 - Tailscale SSH target: `prodxdack@100.106.132.42`.
 - Usual shell home: `/home/prodxdack`.
 - Public cloud domain: `cloud.hiddenroom.mx`.
+- Key-based SSH from the Windows workstation was restored on 2026-07-04 CST.
 
 Use read-only diagnostics first. Redact secrets from any output before reporting.
+
+## Remote Access Resilience
+
+Observed on 2026-07-04 CST:
+
+- `ssh.service`: enabled and active.
+- `tailscaled.service`: enabled and active.
+- `cloudflared.service`: enabled and active.
+- Tailscale IPv4: `100.106.132.42`.
+- Tailscale IPv6: `fd7a:115c:a1e0::8b01:84b3`.
+
+Watchdog files:
+
+- Script: `/usr/local/sbin/tailscale-watchdog.sh`, owner `root:root`, mode `755`.
+- Service: `/etc/systemd/system/tailscale-watchdog.service`.
+- Timer: `/etc/systemd/system/tailscale-watchdog.timer`.
+- Timer cadence: `OnBootSec=1min`, `OnUnitActiveSec=1min`, `AccuracySec=10s`, `Persistent=true`.
+
+Watchdog behavior:
+
+- Runs every minute as root through systemd.
+- Checks `systemctl is-active tailscaled`, `tailscale status --json`, and `tailscale ip -4`.
+- Treats `NoState`, `NeedsLogin`, `Stopped`, `stopped`, `failed`, `Failed`, unavailable backend state, inactive service, or no IPv4 as unhealthy.
+- Restarts `tailscaled` only.
+- Does not store auth keys, tokens, or credentials.
+- Does not run `tailscale up` automatically.
+- Logs clear OK/WARN/ACTION lines to `journalctl -u tailscale-watchdog.service`.
+- If Tailscale still needs login after restart, logs that manual `sudo tailscale up` may be required.
+
+Anti-sleep configuration:
+
+- `sleep.target`, `suspend.target`, `hibernate.target`, and `hybrid-sleep.target` are masked.
+- Logind override: `/etc/systemd/logind.conf.d/99-mysauth-no-sleep.conf`.
+- Override sets lid switches to `ignore`, `IdleAction=ignore`, `IdleActionSec=0`, and `KillUserProcesses=no`.
+
+Safe verification:
+
+```bash
+systemctl status ssh --no-pager
+systemctl status tailscaled --no-pager
+systemctl status cloudflared --no-pager
+systemctl status tailscale-watchdog.timer --no-pager
+sudo journalctl -u tailscale-watchdog.service -n 50 --no-pager
+tailscale status
+tailscale ip
+systemctl status sleep.target suspend.target hibernate.target hybrid-sleep.target --no-pager
+```
 
 ## Active Cloud Routing
 
@@ -55,6 +103,26 @@ File Browser settings:
 - Database in container: `/database/filebrowser.db`.
 
 Treat File Browser as a temporary fallback. It is currently hidden from the public tunnel and remains reachable locally at `http://127.0.0.1:8081`.
+
+## Monitoring
+
+Netdata is installed as a native systemd service:
+
+- Service: `netdata.service`, enabled and active.
+- Local config: `/etc/netdata/netdata.conf`.
+- Access: `http://100.106.132.42:19999` over Tailscale and `http://127.0.0.1:19999` locally.
+- Listener policy: restricted to `100.106.132.42:19999`, `127.0.0.1:19999`, and `[::1]:19999`.
+- Do not bind Netdata to `0.0.0.0` unless the user explicitly approves a protected public access design.
+- Backup from hardening change: `/etc/netdata/netdata.conf.codex-backup-20260704231831`.
+- Last observed warning: `net_drops.eno1 inbound_packets_dropped_ratio`, about `3.69%`; no critical Netdata alarms were observed.
+
+Safe checks:
+
+```bash
+systemctl status netdata --no-pager
+ss -tulpn | grep ':19999'
+curl -sS --max-time 5 http://127.0.0.1:19999/api/v1/info
+```
 
 
 ## MysAuth Cloud App
@@ -128,10 +196,15 @@ hostname
 pwd
 systemctl status cloudflared --no-pager
 systemctl status mysauth-cloud-agent --no-pager
+systemctl status netdata --no-pager
+systemctl status tailscale-watchdog.timer --no-pager
 ss -tulpn
 docker ps
 docker inspect filebrowser
+journalctl -u tailscale-watchdog.service -n 50 --no-pager
 journalctl -u mysauth-cloud-agent -n 80 --no-pager
+tailscale status
+tailscale ip
 cat /home/prodxdack/filebrowser/settings.json
 ```
 

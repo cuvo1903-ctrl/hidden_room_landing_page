@@ -35,6 +35,7 @@ const state = {
   adminPredictions: [],
   selectedWinner: new Map(),
   drafts: new Map(),
+  isLoadingGame: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -403,10 +404,22 @@ async function loadProfile() {
 }
 
 async function loadGame() {
+  state.isLoadingGame = true;
+  renderMatches();
+
   const loaders = [loadMatches()];
   if (state.user) loaders.push(loadPredictions());
   if (state.canAdmin) loaders.push(loadLeaderboard(), loadAdminPredictions());
-  await Promise.all(loaders);
+
+  try {
+    await Promise.all(loaders);
+  } catch (error) {
+    console.info("[Kien Gana] loadGame:", error?.message || error);
+    toast("No se pudieron cargar las predicciones. Intenta de nuevo.");
+  } finally {
+    state.isLoadingGame = false;
+  }
+
   renderMatches();
   renderAdminSelect();
   renderAdminMatchesTable();
@@ -467,6 +480,23 @@ function renderMatches() {
   const list = $("matchesList");
   const template = $("matchTemplate");
   list.replaceChildren();
+
+  if (state.isLoadingGame) {
+    const loading = document.createElement("div");
+    loading.className = "hr-card match-card match-loading";
+    loading.setAttribute("role", "status");
+    loading.setAttribute("aria-live", "polite");
+    const spinner = document.createElement("span");
+    spinner.className = "match-loading-spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    loading.append(
+      spinner,
+      makeText("h2", "", state.user ? "Cargando tus predicciones" : "Cargando partidos"),
+      makeText("p", "sub", "Estamos preparando la quiniela. Esto puede tardar unos segundos."),
+    );
+    list.append(loading);
+    return;
+  }
 
   if (!state.matches.length) {
     const empty = document.createElement("div");
@@ -943,6 +973,7 @@ function renderAdminMatchesTable() {
     ["home_score", "GL"],
     ["away_score", "GV"],
   ];
+
 
   if (!state.matches.length) {
     shell.append(makeText("p", "sub", "Sin partidos registrados."));
