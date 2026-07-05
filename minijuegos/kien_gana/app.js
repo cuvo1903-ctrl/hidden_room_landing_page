@@ -1169,9 +1169,9 @@ function renderAdminPredictionsTable() {
 
   const columns = [
     ["match", "Partido"],
+    ["score", "Marcador"],
     ["user_id", "Usuario"],
     ["predicted_winner", "Ganador"],
-    ["score", "Marcador"],
     ["points_awarded", "Pts"],
     ["coins_awarded", "Coins"],
     ["created_at", "Creada"],
