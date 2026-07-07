@@ -3538,6 +3538,7 @@ function renderIgAnalysisSummary(analysis, media) {
         <p class="db-note">Meta comments_count: ${escapeHTML(analysis.meta_comments_count ?? 0)} · Comentarios recibidos: ${escapeHTML(analysis.comments_count ?? 0)} · Paginas: ${escapeHTML(analysis.pages_fetched ?? 0)} · Comentarios con @: ${escapeHTML(analysis.comments_with_mentions_count ?? 0)}</p>
         ${Number(analysis.mentions_count ?? 0) === 0 ? renderIgMentionDebug(analysis.mention_debug) : ''}
         <div class="db-form__actions">
+          <button class="btn-primary" type="button" data-action="ig-export-pdf">Exportar PDF</button>
           <button class="db-btn-secondary" type="button" data-action="ig-reset-analysis">Analizar otra publicacion</button>
         </div>
       </div>
@@ -3643,6 +3644,117 @@ function exportIgRankingCsv(type) {
 
   const rows = [['mention', 'count'], ...(analysis.ranking_total || []).map((row) => [row.mention, row.count])];
   downloadCsv('instagram-mention-rank-total.csv', rows);
+}
+
+function igPdfRows(rows, includeAuthors, limit = 100) {
+  return (Array.isArray(rows) ? rows : []).slice(0, limit).map((row, index) => {
+    const base = [String(index + 1), String(row.mention || ''), String(row.count ?? 0)];
+    if (includeAuthors) base.push(Array.isArray(row.authors) ? row.authors.join(', ') : '');
+    return base;
+  });
+}
+
+function igSafePdfFilename(mediaId) {
+  const cleanId = String(mediaId || 'publicacion').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'publicacion';
+  return 'instagram-mention-rank-' + cleanId + '-' + new Date().toISOString().slice(0, 10) + '.pdf';
+}
+
+async function exportIgAnalysisPdf() {
+  const igState = getIgMentionState();
+  const analysis = igState.analysis;
+  const media = igState.selectedMedia || {};
+  if (!analysis) {
+    showToast('Primero analiza una publicacion.', 'error');
+    return;
+  }
+
+  try {
+    await ensurePdfLibraries();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const generatedAt = new Date().toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+    const apiModeLabel = analysis.api_mode === 'facebook_graph' || media.api_mode === 'facebook_graph' ? 'Facebook Graph' : 'Instagram Login';
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 40;
+
+    doc.setFontSize(18);
+    doc.text('Instagram Mention Rank', margin, 42);
+    doc.setFontSize(10);
+    doc.text('Generado: ' + generatedAt, margin, 62);
+    doc.text('Modo API: ' + apiModeLabel, margin, 78);
+    doc.text('Media ID: ' + (media.id || analysis.media?.id || '-'), margin, 94);
+    if (media.permalink || analysis.media_permalink) {
+      const link = String(media.permalink || analysis.media_permalink);
+      doc.text('Permalink: ' + link, margin, 110, { maxWidth: pageWidth - margin * 2 });
+    }
+
+    doc.autoTable({
+      head: [['Metrica', 'Valor']],
+      body: [
+        ['Comentarios recibidos', String(analysis.comments_count ?? 0)],
+        ['Meta comments_count', String(analysis.meta_comments_count ?? media.comments_count ?? 0)],
+        ['Menciones detectadas', String(analysis.mentions_count ?? 0)],
+        ['Usuarios arrobados', String(analysis.unique_mentions_count ?? 0)],
+        ['Paginas leidas', String(analysis.pages_fetched ?? 0)],
+        ['Comentarios con @', String(analysis.comments_with_mentions_count ?? 0)],
+        ['Guardado Supabase', String(analysis.saved_analysis_id || 'No')],
+      ],
+      startY: 132,
+      styles: { fontSize: 9, cellPadding: 5, overflow: 'linebreak', valign: 'top' },
+      headStyles: { fillColor: [32, 32, 32] },
+      margin: { left: margin, right: margin },
+    });
+
+    let nextY = (doc.lastAutoTable?.finalY || 132) + 28;
+    if (analysis.analysis_warning) {
+      doc.setFontSize(10);
+      doc.text('Nota: ' + analysis.analysis_warning, margin, nextY, { maxWidth: pageWidth - margin * 2 });
+      nextY += 44;
+    }
+
+    doc.setFontSize(12);
+    doc.text('Mas arrobados total', margin, nextY - 8);
+    const totalRows = igPdfRows(analysis.ranking_total, false);
+    doc.autoTable({
+      head: [['#', 'Mencion', 'Conteo']],
+      body: totalRows.length ? totalRows : [['-', 'Sin menciones detectadas', '0']],
+      startY: nextY,
+      styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak', valign: 'top' },
+      headStyles: { fillColor: [32, 32, 32] },
+      margin: { left: margin, right: margin },
+    });
+
+    nextY = (doc.lastAutoTable?.finalY || nextY) + 32;
+    if (nextY > doc.internal.pageSize.getHeight() - 90) {
+      doc.addPage();
+      nextY = 52;
+    }
+    doc.setFontSize(12);
+    doc.text('Mas arrobados por usuarios unicos', margin, nextY - 8);
+    const uniqueRows = igPdfRows(analysis.ranking_unique_authors, true);
+    doc.autoTable({
+      head: [['#', 'Mencion', 'Usuarios', 'Autores']],
+      body: uniqueRows.length ? uniqueRows : [['-', 'Sin menciones detectadas', '0', '']],
+      startY: nextY,
+      styles: { fontSize: 7, cellPadding: 4, overflow: 'linebreak', valign: 'top' },
+      headStyles: { fillColor: [32, 32, 32] },
+      columnStyles: { 3: { cellWidth: 260 } },
+      margin: { left: margin, right: margin },
+    });
+
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let page = 1; page <= pageCount; page += 1) {
+      doc.setPage(page);
+      doc.setFontSize(8);
+      doc.text('Hidden Room - Instagram Mention Rank - Pagina ' + page + '/' + pageCount, margin, doc.internal.pageSize.getHeight() - 20);
+    }
+
+    doc.save(igSafePdfFilename(media.id || analysis.media?.id));
+    showToast('PDF de Instagram Mention Rank generado.', 'success');
+  } catch (err) {
+    console.error('[HR] Instagram Mention Rank PDF:', err);
+    showToast('No se pudo generar el PDF.', 'error');
+  }
 }
 
 async function handleIgListMedia(form) {
@@ -9202,6 +9314,11 @@ function attachMainDelegation() {
     if (action === 'ig-export-csv') {
       const btn = e.target.closest('[data-ranking]');
       exportIgRankingCsv(btn?.dataset.ranking || 'total');
+      return;
+    }
+
+    if (action === 'ig-export-pdf') {
+      exportIgAnalysisPdf();
       return;
     }
 
