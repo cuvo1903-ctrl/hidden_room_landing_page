@@ -1,15 +1,15 @@
 /* ================================================================
-   HIDDEN ROOM / MYSAUTH â€” Dashboard Layer
+   HIDDEN ROOM / MYSAUTH — Dashboard Layer
    portal/dashboard.css
    ================================================================
    ADDITIVE ONLY.
-   â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-   â€¢ Inherits all tokens from ../styles.css
-   â€¢ Defines layout primitives (sidebar, topbar, main)
-   â€¢ Defines dashboard-specific components
-   â€¢ Never redefines or overrides :root tokens
-   â€¢ Never uses inline styles (see HTML)
-   â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   ─────────────────────────────────────────────────────────────
+   • Inherits all tokens from ../styles.css
+   • Defines layout primitives (sidebar, topbar, main)
+   • Defines dashboard-specific components
+   • Never redefines or overrides :root tokens
+   • Never uses inline styles (see HTML)
+   ─────────────────────────────────────────────────────────────
    TABLE OF CONTENTS
    1.  Dashboard Body Override
    2.  Layout Shell
@@ -34,7 +34,7 @@
 
 /* ================================================================
    1. DASHBOARD BODY OVERRIDE
-   â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   ─────────────────────────────────────────────────────────────
    The public site uses cursor:none everywhere.
    Inside the portal we restore it; the custom cursor JS from
    site.js still runs, so both coexist.
@@ -56,7 +56,7 @@
 }
 
 /* mix-blend-mode:difference (from styles.css) makes the red dot
-   invisible on dark surfaces â€” neutralize it inside the portal */
+   invisible on dark surfaces — neutralize it inside the portal */
 .db-body .cursor {
   mix-blend-mode: normal !important;
 }
@@ -234,7 +234,7 @@
   text-transform: uppercase;
 }
 
-/* Mobile toggle â€” hidden on desktop */
+/* Mobile toggle — hidden on desktop */
 
 /* ================================================================
    5. MAIN / SECTION CONTAINER
@@ -935,7 +935,7 @@
   padding: 0 4px;
 }
 
-/* Role badge variants â€” maps to brand palette */
+/* Role badge variants — maps to brand palette */
 .db-badge--role        { border-radius: 0; }
 .db-badge--client      { color: var(--teal);    border-color: var(--teal-dim);    background: var(--teal-ghost); }
 .db-badge--collaborator{ color: var(--magenta); border-color: var(--magenta-dim); background: var(--magenta-ghost); }

@@ -3,10 +3,10 @@
 /* ================================================================
    27. LOGIN PAGE
    Full-viewport centered layout. No nav, no footer.
-   All classes are additive â€” nothing from above is overridden.
+   All classes are additive — nothing from above is overridden.
 ================================================================ */
 
-/* â€” Page shell â€” */
+/* — Page shell — */
 .login-page {
   min-height: 100dvh;
   display: flex;
@@ -18,7 +18,7 @@
   overflow-y: auto;
 }
 
-/* Subtle red radial glow behind the card â€” mirrors hero-bg::before */
+/* Subtle red radial glow behind the card — mirrors hero-bg::before */
 .login-page::before {
   content: '';
   position: fixed;
@@ -30,7 +30,7 @@
   z-index: var(--z-base);
 }
 
-/* â€” Card â€” */
+/* — Card — */
 .login-card {
   position: relative;
   z-index: var(--z-above);
@@ -51,7 +51,7 @@
   background: linear-gradient(to right, var(--red), var(--magenta));
 }
 
-/* â€” Card header â€” */
+/* — Card header — */
 .login-logo {
   display: flex;
   justify-content: center;
@@ -91,7 +91,7 @@
   margin-bottom: var(--space-2xl);
 }
 
-/* â€” Form layout â€” */
+/* — Form layout — */
 .login-form {
   display: flex;
   flex-direction: column;
@@ -131,7 +131,7 @@
   background: var(--black);
 }
 
-/* â€” Forgot password link â€” */
+/* — Forgot password link — */
 .password-field {
   position: relative;
   width: 100%;
@@ -205,7 +205,7 @@
   text-transform: uppercase;
 }
 
-/* â€” Submit button â€” full width variant of btn-primary â€” */
+/* — Submit button — full width variant of btn-primary — */
 .login-submit {
   width: 100%;
   text-align: center;
@@ -233,7 +233,7 @@
 .login-submit:hover { background: var(--red-hover); }
 .login-submit:hover::after { opacity: 1; }
 
-/* â€” Divider â€” */
+/* — Divider — */
 .login-divider {
   display: flex;
   align-items: center;
@@ -254,7 +254,7 @@
   color: var(--white-mark);
 }
 
-/* â€” Register link row â€” */
+/* — Register link row — */
 .login-register {
   text-align: center;
   font-size: var(--text-xs);
@@ -270,7 +270,7 @@
 }
 .login-register a:hover { color: var(--red-hover); }
 
-/* â€” Version stamp â€” */
+/* — Version stamp — */
 .login-version {
   font-size: var(--text-xs);
   letter-spacing: var(--tracking-wide);
@@ -280,7 +280,7 @@
   opacity: 0.5;
 }
 
-/* â€” Responsive â€” */
+/* — Responsive — */
 @media (max-width: 480px) {
   .login-page {
     align-items: flex-start;

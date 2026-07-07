@@ -39,16 +39,16 @@ const NOTIFICATIONS_ENABLED = true;
 const ACTIVE_SECTION_STORAGE_KEY = 'hr_dashboard_active_section';
 const ADMIN_TABLE_STORAGE_KEY = 'hr_dashboard_admin_table';
 const DASHBOARD_PREFS_STORAGE_KEY = 'hr_dashboard_prefs';
-const MEMBERSHIP_CANONICAL = 'MEMBRESÃA';
+const MEMBERSHIP_CANONICAL = 'MEMBRESÍA';
 const MEMBERSHIP_WEEKLY_COST = 500;
 const ERP_TYPE_OPTIONS = ['INGRESO', 'EGRESO'];
 const ERP_STATUS_OPTIONS = ['sin apartado', 'apartado', 'saldado'];
 const SERVICE_OPTIONS = [
   MEMBERSHIP_CANONICAL,
-  'GRABACIÃ“N',
-  'PRODUCCIÃ“N BÃSICA',
-  'PRODUCCIÃ“N PREMIUM',
-  'DISTRIBUCIÃ“N',
+  'GRABACIÓN',
+  'PRODUCCIÓN BÁSICA',
+  'PRODUCCIÓN PREMIUM',
+  'DISTRIBUCIÓN',
   'PERSONALIZADO',
 ];
 const TRANSACTION_CONCEPT_OPTIONS = [
@@ -80,7 +80,7 @@ async function getCloudAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) {
-    throw new Error('SesiÃ³n de Supabase no disponible');
+    throw new Error('Sesión de Supabase no disponible');
   }
   return {
     Accept: 'application/json',
@@ -308,9 +308,9 @@ const FINANCE_STUDIO_SOURCES = [
 ];
 const SESSION_TYPE_OPTIONS = [
   { value: MEMBERSHIP_CANONICAL, label: MEMBERSHIP_CANONICAL, minutes: 120, cost: MEMBERSHIP_WEEKLY_COST },
-  { value: 'GRABACIÃ“N', label: 'GRABACIÃ“N', minutes: 60, cost: 650 },
-  { value: 'SESIÃ“N BÃSICA', label: 'SESIÃ“N BÃSICA', minutes: 90, cost: 1700 },
-  { value: 'SESIÃ“N PREMIUM', label: 'SESIÃ“N PREMIUM', minutes: 150, cost: 3700 },
+  { value: 'GRABACIÓN', label: 'GRABACIÓN', minutes: 60, cost: 650 },
+  { value: 'SESIÓN BÁSICA', label: 'SESIÓN BÁSICA', minutes: 90, cost: 1700 },
+  { value: 'SESIÓN PREMIUM', label: 'SESIÓN PREMIUM', minutes: 150, cost: 3700 },
 ];
 
 
@@ -399,7 +399,7 @@ function renderCloudBreadcrumb(path) {
 function renderCloudFolderList(node, currentPath) {
   const folders = Array.isArray(node && node.folders) ? node.folders : [];
   if (!folders.length) {
-    return `<p>No hay carpetas en esta ubicaciÃ³n.</p>`;
+    return `<p>No hay carpetas en esta ubicación.</p>`;
   }
 
   return folders.map((folder) => `
@@ -429,7 +429,7 @@ function renderCloudFileList(node) {
       <div class="hr-stack hr-stack-sm">
         <div>
           <p><strong>${escapeHTML(file.name)}</strong></p>
-          <p class="hr-eyebrow">${escapeHTML(file.type)} Â· ${escapeHTML(file.size)} Â· ${escapeHTML(file.modified)}</p>
+          <p class="hr-eyebrow">${escapeHTML(file.type)} · ${escapeHTML(file.size)} · ${escapeHTML(file.modified)}</p>
         </div>
         <div class="hr-stack hr-stack-sm">
           <button class="hr-btn" type="button" data-action="cloud-copy-link" data-url="${escapeHTML(file.url)}">Copiar enlace</button>
@@ -597,7 +597,7 @@ const SECTIONS = {
     render: renderClientContracts,
   },
   'client-membership': {
-    label: 'MembresÃ­a',
+    label: 'Membresía',
     roleRequired: 'client',
     render: renderClientMembership,
   },
@@ -652,7 +652,7 @@ const SECTIONS = {
     render: renderRrppInvitations,
   },
   'rrpp-campaigns': {
-    label: 'CampaÃ±as',
+    label: 'Campañas',
     roleRequired: 'pr',
     render: renderRrppCampaigns,
   },
@@ -733,7 +733,7 @@ const PORTAL_NAV_GROUPS = [
       { label: 'Sesiones', section: 'client-sessions', icon: 'calendar' },
       { label: 'Transacciones', section: 'client-transactions', icon: 'receipt' },
       { label: 'Contratos', section: 'client-contracts', icon: 'doc' },
-      { label: 'MembresÃ­a', section: 'client-membership', icon: 'star' },
+      { label: 'Membresía', section: 'client-membership', icon: 'star' },
       { label: 'Tickets', section: 'client-tickets', icon: 'ticket' },
       { label: 'Tienda', section: 'client-store', icon: 'bag' },
       { label: 'Premios', section: 'client-rewards', icon: 'star' },
@@ -759,7 +759,7 @@ const PORTAL_NAV_GROUPS = [
     items: [
       { label: 'Boletos vendidos', section: 'rrpp-contacts', icon: 'users' },
       { label: 'Invitaciones', section: 'rrpp-invitations', icon: 'mail' },
-      { label: 'CampaÃ±as', section: 'rrpp-campaigns', icon: 'broadcast' },
+      { label: 'Campañas', section: 'rrpp-campaigns', icon: 'broadcast' },
       { label: 'Lista de invitados', section: 'rrpp-guestlist', icon: 'list' },
       { label: 'Beneficios', section: 'rrpp-benefits', icon: 'gift' },
       { label: 'SCRUM / Tareas', section: 'rrpp-scrum', icon: 'check', permissionAny: ['scrum.view', 'scrum.edit'] },
@@ -771,7 +771,7 @@ const PORTAL_NAV_GROUPS = [
     permission: 'media.posts',
     items: [
       { label: 'Publicaciones', href: '../media/admin.html?view=posts', icon: 'doc' },
-      { label: 'Crear publicaciÃ³n', href: '../media/admin.html?view=editor', icon: 'activity' },
+      { label: 'Crear publicación', href: '../media/admin.html?view=editor', icon: 'activity' },
       { label: 'Borradores', href: '../media/admin.html?view=drafts', icon: 'folder' },
     ],
   },
@@ -797,7 +797,7 @@ const PORTAL_NAV_GROUPS = [
     items: [
       { label: 'Perfil', action: 'profile', icon: 'users' },
       { label: 'Ajustes', section: 'account-settings', icon: 'settings' },
-      { label: 'Cerrar sesiÃ³n', action: 'logout', icon: 'settings', danger: true },
+      { label: 'Cerrar sesión', action: 'logout', icon: 'settings', danger: true },
     ],
   },
 ];
@@ -838,10 +838,10 @@ const EVENT_PERMISSION_FLAGS = [
 const EVENT_MOVEMENT_TYPES = [
   { value: 'income', label: 'Ingreso', sign: 1, legacyType: 'INGRESO' },
   { value: 'expense', label: 'Egreso', sign: -1, legacyType: 'EGRESO' },
-  { value: 'investment_in', label: 'InversiÃ³n ingresada', sign: 1, legacyType: 'INVERSION INGRESADA' },
+  { value: 'investment_in', label: 'Inversión ingresada', sign: 1, legacyType: 'INVERSION INGRESADA' },
   { value: 'investment_return', label: 'Utilidad devuelta', sign: -1, legacyType: 'UTILIDAD DEVUELTA' },
   { value: 'counterparty_transfer', label: 'Entrega a favor', sign: 1, legacyType: 'ENTREGA A FAVOR' },
-  { value: 'internal_absorption', label: 'AbsorciÃ³n interna', sign: 1, legacyType: 'ABSORCION INTERNA' },
+  { value: 'internal_absorption', label: 'Absorción interna', sign: 1, legacyType: 'ABSORCION INTERNA' },
   { value: 'adjustment', label: 'Ajuste', sign: 1, legacyType: 'AJUSTE' },
 ];
 
@@ -963,7 +963,7 @@ const TABLE_EDITOR_CONFIG = {
       estado: 'Estado',
       estado_operativo: 'Membresia',
       fecha_de_saldo: 'Fecha de saldo',
-      saldo: 'Adeudo / crÃ©dito',
+      saldo: 'Adeudo / crédito',
       notas: 'Notas',
     },
   },
@@ -1278,7 +1278,7 @@ function rowMatchesSearch(row, columns, query) {
 function renderSortableHeader(tableId, field, label, activeSort) {
   const isActive = activeSort?.field === field;
   const nextDirection = isActive && activeSort.direction === 'asc' ? 'desc' : 'asc';
-  const glyph = isActive ? (activeSort.direction === 'asc' ? 'â†‘' : 'â†“') : 'â†•';
+  const glyph = isActive ? (activeSort.direction === 'asc' ? '↑' : '↓') : '↕';
 
   return `
     <th scope="col">
@@ -1534,7 +1534,7 @@ function navigate(sectionKey) {
 
   // Permission guard - uses cumulative hasRole()
   if (section.roleRequired && !hasRole(section.roleRequired)) {
-    showToast('Acceso no autorizado para este mÃ³dulo.', 'error');
+    showToast('Acceso no autorizado para este módulo.', 'error');
     return;
   }
 
@@ -1594,7 +1594,7 @@ function markSessionStale(reason = '') {
   if (state.sessionStale) return;
   state.sessionStale = true;
   console.warn('[HR] stale session suspected:', reason);
-  showToast('Tu sesiÃ³n parece desactualizada. Actualiza sesiÃ³n para validar permisos.', 'error', 7000);
+  showToast('Tu sesión parece desactualizada. Actualiza sesión para validar permisos.', 'error', 7000);
 }
 
 function renderSessionStaleBanner() {
@@ -1602,10 +1602,10 @@ function renderSessionStaleBanner() {
   return `
     <div class="db-session-banner" role="alert">
       <div>
-        <strong>SesiÃ³n desactualizada</strong>
-        <span>Tu navegador puede estar usando permisos viejos. Actualiza la sesiÃ³n para volver a consultar datos protegidos.</span>
+        <strong>Sesión desactualizada</strong>
+        <span>Tu navegador puede estar usando permisos viejos. Actualiza la sesión para volver a consultar datos protegidos.</span>
       </div>
-      <button class="db-btn-secondary" type="button" data-action="refresh-session">Actualizar sesiÃ³n</button>
+      <button class="db-btn-secondary" type="button" data-action="refresh-session">Actualizar sesión</button>
     </div>
   `;
 }
@@ -1633,7 +1633,7 @@ async function handleRefreshSession() {
       data: {},
       sessionStale: false,
     });
-    showToast('SesiÃ³n actualizada.', 'success');
+    showToast('Sesión actualizada.', 'success');
     navigate(state.activeSection);
   } catch (err) {
     console.error('[HR] refresh session:', err);
@@ -1880,18 +1880,18 @@ function renderPortalNavigation() {
   const collaboratorEnabled = visiblePortalGroups().some((group) => group.key === 'collaborator');
   const erpEnabled = visiblePortalGroups().some((group) => group.key === 'erp');
   document.body.insertAdjacentHTML('beforeend', `
-    <nav class="hr-portal-bottom-nav" aria-label="NavegaciÃ³n principal del portal">
-      <button type="button" data-section="overview"><span>âŒ‚</span>Inicio</button>
-      <button type="button" data-portal-group="client"><span>â—Ž</span>Cliente</button>
-      <button type="button" data-portal-group="collaborator"${collaboratorEnabled ? '' : ' disabled'}><span>â—‡</span>Colaborador</button>
-      <button type="button" data-portal-group="erp"${erpEnabled ? '' : ' disabled'}><span>â–¦</span>ERP</button>
-      <button type="button" data-portal-more aria-controls="hr-portal-more" aria-expanded="false"><span>â€¢â€¢â€¢</span>MÃ¡s</button>
+    <nav class="hr-portal-bottom-nav" aria-label="Navegación principal del portal">
+      <button type="button" data-section="overview"><span>⌂</span>Inicio</button>
+      <button type="button" data-portal-group="client"><span>◎</span>Cliente</button>
+      <button type="button" data-portal-group="collaborator"${collaboratorEnabled ? '' : ' disabled'}><span>◇</span>Colaborador</button>
+      <button type="button" data-portal-group="erp"${erpEnabled ? '' : ' disabled'}><span>▦</span>ERP</button>
+      <button type="button" data-portal-more aria-controls="hr-portal-more" aria-expanded="false"><span>•••</span>Más</button>
     </nav>
-    <button class="hr-portal-backdrop" type="button" aria-label="Cerrar menÃº" hidden></button>
-    <aside class="hr-portal-drawer" id="hr-portal-more" aria-label="MenÃº del portal" hidden>
+    <button class="hr-portal-backdrop" type="button" aria-label="Cerrar menú" hidden></button>
+    <aside class="hr-portal-drawer" id="hr-portal-more" aria-label="Menú del portal" hidden>
       <header>
-        <div><small>NavegaciÃ³n</small><strong data-portal-sheet-title>Todas las secciones</strong></div>
-        <button type="button" data-portal-sheet-close aria-label="Cerrar menÃº">Ã—</button>
+        <div><small>Navegación</small><strong data-portal-sheet-title>Todas las secciones</strong></div>
+        <button type="button" data-portal-sheet-close aria-label="Cerrar menú">×</button>
       </header>
       <div class="hr-portal-drawer__content">${renderPortalMoreSheet()}</div>
     </aside>
@@ -2230,9 +2230,9 @@ function renderOverview() {
           </div>
         </article>
 
-        <article class="db-card" aria-label="Acciones rÃ¡pidas">
+        <article class="db-card" aria-label="Acciones rápidas">
           <header class="db-card__header">
-            <span class="section-label">Acciones rÃ¡pidas</span>
+            <span class="section-label">Acciones rápidas</span>
           </header>
           <div class="db-card__inner">
             <div class="db-quick-actions">
@@ -2262,17 +2262,17 @@ function renderAccountSettings() {
               <input type="email" name="email" autocomplete="email" value="${escapeAttr(email)}" required />
             </label>
             <label class="db-field">
-              <span>Nueva contraseÃ±a</span>
-              <input type="password" name="password" autocomplete="new-password" minlength="6" placeholder="Nueva contraseÃ±a" />
+              <span>Nueva contraseña</span>
+              <input type="password" name="password" autocomplete="new-password" minlength="6" placeholder="Nueva contraseña" />
             </label>
             <label class="db-field">
-              <span>Confirmar contraseÃ±a</span>
-              <input type="password" name="password_confirm" autocomplete="new-password" minlength="6" placeholder="Confirmar contraseÃ±a" />
+              <span>Confirmar contraseña</span>
+              <input type="password" name="password_confirm" autocomplete="new-password" minlength="6" placeholder="Confirmar contraseña" />
             </label>
             <button class="btn-primary" type="submit">Guardar cuenta</button>
           </form>
-          <a class="db-profile-action db-profile-action--link" href="${escapeAttr(buildWhatsAppLink(PROFILE_UPDATE_WHATSAPP, 'Hola, quiero solicitar actualizaciÃ³n de mis datos de perfil en Hidden Room / Mysauth.'))}" target="_blank" rel="noopener noreferrer">
-            Solicitar actualizaciÃ³n de datos
+          <a class="db-profile-action db-profile-action--link" href="${escapeAttr(buildWhatsAppLink(PROFILE_UPDATE_WHATSAPP, 'Hola, quiero solicitar actualización de mis datos de perfil en Hidden Room / Mysauth.'))}" target="_blank" rel="noopener noreferrer">
+            Solicitar actualización de datos
           </a>
         </div>
       </article>
@@ -2399,7 +2399,7 @@ async function renderClientDownloads() {
       <tr>
         <td>${escapeHTML(p.name ?? '-')}</td>
         <td>${escapeHTML(p.type ?? '-')}</td>
-        <td>${escapeHTML(p.release_mode === 'membership_delivery' ? `MembresÃ­a Â· Mes ${p.membership_cycle_number ?? '-'}` : 'Directa')}</td>
+        <td>${escapeHTML(p.release_mode === 'membership_delivery' ? `Membresía · Mes ${p.membership_cycle_number ?? '-'}` : 'Directa')}</td>
         <td>${escapeHTML(p.notes ?? '-')}</td>
         <td>
           ${renderDownloadAction(p)}
@@ -2422,7 +2422,7 @@ async function renderClientDownloads() {
               <th scope="col">Formato</th>
               <th scope="col">Origen</th>
               <th scope="col">Notas</th>
-              <th scope="col">AcciÃ³n</th>
+              <th scope="col">Acción</th>
             </tr>
           </thead>
           <tbody id="js-downloads-body">
@@ -2581,7 +2581,7 @@ async function renderClientTransactions() {
               <th scope="col">Tipo</th>
               <th scope="col">Monto</th>
               <th scope="col">Fecha</th>
-              <th scope="col">VÃ­a</th>
+              <th scope="col">Vía</th>
             </tr>
           </thead>
           <tbody id="js-txn-body">
@@ -2670,9 +2670,9 @@ async function renderClientMembership() {
       <section class="db-section" aria-labelledby="title-membership">
         <header class="db-section__header">
           <p class="section-label">Cliente</p>
-          <h1 class="db-section__title" id="title-membership">MembresÃ­a</h1>
+          <h1 class="db-section__title" id="title-membership">Membresía</h1>
         </header>
-        <p class="db-empty db-empty--error">Error al cargar membresÃ­a. Intenta de nuevo.</p>
+        <p class="db-empty db-empty--error">Error al cargar membresía. Intenta de nuevo.</p>
       </section>
     `;
   }
@@ -2691,7 +2691,7 @@ async function renderClientMembership() {
     <section class="db-section" aria-labelledby="title-membership">
       <header class="db-section__header">
         <p class="section-label">Cliente</p>
-        <h1 class="db-section__title" id="title-membership">MembresÃ­a</h1>
+        <h1 class="db-section__title" id="title-membership">Membresía</h1>
       </header>
       ${membershipNotices}
       ${membershipSummary}
@@ -2783,7 +2783,7 @@ async function renderClientRewards() {
   let scoresHTML;
 
   if (!scores || scores.length === 0) {
-    scoresHTML = '<p class="db-empty">Ingresa <a href="../minijuegos/">MINIJUEGOS</a> para sincronizar tu puntuaciÃ³n.</p>';
+    scoresHTML = '<p class="db-empty">Ingresa <a href="../minijuegos/">MINIJUEGOS</a> para sincronizar tu puntuación.</p>';
   } else {
     scoresHTML = `
       <ul class="db-card-list" role="list">
@@ -2826,7 +2826,7 @@ async function renderClientRewards() {
             <span class="section-label">Cupones Desbloqueados</span>
           </header>
           <ul class="db-coupon-list" id="js-rewards-coupons" role="list">
-            <li class="db-empty">PrÃ³ximamente.</li>
+            <li class="db-empty">Próximamente.</li>
           </ul>
         </article>
         <article class="db-card" aria-label="Tus recompensas">
@@ -2885,7 +2885,7 @@ async function renderCollabFinance() {
   const events = await ensureCollabFinanceEventsLoaded();
   if (!events.length) {
     return sectionShell('Colaborador', 'Financiero', 'title-collab-finance', `
-      <p class="db-empty">No tienes eventos asignados todavÃ­a.</p>
+      <p class="db-empty">No tienes eventos asignados todavía.</p>
     `);
   }
 
@@ -3171,7 +3171,7 @@ function renderUserPicker(name, label, value = '', options = {}) {
     return `
     <button class="db-user-option" type="button" data-user-id="${escapeAttr(String(user.user_id ?? ''))}" data-user-value="${escapeAttr(optionValue)}" data-user-display="${escapeAttr(optionDisplay)}" data-search-text="${escapeAttr(searchText)}">
       <span>${escapeHTML(user.display_name || user.email || 'Usuario sin nombre')}</span>
-      <small>${escapeHTML(options.caption?.(user) ?? `${usernameLabel(user)} Â· ${user.user_id ?? '-'}`)}</small>
+      <small>${escapeHTML(options.caption?.(user) ?? `${usernameLabel(user)} · ${user.user_id ?? '-'}`)}</small>
     </button>
   `;
   }).join('');
@@ -3246,8 +3246,8 @@ function renderRrppInvitations() {
 }
 
 function renderRrppCampaigns() {
-  return sectionShell('Embajador', 'CampaÃ±as', 'title-rrpp-camp', `
-    <p class="db-empty">Sin campaÃ±as activas.</p>
+  return sectionShell('Embajador', 'Campañas', 'title-rrpp-camp', `
+    <p class="db-empty">Sin campañas activas.</p>
   `);
 }
 
@@ -3400,8 +3400,8 @@ async function renderErpCloud() {
       <div class="hr-panel hr-card hr-stack">
         <div>
           <p class="hr-eyebrow">Cloud Hidden Room</p>
-          <h2 class="hr-title">AdministraciÃ³n de archivos y almacenamiento del servidor Mysauth.</h2>
-          <p>Estado: Online Â· Dominio: cloud.hiddenroom.mx</p>
+          <h2 class="hr-title">Administración de archivos y almacenamiento del servidor Mysauth.</h2>
+          <p>Estado: Online · Dominio: cloud.hiddenroom.mx</p>
         </div>
         <div class="hr-stack hr-stack-sm">
           <a class="hr-btn hr-btn-primary" href="${escapeHTML(CLOUD_HIDDENROOM_URL)}" target="_blank" rel="noopener noreferrer">Abrir Cloud</a>
@@ -3433,6 +3433,7 @@ function getIgMentionState() {
   if (!state.data.instagramMentionRank) {
     state.data.instagramMentionRank = {
       accessToken: '',
+      apiMode: 'instagram_login',
       media: [],
       analysis: null,
       selectedMedia: null,
@@ -3446,13 +3447,18 @@ function getIgTokenFromDashboard() {
   return document.getElementById('js-ig-access-token')?.value.trim() || getIgMentionState().accessToken || '';
 }
 
+function getIgApiModeFromDashboard() {
+  return document.getElementById('js-ig-api-mode')?.value || getIgMentionState().apiMode || 'instagram_login';
+}
+
 async function renderErpInstagramMentionRank() {
   const igState = getIgMentionState();
   const media = Array.isArray(igState.media) ? igState.media : [];
   const analysis = igState.analysis;
+  const apiMode = igState.apiMode || 'instagram_login';
 
   return sectionShell('ERP', 'Instagram Mention Rank', 'title-erp-ig-mention-rank', `
-    <p class="db-section__summary">Analiza comentarios de una publicacion conectada a Instagram API y genera ranking total y ranking por autores unicos. El token solo vive en memoria durante esta sesion del dashboard.</p>
+    <p class="db-section__summary">Analiza comentarios de publicaciones de Instagram con Instagram Login o Facebook Graph API. El token solo vive en memoria durante esta sesion del dashboard.</p>
     ${igState.error ? `<p class="db-empty db-empty--error">${escapeHTML(igState.error)}</p>` : ''}
     <div class="db-admin-grid db-admin-grid--single db-ig-rank">
       <article class="db-card">
@@ -3460,9 +3466,17 @@ async function renderErpInstagramMentionRank() {
           <header class="db-card__header"><span class="section-label">Conexion</span></header>
           <form class="db-form" data-form="ig-list-media">
             <label class="db-field">
-              <span>Instagram Access Token</span>
-              <input id="js-ig-access-token" name="access_token" type="password" autocomplete="off" spellcheck="false" value="${escapeHTML(igState.accessToken || '')}" placeholder="Pega un token para pruebas o deja vacio si IG_ACCESS_TOKEN ya esta configurado" />
+              <span>Modo API</span>
+              <select id="js-ig-api-mode" name="api_mode">
+                <option value="instagram_login" ${apiMode === 'instagram_login' ? 'selected' : ''}>Instagram Login / graph.instagram.com</option>
+                <option value="facebook_graph" ${apiMode === 'facebook_graph' ? 'selected' : ''}>Facebook Graph / graph.facebook.com</option>
+              </select>
             </label>
+            <label class="db-field">
+              <span>Access Token</span>
+              <input id="js-ig-access-token" name="access_token" type="password" autocomplete="off" spellcheck="false" value="${escapeHTML(igState.accessToken || '')}" placeholder="Pega un token para pruebas o deja vacio si el secreto ya esta configurado" />
+            </label>
+            <p class="db-note">Instagram Login puede listar publicaciones, pero si Meta reporta comentarios y no los entrega, usa Facebook Graph con un token con permisos de paginas e Instagram Business.</p>
             <div class="db-form__row">
               <label class="db-field"><span>Limite</span><input name="limit" type="number" min="1" max="100" value="25" /></label>
             </div>
@@ -3495,9 +3509,10 @@ function renderIgMediaCard(media) {
   return `
     <article class="db-ig-media-card">
       <div>
-        <p class="hr-eyebrow">${escapeHTML(media?.media_type || 'Media')} · ${escapeHTML(formatDateTime(media?.timestamp))}</p>
+        <p class="hr-eyebrow">${escapeHTML(media?.media_type || 'Media')} · ${escapeHTML(formatDateTime(media?.timestamp))} · Comentarios: ${escapeHTML(media?.comments_count ?? 0)}</p>
         <h3>${escapeHTML(shortCaption || 'Publicacion sin caption')}</h3>
         <p><code>${escapeHTML(media?.id || '')}</code></p>
+        ${media?.page_name ? `<p class="db-note">Pagina: ${escapeHTML(media.page_name)}</p>` : ''}
       </div>
       <div class="db-ig-media-card__actions">
         ${media?.permalink ? `<a class="db-btn-secondary" href="${escapeHTML(media.permalink)}" target="_blank" rel="noopener noreferrer">Abrir</a>` : ''}
@@ -3520,7 +3535,7 @@ function renderIgAnalysisSummary(analysis, media) {
           ${renderStatCard('Usuarios arrobados', analysis.unique_mentions_count ?? 0)}
         </div>
         <p class="db-note">Media: <code>${escapeHTML(media?.id || '')}</code>${analysis.saved_analysis_id ? ` · Guardado: <code>${escapeHTML(analysis.saved_analysis_id)}</code>` : ''}</p>
-        <p class="db-note">Paginas: ${escapeHTML(analysis.pages_fetched ?? 0)} · Replies incluidos: ${escapeHTML(analysis.replies_count ?? 0)} · Comentarios con @: ${escapeHTML(analysis.comments_with_mentions_count ?? 0)}</p>
+        <p class="db-note">Meta comments_count: ${escapeHTML(analysis.meta_comments_count ?? 0)} · Comentarios recibidos: ${escapeHTML(analysis.comments_count ?? 0)} · Paginas: ${escapeHTML(analysis.pages_fetched ?? 0)} · Comentarios con @: ${escapeHTML(analysis.comments_with_mentions_count ?? 0)}</p>
         ${Number(analysis.mentions_count ?? 0) === 0 ? renderIgMentionDebug(analysis.mention_debug) : ''}
         <div class="db-form__actions">
           <button class="db-btn-secondary" type="button" data-action="ig-reset-analysis">Analizar otra publicacion</button>
@@ -3633,17 +3648,31 @@ function exportIgRankingCsv(type) {
 async function handleIgListMedia(form) {
   const status = form.querySelector('[data-ig-status]');
   const submit = form.querySelector('button[type="submit"]');
-  const token = String(new FormData(form).get('access_token') || '').trim();
-  const limit = Number(new FormData(form).get('limit') || 25);
+  const formData = new FormData(form);
+  const token = String(formData.get('access_token') || '').trim();
+  const apiMode = String(formData.get('api_mode') || 'instagram_login');
+  const limit = Number(formData.get('limit') || 25);
   const igState = getIgMentionState();
   igState.accessToken = token;
+  igState.apiMode = apiMode;
   igState.error = '';
   if (status) status.textContent = 'Cargando publicaciones...';
   if (submit) submit.disabled = true;
 
   try {
-    const result = await igFunctionFetch('ig-list-media', { access_token: token, limit });
-    igState.media = Array.isArray(result.media) ? result.media : [];
+    const result = await igFunctionFetch('ig-list-media', { access_token: token, api_mode: apiMode, limit });
+    igState.media = Array.isArray(result.media) ? result.media.map((item) => ({ ...item, api_mode: item.api_mode || result.api_mode || apiMode })) : [];
+    igState.apiMode = result.api_mode || apiMode;
+    console.info('[Instagram Mention Rank] Publicaciones cargadas', {
+      mode: igState.apiMode,
+      count: igState.media.length,
+      media: igState.media.map((item) => ({
+        media_id: item.id,
+        media_permalink: item.permalink || null,
+        comments_count: item.comments_count ?? null,
+        api_mode: item.api_mode || igState.apiMode,
+      })),
+    });
     igState.analysis = null;
     igState.selectedMedia = null;
     showToast('Publicaciones cargadas.', 'success');
@@ -3661,15 +3690,28 @@ async function handleIgAnalyzeMedia(mediaId) {
   const igState = getIgMentionState();
   const token = getIgTokenFromDashboard();
   const media = (igState.media || []).find((item) => String(item.id) === String(mediaId));
-  if (!mediaId) return;
+  const apiMode = media?.api_mode || getIgApiModeFromDashboard();
+  if (!mediaId || !media) {
+    showToast('Selecciona una publicacion cargada desde Instagram antes de analizar.', 'error');
+    return;
+  }
+
+  console.info('[Instagram Mention Rank] Analizando media', {
+    media_id: media.id,
+    media_permalink: media.permalink || null,
+    comments_count: media.comments_count ?? null,
+    api_mode: apiMode,
+  });
 
   igState.accessToken = token;
+  igState.apiMode = apiMode;
   igState.error = '';
-  showToast('Analizando comentarios de Instagram...', 'info');
+  showToast(apiMode === 'facebook_graph' ? 'Analizando comentarios con Facebook Graph...' : 'Analizando comentarios de Instagram...', 'info');
 
   try {
     const result = await igFunctionFetch('ig-analyze-comments', {
       access_token: token,
+      api_mode: apiMode,
       media_id: mediaId,
       media_permalink: media?.permalink || null,
     });
@@ -3815,28 +3857,28 @@ async function renderErpOps() {
       `,
     },
     membership: {
-      label: 'MembresÃ­as',
+      label: 'Membresías',
       html: renderMembershipOpsForm(memberships),
     },
     userMerge: {
       label: 'Fusionar usuarios',
       html: `
         <form class="db-form" data-form="user-merge">
-          ${renderUserPicker('keep_user_id', 'User ID histÃ³rico a conservar', '', {
+          ${renderUserPicker('keep_user_id', 'User ID histórico a conservar', '', {
             valueField: 'user_id',
-            placeholder: 'Buscar perfil histÃ³rico',
-            displayValue: (user) => `${user.display_name || user.username || user.email || 'Usuario'} Â· ${user.user_id ?? '-'}`,
-            caption: (user) => `${usernameLabel(user)} Â· ${user.email ?? 'sin email'}`,
+            placeholder: 'Buscar perfil histórico',
+            displayValue: (user) => `${user.display_name || user.username || user.email || 'Usuario'} · ${user.user_id ?? '-'}`,
+            caption: (user) => `${usernameLabel(user)} · ${user.email ?? 'sin email'}`,
           })}
           ${renderUserPicker('duplicate_email', 'Email del perfil duplicado', '', {
             valueField: 'email',
             requiredField: 'email',
             placeholder: 'Buscar email duplicado',
-            displayValue: (user) => `${user.email ?? ''} Â· ${user.display_name || user.username || 'Usuario'}`,
-            caption: (user) => `${usernameLabel(user)} Â· ${user.email ?? 'sin email'}`,
+            displayValue: (user) => `${user.email ?? ''} · ${user.display_name || user.username || 'Usuario'}`,
+            caption: (user) => `${usernameLabel(user)} · ${user.email ?? 'sin email'}`,
             emptyLabel: 'Sin emails encontrados.',
           })}
-          <p class="db-empty">La fusiÃ³n conserva operaciones, sesiones, transacciones, premios, contratos, descargas y puntuaciones del User ID histÃ³rico. Del email duplicado solo toma Auth para login.</p>
+          <p class="db-empty">La fusión conserva operaciones, sesiones, transacciones, premios, contratos, descargas y puntuaciones del User ID histórico. Del email duplicado solo toma Auth para login.</p>
           <button class="btn-primary" type="submit">Fusionar usuarios</button>
           <div class="db-field__hint" data-admin-merge-user-result hidden></div>
         </form>
@@ -3862,7 +3904,7 @@ async function renderErpOps() {
             ['eventMovement', 'Nuevo movimiento'],
             ['eventParticipant', 'Nuevo participante'],
             ['financeEntity', 'Entidad financiera'],
-            ['membership', 'MembresÃ­as'],
+            ['membership', 'Membresías'],
             ['userMerge', 'Fusionar usuarios'],
           ].map(([value, label]) => optionHTML(value, label, activeForm)).join('')}
         </select>
@@ -3910,7 +3952,7 @@ function membershipOptionLabel(membership) {
   const user = (state.data.users ?? []).find((item) => String(item.user_id) === String(membership.user_id));
   const label = user ? userLabel(user.user_id) : (membership.username || membership.user_id || 'Usuario');
   const dates = `${formatDisplayDateOnly(membership.start_date)}${membership.end_date ? ` a ${formatDisplayDateOnly(membership.end_date)}` : ''}`;
-  return `${label} Â· ${String(membership.status ?? 'active').toUpperCase()} Â· ${dates}`;
+  return `${label} · ${String(membership.status ?? 'active').toUpperCase()} · ${dates}`;
 }
 
 function renderDownloadOpsForm(memberships = []) {
@@ -3919,17 +3961,17 @@ function renderDownloadOpsForm(memberships = []) {
       ${renderErpUserPicker('user_id', 'Usuario')}
       ${renderUserAutofillFields()}
       <label class="db-field">
-        <span>Â¿Corresponde a una membresÃ­a?</span>
+        <span>¿Corresponde a una membresía?</span>
         <select name="release_mode" data-download-release-mode>
           <option value="immediate">No, liberar inmediatamente</option>
-          <option value="membership_delivery">SÃ­, liberar con un entregable</option>
+          <option value="membership_delivery">Sí, liberar con un entregable</option>
         </select>
       </label>
       <div class="db-form__row" data-download-membership-fields hidden>
         <label class="db-field">
-          <span>MembresÃ­a</span>
+          <span>Membresía</span>
           <select name="membership_id" data-download-membership-id>
-            <option value="">Seleccionar membresÃ­a</option>
+            <option value="">Seleccionar membresía</option>
             ${memberships.map((membership) => `
               <option value="${escapeAttr(membership.id)}" data-membership-user-id="${escapeAttr(membership.user_id ?? '')}">
                 ${escapeHTML(membershipOptionLabel(membership))}
@@ -3970,7 +4012,7 @@ function renderMembershipCycleOptions(totalCycles = 24) {
     const cycle = index + 1;
     const firstWeek = index * 4 + 1;
     const lastWeek = firstWeek + 3;
-    return optionHTML(String(cycle), `Mes ${cycle} Â· Semanas ${firstWeek}-${lastWeek}`, '');
+    return optionHTML(String(cycle), `Mes ${cycle} · Semanas ${firstWeek}-${lastWeek}`, '');
   }).join('');
 }
 
@@ -3982,13 +4024,13 @@ function renderMembershipOpsForm(memberships = []) {
   return `
     <div class="db-membership-ops">
       <section class="db-membership-ops__block">
-        <h2 class="db-membership-ops__title">Crear membresÃ­a</h2>
+        <h2 class="db-membership-ops__title">Crear membresía</h2>
           <form class="db-form" data-form="membership-create">
             ${renderErpUserPicker('user_id', 'Usuario')}
             ${renderUserAutofillFields()}
             <div class="db-form__row">
               <label class="db-field"><span>Inicio</span><input name="start_date" type="date" value="${escapeAttr(today)}" required /></label>
-              <label class="db-field"><span>TÃ©rmino</span><input name="end_date" type="date" /></label>
+              <label class="db-field"><span>Término</span><input name="end_date" type="date" /></label>
             </div>
             <div class="db-form__row">
               <label class="db-field"><span>Precio semanal</span><input name="weekly_price" type="number" step="0.01" value="${MEMBERSHIP_WEEKLY_COST}" required /></label>
@@ -3996,7 +4038,7 @@ function renderMembershipOpsForm(memberships = []) {
             </div>
             <label class="db-field"><span>Status</span><select name="status">${['active', 'paused', 'cancelled', 'expired'].map((status) => optionHTML(status, status, 'active')).join('')}</select></label>
             <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
-            <button class="btn-primary" type="submit">Crear membresÃ­a</button>
+            <button class="btn-primary" type="submit">Crear membresía</button>
           </form>
       </section>
       <section class="db-membership-ops__block">
@@ -4004,7 +4046,7 @@ function renderMembershipOpsForm(memberships = []) {
           <form class="db-form" data-form="membership-delivery">
             <input type="hidden" name="note_scope" value="delivery" />
             <label class="db-field">
-              <span>MembresÃ­a</span>
+              <span>Membresía</span>
               <select name="membership_id">
                 <option value="">Sin public.memberships / legacy</option>
                 ${memberships.map((membership) => optionHTML(membership.id, membershipOptionLabel(membership), '')).join('')}
@@ -4021,18 +4063,18 @@ function renderMembershipOpsForm(memberships = []) {
           </form>
       </section>
       <section class="db-membership-ops__block">
-        <h2 class="db-membership-ops__title">Cancelar membresÃ­a</h2>
+        <h2 class="db-membership-ops__title">Cancelar membresía</h2>
           <form class="db-form" data-form="membership-cancel">
             <label class="db-field">
-              <span>MembresÃ­a</span>
+              <span>Membresía</span>
               <select name="membership_id" required>
-                <option value="">Seleccionar membresÃ­a</option>
+                <option value="">Seleccionar membresía</option>
                 ${cancellable.map((membership) => optionHTML(membership.id, membershipOptionLabel(membership), '')).join('')}
               </select>
             </label>
-            <label class="db-field"><span>Fecha de tÃ©rmino</span><input name="end_date" type="date" value="${escapeAttr(today)}" required /></label>
-            <label class="db-field"><span>Notas de cancelaciÃ³n</span><textarea name="notes" rows="3"></textarea></label>
-            <button class="db-btn-danger" type="submit">Cancelar membresÃ­a</button>
+            <label class="db-field"><span>Fecha de término</span><input name="end_date" type="date" value="${escapeAttr(today)}" required /></label>
+            <label class="db-field"><span>Notas de cancelación</span><textarea name="notes" rows="3"></textarea></label>
+            <button class="db-btn-danger" type="submit">Cancelar membresía</button>
           </form>
       </section>
     </div>
@@ -4250,7 +4292,7 @@ function renderFinanceFilters(filters) {
   return `
     <div class="db-toolbar hr-table-toolbar">
       <label class="db-field db-field--compact"><span>Mes</span><select data-action="finance-filter" data-filter-key="financeMonth">${optionHTML('', 'Todos los meses', filters.month)}${months.map((month) => optionHTML(month, month, filters.month)).join('')}</select></label>
-      <label class="db-field db-field--compact"><span>AÃ±o</span><select data-action="finance-filter" data-filter-key="financeYear">${optionHTML('', 'Todos los aÃ±os', filters.year)}${years.map((year) => optionHTML(year, year, filters.year)).join('')}</select></label>
+      <label class="db-field db-field--compact"><span>Año</span><select data-action="finance-filter" data-filter-key="financeYear">${optionHTML('', 'Todos los años', filters.year)}${years.map((year) => optionHTML(year, year, filters.year)).join('')}</select></label>
       <label class="db-field db-field--compact"><span>Tipo</span><select data-action="finance-filter" data-filter-key="financeType">${[
         ['ambos', 'Ingresos y egresos'],
         ['ingresos', 'Ingresos'],
@@ -4305,7 +4347,7 @@ function eventAccessFor(event, adminDefault = hasRole('admin')) {
 
 const participantLabel = (participant) => {
   if (!participant) return '-';
-  const role = participant.role ? ` Â· ${participant.role}` : '';
+  const role = participant.role ? ` · ${participant.role}` : '';
   return `${userLabel(participant.user_id)}${role}`;
 };
 
@@ -4343,7 +4385,7 @@ async function fetchFinanceEntities() {
 
 function financeEntityLabel(entity) {
   if (!entity) return '-';
-  const type = entity.entity_type ? ` Â· ${entity.entity_type}` : '';
+  const type = entity.entity_type ? ` · ${entity.entity_type}` : '';
   return `${entity.name ?? entity.entity_key ?? 'Entidad'}${type}`;
 }
 
@@ -4471,15 +4513,15 @@ function renderEventInternalInvestors(event, transactions = []) {
         <div class="db-event-investors__summary">
           <div class="db-pie-chart db-investor-pie" style="background:conic-gradient(${pieGradient})" aria-label="Distribucion de inversion interna"></div>
           <div class="db-event-investors__legend">${legend}</div>
-          ${renderStatCard('InversiÃ³n interna total', money(total))}
+          ${renderStatCard('Inversión interna total', money(total))}
           ${renderStatCard('Costo total del evento', money(rightsTotals.totalCost))}
         </div>
         <div class="db-table-wrap hr-table-wrap">
-          <table class="db-table hr-table hr-table-readable" aria-label="Porcentaje de inversiÃ³n sobre costo total por participante">
+          <table class="db-table hr-table hr-table-readable" aria-label="Porcentaje de inversión sobre costo total por participante">
             <thead>
               <tr>
                 <th scope="col">Participante</th>
-                <th scope="col">InversiÃ³n</th>
+                <th scope="col">Inversión</th>
                 <th scope="col">% costo total</th>
                 <th scope="col">Cobertura</th>
               </tr>
@@ -4498,7 +4540,7 @@ function renderEventInfo(event) {
     <div class="db-grid db-grid--3col">
       ${renderStatCard('Evento', event.name ?? event.event_key ?? '-')}
       ${renderStatCard('Clave', event.event_key ?? '-')}
-      ${renderStatCard('Fecha / status', `${formatDisplayDateOnly(event.event_date)} Â· ${event.status ?? '-'}`)}
+      ${renderStatCard('Fecha / status', `${formatDisplayDateOnly(event.event_date)} · ${event.status ?? '-'}`)}
     </div>
   `;
 }
@@ -4507,7 +4549,7 @@ function renderEventSummaryCards(event) {
   const metrics = [
     ['Ingresos', event?.ingresos],
     ['Egresos', event?.egresos],
-    ['InversiÃ³n ingresada', event?.inversion_ingresada],
+    ['Inversión ingresada', event?.inversion_ingresada],
     ['Utilidad devuelta', event?.utilidad_devuelta],
     ['Entregas a favor', event?.entregas_a_favor],
     ['M.A.I.', event?.mai],
@@ -4760,7 +4802,7 @@ async function renderErpPermissions() {
 
   const rows = (users ?? []).length
     ? users.map(renderPermissionUserRow).join('')
-    : `<tr class="db-table__empty-row hr-table-empty"><td colspan="6" class="db-empty hr-table-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesiÃ³n.' : 'Sin usuarios registrados.'}</td></tr>`;
+    : `<tr class="db-table__empty-row hr-table-empty"><td colspan="6" class="db-empty hr-table-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin usuarios registrados.'}</td></tr>`;
   const permissionSearch = tableSearchFor('js-permissions-table-body');
 
   return sectionShell('ERP', 'Permisos', 'title-erp-permissions', `
@@ -4810,7 +4852,7 @@ async function renderErpAuthAudit() {
   } catch (err) {
     console.error('[HR] renderErpAuthAudit:', err);
     return sectionShell('ERP', 'Auth / Registros', 'title-erp-auth-audit', `
-      <p class="db-empty db-empty--error">No se pudo cargar la auditorÃ­a de Auth. Revisa que la Edge Function admin-auth-audit estÃ© desplegada.</p>
+      <p class="db-empty db-empty--error">No se pudo cargar la auditoría de Auth. Revisa que la Edge Function admin-auth-audit esté desplegada.</p>
     `);
   }
 
@@ -4827,11 +4869,11 @@ async function renderErpAuthAudit() {
     <div class="db-grid db-grid--3col">
       ${renderStatCard('Auth users', String(totals.auth_users ?? 0))}
       ${renderStatCard('Perfiles public.users', String(totals.public_profiles ?? 0))}
-      ${renderStatCard('Alertas de fusiÃ³n', String(alerts))}
+      ${renderStatCard('Alertas de fusión', String(alerts))}
     </div>
     <p class="db-empty">Generado: ${escapeHTML(generatedAt)}</p>
-    ${renderAuthUsersTable('Ãšltimos usuarios logueados', audit?.recent_logins ?? [], 'last_sign_in_at', ['auth'], 'js-auth-logins')}
-    ${renderAuthUsersTable('Ãšltimos usuarios creados en Auth', audit?.recent_created ?? [], 'created_at', ['auth'], 'js-auth-created')}
+    ${renderAuthUsersTable('Últimos usuarios logueados', audit?.recent_logins ?? [], 'last_sign_in_at', ['auth'], 'js-auth-logins')}
+    ${renderAuthUsersTable('Últimos usuarios creados en Auth', audit?.recent_created ?? [], 'created_at', ['auth'], 'js-auth-created')}
     ${renderAuthUsersTable('Auth sin perfil public.users', audit?.possible_merges?.auth_without_public_profile ?? [], 'created_at', ['auth', 'alerts', 'missing-profile'], 'js-auth-missing-profile')}
     ${renderPublicProfilesTable('public.users sin Auth', audit?.possible_merges?.public_profiles_without_auth ?? [], ['public', 'alerts'], 'js-public-without-auth')}
     ${renderDuplicateEmailAudit(audit?.possible_merges?.duplicate_emails ?? [], ['alerts'], 'js-duplicate-emails')}
@@ -4844,12 +4886,12 @@ function renderAuthAuditFilterBar(activeFilter = 'all') {
     <div class="db-toolbar hr-table-toolbar">
       <label class="db-field db-field--compact">
         <span>Filtro</span>
-        <select data-action="auth-audit-filter" aria-label="Filtrar auditorÃ­a de Auth">
+        <select data-action="auth-audit-filter" aria-label="Filtrar auditoría de Auth">
           ${[
             ['all', 'Todos'],
             ['auth', 'Auth users'],
             ['public', 'Perfiles public.users'],
-            ['alerts', 'Alertas de fusiÃ³n'],
+            ['alerts', 'Alertas de fusión'],
             ['missing-profile', 'Sin perfil'],
           ].map(([value, label]) => optionHTML(value, label, activeFilter)).join('')}
         </select>
@@ -5164,7 +5206,7 @@ async function renderAdminTableEditor() {
       hidden: Boolean(searchQuery) && !rowMatchesSearch(row, columns, searchQuery),
       visibleColumns: displayedColumns,
     })).join('')
-    : `<tr class="db-table__empty-row hr-table-empty"><td colspan="99" class="db-empty hr-table-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesiÃ³n.' : 'Sin filas disponibles.'}</td></tr>`;
+    : `<tr class="db-table__empty-row hr-table-empty"><td colspan="99" class="db-empty hr-table-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin filas disponibles.'}</td></tr>`;
   const membershipDashboardTable = isMembershipDashboard
     ? renderMembershipDashboardTable(visibleData, { canEditMaterialDelivery: true })
     : '';
@@ -5187,9 +5229,9 @@ async function renderAdminTableEditor() {
       ${config.readOnly && !isMembershipDashboard ? '' : '<button class="db-btn-secondary" type="button" data-action="admin-table-save-all">GUARDAR</button>'}
       ${isMembershipDashboard ? '' : `<button class="db-btn-secondary" type="button" data-action="export-admin-pdf" data-table-label="${escapeAttr(config.label)}">Exportar PDF</button>`}
     </div>
-    ${tableName === 'users' ? '<p class="db-empty">El campo email se guarda a travÃ©s de Auth (Edge Function). El cambio se aplica al confirmar el correo.</p>' : ''}
+    ${tableName === 'users' ? '<p class="db-empty">El campo email se guarda a través de Auth (Edge Function). El cambio se aplica al confirmar el correo.</p>' : ''}
     ${membershipDashboardContext}
-    ${isMembershipDashboard && !membershipDashboardHasUser ? '<p class="db-empty">Selecciona un usuario para consultar su dashboard de membresÃ­a.</p>' : `
+    ${isMembershipDashboard && !membershipDashboardHasUser ? '<p class="db-empty">Selecciona un usuario para consultar su dashboard de membresía.</p>' : `
     ${isMembershipDashboard ? membershipDashboardTable : `
     <div class="db-table-wrap hr-table-wrap">
       <table class="db-table hr-table hr-table-editable db-table--editor" aria-label="Editor de ${escapeAttr(config.label)}">
@@ -5213,7 +5255,7 @@ function renderAdminMembershipDashboardContext(rows = [], searchQuery = '') {
 
   const users = new Set(rows.map((row) => String(row.user_id ?? '')).filter(Boolean));
   if (users.size !== 1) {
-    return `<p class="db-empty">Filtra hasta un solo usuario para ver los avisos de su membresÃ­a.</p>`;
+    return `<p class="db-empty">Filtra hasta un solo usuario para ver los avisos de su membresía.</p>`;
   }
 
   return `
@@ -5355,17 +5397,17 @@ function renderMembershipDashboardTable(rows = [], options = {}) {
     ? rows.map((row) => renderMembershipDashboardRow(row, deliveryByWeek.get(Number(row.semana ?? 0)), options)).join('')
     : `
       <tr class="db-table__empty-row hr-table-empty">
-        <td colspan="8" class="db-empty hr-table-empty">Sin datos de membresÃ­a.</td>
+        <td colspan="8" class="db-empty hr-table-empty">Sin datos de membresía.</td>
       </tr>
     `;
 
   return `
     <div class="db-table-wrap hr-table-wrap db-table-wrap--membership">
-      <table class="db-table hr-table hr-table-editable" aria-label="MembresÃ­a">
+      <table class="db-table hr-table hr-table-editable" aria-label="Membresía">
         <thead>
           <tr>
             <th scope="col">Semana</th>
-            <th scope="col">Fecha de sesiÃ³n</th>
+            <th scope="col">Fecha de sesión</th>
             <th scope="col">Estado</th>
             <th scope="col">Saldo</th>
             <th scope="col">Fecha de saldo</th>
@@ -5406,7 +5448,7 @@ function renderMembershipDashboardRow(row, delivery = null, options = {}) {
   return `
     <tr class="db-membership-row db-membership-row--${escapeAttr(membershipRowTone(row))}">
       <td>${escapeHTML(String(row.semana ?? '-'))}</td>
-      <td>${escapeHTML(sessionDates || 'Sin sesiÃ³n registrada')}</td>
+      <td>${escapeHTML(sessionDates || 'Sin sesión registrada')}</td>
       <td class="${escapeAttr(membershipCellClass('estado', row).trim())}">${escapeHTML(row.estado ?? '-')}</td>
       <td class="${escapeAttr(membershipCellClass('saldo', row).trim())}">${formatMembershipRowBalance(row)}</td>
       <td>${escapeHTML(formatDisplayDateOnly(row.fecha_de_saldo))}</td>
@@ -5463,7 +5505,7 @@ function renderMembershipSessionNotesInput(row, formId) {
       <form id="${formId}" data-form="membership-session-notes" data-stay-section="admin-table-editor">
         <input type="hidden" name="session_id" value="${escapeAttr(sessionId)}" />
         <input type="hidden" name="notes_original" value="${escapeAttr(notes || '')}" />
-        <textarea class="db-table-input hr-input hr-cell-editable db-table-input--notes db-membership-editable-cell" name="notes" rows="3" aria-label="Notas de sesiÃ³n">${escapeHTML(notes || '')}</textarea>
+        <textarea class="db-table-input hr-input hr-cell-editable db-table-input--notes db-membership-editable-cell" name="notes" rows="3" aria-label="Notas de sesión">${escapeHTML(notes || '')}</textarea>
       </form>
     </div>
   `;
@@ -5869,9 +5911,9 @@ function canonicalServiceValue(value) {
 function canonicalSessionTypeValue(value) {
   const normalized = normalizeCatalogValue(value);
   if (isMembershipValue(normalized)) return MEMBERSHIP_CANONICAL;
-  if (normalized.includes('BASICA') || normalized.includes('BÃSICA')) return 'SESIÃ“N BÃSICA';
-  if (normalized.includes('PREMIUM')) return 'SESIÃ“N PREMIUM';
-  if (normalized.includes('GRABACION') || normalized.includes('GRABACIÃ“N')) return 'GRABACIÃ“N';
+  if (normalized.includes('BASICA') || normalized.includes('BÁSICA')) return 'SESIÓN BÁSICA';
+  if (normalized.includes('PREMIUM')) return 'SESIÓN PREMIUM';
+  if (normalized.includes('GRABACION') || normalized.includes('GRABACIÓN')) return 'GRABACIÓN';
   return String(value ?? '').trim();
 }
 
@@ -5967,7 +6009,7 @@ function membershipSessionNotes(sessions = []) {
 
   if (!notes.length) return '-';
   if (notes.length === 1) return notes[0].notes;
-  return notes.map((session) => `${session.date}: ${session.notes}`).join(' Â· ');
+  return notes.map((session) => `${session.date}: ${session.notes}`).join(' · ');
 }
 
 function membershipWeekObligation(week, sessions = []) {
@@ -5994,7 +6036,7 @@ function buildLegacyMembershipsFromSessions(sessions = []) {
           end_date: sessionDate,
           weekly_price: MEMBERSHIP_WEEKLY_COST,
           sessions_per_week: 1,
-          notes: 'MembresÃ­a histÃ³rica sin registro en public.memberships.',
+          notes: 'Membresía histórica sin registro en public.memberships.',
           legacy: true,
         });
         return;
@@ -6177,7 +6219,7 @@ function formatMembershipRowBalance(row) {
       ? `Pendiente por pagar ${money(Math.abs(saldo))}`
       : `Adeudo ${money(Math.abs(saldo))}`;
   }
-  return `CrÃ©dito ${money(saldo)}`;
+  return `Crédito ${money(saldo)}`;
 }
 
 function membershipCurrentCreditValue(rows = []) {
@@ -6218,17 +6260,17 @@ function renderMembershipNotices(membershipRows = []) {
   if (latestBalance < 0) {
     notices.push({
       tone: 'danger',
-      text: `AVISO: Tu cuenta presenta un adeudo pendiente por un total de ${money(Math.abs(latestBalance))}. En caso de incumplimiento, Hidden Room podrÃ¡ suspender o cancelar la membresÃ­a de acuerdo con los TÃ©rminos y Condiciones aceptados durante su contrataciÃ³n. Consulta los TyC para conocer los detalles aplicables.`,
+      text: `AVISO: Tu cuenta presenta un adeudo pendiente por un total de ${money(Math.abs(latestBalance))}. En caso de incumplimiento, Hidden Room podrá suspender o cancelar la membresía de acuerdo con los Términos y Condiciones aceptados durante su contratación. Consulta los TyC para conocer los detalles aplicables.`,
     });
   } else if (latestBalance > 0) {
     notices.push({
       tone: 'success',
-      text: `Tienes un saldo a favor de ${money(latestBalance)}, Â¡MUCHAS FELICIDADES!`,
+      text: `Tienes un saldo a favor de ${money(latestBalance)}, ¡MUCHAS FELICIDADES!`,
     });
   } else {
     notices.push({
       tone: 'success',
-      text: 'Â¡FELICIDADES! Tu cuenta se encuentra al corriente. Eres acreedor a recompensas y dinÃ¡micas.',
+      text: '¡FELICIDADES! Tu cuenta se encuentra al corriente. Eres acreedor a recompensas y dinámicas.',
     });
   }
 
@@ -6255,7 +6297,7 @@ function membershipBalanceParts(rows = []) {
 function membershipOverdueBalanceSummary(rows = []) {
   const { overdue, credit } = membershipBalanceParts(rows);
   if (overdue < 0) return money(Math.abs(overdue));
-  if (credit > 0) return `CrÃ©dito ${money(credit)}`;
+  if (credit > 0) return `Crédito ${money(credit)}`;
   return 'Sin saldo vencido';
 }
 
@@ -6376,7 +6418,7 @@ function membershipMaterialDeliveries(rows = []) {
       const deliveredAt = deliveredRow?.material_delivered_at ?? null;
       const deliveryNotes = deliveredRow?.material_delivery_notes ?? null;
       let status = 'PROGRAMADA';
-      let reason = 'Entrega programada segÃºn regla contractual';
+      let reason = 'Entrega programada según regla contractual';
 
       if (deliveredAt) {
         status = 'ENTREGADA';
@@ -6387,8 +6429,8 @@ function membershipMaterialDeliveries(rows = []) {
           ? `${overdueWeeks} semana${overdueWeeks === 1 ? '' : 's'} vencida${overdueWeeks === 1 ? '' : 's'} sin pagar`
           : 'Existe saldo vencido';
       } else if (!membershipActive) {
-        status = 'BLOQUEADA POR MEMBRESÃA INACTIVA';
-        reason = `MembresÃ­a ${latest.estado_operativo || '-'}`;
+        status = 'BLOQUEADA POR MEMBRESÍA INACTIVA';
+        reason = `Membresía ${latest.estado_operativo || '-'}`;
       } else if (lateWeeks > 0 && compareDateOnly(today, estimatedDelivery) < 0) {
         status = 'DIFERIDA POR ATRASO';
         reason = `${lateWeeks} semana${lateWeeks === 1 ? '' : 's'} ${lateWeeks === 1 ? 'fue saldada' : 'fueron saldadas'} con atraso`;
@@ -6440,8 +6482,8 @@ function nextMembershipDeliveryText(rows = []) {
   const deliveries = membershipMaterialDeliveries(rows);
   if (!deliveries.length) return 'Sin material trabajado';
   const nextDelivery = deliveries.find((item) => item.status !== 'ENTREGADA');
-  if (!nextDelivery) return 'Sin prÃ³xima entrega';
-  return `${formatDisplayDateOnly(nextDelivery.estimatedDelivery)} Â· ${nextDelivery.status}`;
+  if (!nextDelivery) return 'Sin próxima entrega';
+  return `${formatDisplayDateOnly(nextDelivery.estimatedDelivery)} · ${nextDelivery.status}`;
 }
 
 function renderMembershipSummary(rows = []) {
@@ -6469,19 +6511,19 @@ function renderMembershipSummary(rows = []) {
     ? [...expiredMemberships.values()]
       .map((item) => `${formatDisplayDateOnly(item.start)} a ${formatDisplayDateOnly(item.end)}`)
       .join(', ')
-    : 'Sin membresÃ­as vencidas';
+    : 'Sin membresías vencidas';
 
   const items = [
-    { key: 'status', label: 'ESTADO DE MEMBRESÃA:', value: membershipDisplayStatus(rows) },
+    { key: 'status', label: 'ESTADO DE MEMBRESÍA:', value: membershipDisplayStatus(rows) },
     { key: 'overdue-balance', label: 'SALDO VENCIDO:', value: membershipOverdueBalanceSummary(rows) },
     { key: 'pending-balance', label: 'SALDO PENDIENTE:', value: membershipPendingBalanceSummary(rows) },
-    { key: 'next-session', label: 'PRÃ“XIMA SESIÃ“N:', value: upcoming ? formatDisplayDateOnly(upcoming.fecha_de_sesion || upcoming.fecha_esperada) : 'Sin prÃ³xima sesiÃ³n' },
-    { key: 'next-delivery', label: 'PRÃ“XIMA ENTREGA:', value: nextMembershipDeliveryText(rows) },
-    { key: 'expired', label: 'MEMBRESÃAS VENCIDAS:', value: expiredText },
+    { key: 'next-session', label: 'PRÓXIMA SESIÓN:', value: upcoming ? formatDisplayDateOnly(upcoming.fecha_de_sesion || upcoming.fecha_esperada) : 'Sin próxima sesión' },
+    { key: 'next-delivery', label: 'PRÓXIMA ENTREGA:', value: nextMembershipDeliveryText(rows) },
+    { key: 'expired', label: 'MEMBRESÍAS VENCIDAS:', value: expiredText },
   ];
 
   return `
-    <div class="db-membership-summary" aria-label="Resumen de membresÃ­a">
+    <div class="db-membership-summary" aria-label="Resumen de membresía">
       ${items.map((item) => `
         <div class="db-membership-summary__item db-membership-summary__item--${escapeAttr(membershipSummaryTone(item.key, item.value))}">
           <span>${escapeHTML(item.label)}</span>
@@ -6493,10 +6535,10 @@ function renderMembershipSummary(rows = []) {
 }
 
 function renderMembershipSyncFooter() {
-  const message = 'Hola, quiero reportar o aclarar informaciÃ³n de mi dashboard de membresÃ­a en Mysauth OS.';
+  const message = 'Hola, quiero reportar o aclarar información de mi dashboard de membresía en Mysauth OS.';
   return `
     <div class="db-membership-sync">
-      <p>Sincronizado desde Mysauth OS. Â¿Crees que hay un error? ContÃ¡ctanos para reportarlo, solicitar aclaraciones o actualizaciÃ³n de datos.</p>
+      <p>Sincronizado desde Mysauth OS. ¿Crees que hay un error? Contáctanos para reportarlo, solicitar aclaraciones o actualización de datos.</p>
       <a class="db-btn-secondary db-membership-sync__button" href="${escapeAttr(buildWhatsAppLink(MEMBERSHIP_SUPPORT_WHATSAPP, message))}" target="_blank" rel="noopener noreferrer">Mensaje por WhatsApp</a>
     </div>
   `;
@@ -6780,7 +6822,7 @@ async function fetchServerStatus() {
 function eventLabel(event) {
   const name = event.name ?? `Evento ${event.id}`;
   const date = event.event_date ?? event.date;
-  return date ? `${name} Â· ${formatDisplayDateOnly(date)}` : name;
+  return date ? `${name} · ${formatDisplayDateOnly(date)}` : name;
 }
 
 async function fetchEventFinanceOptions(context = 'finance') {
@@ -7074,7 +7116,7 @@ async function prepareDownloadValues(form, values) {
   const membershipId = String(values.membership_id ?? '').trim();
   const cycleNumber = Number(values.membership_cycle_number ?? 0);
   if (!membershipId) {
-    showToast('Selecciona la membresÃ­a correspondiente a esta descarga.', 'error');
+    showToast('Selecciona la membresía correspondiente a esta descarga.', 'error');
     return false;
   }
   if (!Number.isFinite(cycleNumber) || cycleNumber < 1) {
@@ -7092,7 +7134,7 @@ async function prepareDownloadValues(form, values) {
       .maybeSingle();
     if (error || !data) {
       console.error('[HR] download membership lookup:', error);
-      showToast('No se pudo validar la membresÃ­a seleccionada.', 'error');
+      showToast('No se pudo validar la membresía seleccionada.', 'error');
       return false;
     }
     membership = data;
@@ -7112,7 +7154,7 @@ async function prepareDownloadValues(form, values) {
 
   if (deliveryError) {
     console.error('[HR] download delivery lookup:', deliveryError);
-    showToast('No se pudo validar el entregable de membresÃ­a.', 'error');
+    showToast('No se pudo validar el entregable de membresía.', 'error');
     return false;
   }
 
@@ -7219,7 +7261,7 @@ async function handleErpForm(form) {
     values.notes = String(values.notes ?? '').trim() || null;
 
     if (!values.entity_key || !values.name) {
-      showToast('Ingresa una clave y nombre vÃ¡lidos.', 'error');
+      showToast('Ingresa una clave y nombre válidos.', 'error');
       return;
     }
   }
@@ -7242,7 +7284,7 @@ async function handleErpForm(form) {
   const map = {
     'transaction-create': ['transactions', withTargetUsername(operationPayload), 'Transaccion creada.'],
     'session-create': ['sessions', withTargetUsername(operationPayload), 'Sesion creada.'],
-    'membership-create': ['memberships', withTargetUsername(operationPayload), 'MembresÃ­a creada.'],
+    'membership-create': ['memberships', withTargetUsername(operationPayload), 'Membresía creada.'],
     'download-create': ['downloads', operationPayload, 'Descarga creada.'],
     'beat-sale-create': ['store_products', operationPayload, 'Beat publicado.'],
     'contract-create': ['contracts', operationPayload, 'Contrato creado.'],
@@ -7256,7 +7298,7 @@ async function handleErpForm(form) {
   const result = await insertRow(config[0], config[1], config[2], { returning: 'id' });
   if (result.ok) {
     if (type === 'event-create') {
-      // Fuerza a que los selectores y permisos usen el evento reciÃ©n creado.
+      // Fuerza a que los selectores y permisos usen el evento recién creado.
       state.data.financeEvents = null;
       state.data.collabFinanceEvents = null;
       state.data.permissionEvents = null;
@@ -7279,7 +7321,7 @@ async function handleErpForm(form) {
 async function handleMembershipCancel(form, values = formValues(form)) {
   const membershipId = String(values.membership_id ?? '').trim();
   if (!membershipId) {
-    showToast('Selecciona una membresÃ­a.', 'error');
+    showToast('Selecciona una membresía.', 'error');
     return;
   }
 
@@ -7297,11 +7339,11 @@ async function handleMembershipCancel(form, values = formValues(form)) {
 
   if (error) {
     console.error('[HR] membership cancel:', error);
-    showToast('No se pudo cancelar la membresÃ­a.', 'error');
+    showToast('No se pudo cancelar la membresía.', 'error');
     return;
   }
 
-  showToast('MembresÃ­a cancelada.', 'success');
+  showToast('Membresía cancelada.', 'success');
   form.reset();
   navigate('erp-ops');
 }
@@ -7353,7 +7395,7 @@ async function saveMembershipDeliveryValues(values = {}) {
         .maybeSingle();
       if (error) {
         console.error('[HR] membership delivery membership lookup:', error);
-        showToast('No se pudo validar la membresÃ­a.', 'error');
+        showToast('No se pudo validar la membresía.', 'error');
         return false;
       }
       if (data?.user_id) userId = String(data.user_id);
@@ -7361,7 +7403,7 @@ async function saveMembershipDeliveryValues(values = {}) {
   }
 
   if (!userId) {
-    showToast('Selecciona un usuario o una membresÃ­a.', 'error');
+    showToast('Selecciona un usuario o una membresía.', 'error');
     return false;
   }
 
@@ -7417,7 +7459,7 @@ async function handleMembershipSessionNotes(form, values = formValues(form)) {
   const ok = await saveMembershipSessionNotesValues(values);
   if (!ok) return;
 
-  showToast('Notas de sesiÃ³n guardadas.', 'success');
+  showToast('Notas de sesión guardadas.', 'success');
   if (form.dataset.staySection === 'admin-table-editor') {
     navigate('admin-table-editor');
   }
@@ -7426,7 +7468,7 @@ async function handleMembershipSessionNotes(form, values = formValues(form)) {
 async function saveMembershipSessionNotesValues(values = {}) {
   const sessionId = String(values.session_id ?? '').trim();
   if (!sessionId) {
-    showToast('Esta fila no tiene una sesiÃ³n registrada para editar.', 'error');
+    showToast('Esta fila no tiene una sesión registrada para editar.', 'error');
     return false;
   }
 
@@ -7437,7 +7479,7 @@ async function saveMembershipSessionNotesValues(values = {}) {
 
   if (error) {
     console.error('[HR] membership session notes save:', error);
-    showToast('No se pudieron guardar las notas de la sesiÃ³n.', 'error');
+    showToast('No se pudieron guardar las notas de la sesión.', 'error');
     return false;
   }
 
@@ -7460,7 +7502,7 @@ async function handleAdminUserMerge(form, values = formValues(form)) {
   }
 
   const confirmed = window.confirm(
-    `Advertencia: vas a conectar el Auth/email de ${duplicateEmail} al User ID historico ${keepUserId}.\n\nSe conservaran los datos operativos del User ID historico. No se importara el historial del perfil duplicado. Â¿Confirmas la fusion?`
+    `Advertencia: vas a conectar el Auth/email de ${duplicateEmail} al User ID historico ${keepUserId}.\n\nSe conservaran los datos operativos del User ID historico. No se importara el historial del perfil duplicado. ¿Confirmas la fusion?`
   );
 
   if (!confirmed) return;
@@ -7675,16 +7717,16 @@ function operationReceiptTitle(formType) {
 
 function operationNotificationMessage(formType, values = {}) {
   if (formType === 'download-create' && values.release_mode === 'membership_delivery') {
-    return `Se preparÃ³ una descarga para tu membresÃ­a. AparecerÃ¡ en Descargas cuando se entregue el material del Mes ${values.membership_cycle_number ?? '-'}.`;
+    return `Se preparó una descarga para tu membresía. Aparecerá en Descargas cuando se entregue el material del Mes ${values.membership_cycle_number ?? '-'}.`;
   }
 
   const labels = {
-    'transaction-create': 'Se registrÃ³ una transacciÃ³n en tu cuenta.',
-    'session-create': 'Se registrÃ³ una sesiÃ³n en tu cuenta.',
-    'download-create': 'Se agregÃ³ una descarga a tu cuenta.',
-    'contract-create': 'Se agregÃ³ un contrato a tu cuenta.',
+    'transaction-create': 'Se registró una transacción en tu cuenta.',
+    'session-create': 'Se registró una sesión en tu cuenta.',
+    'download-create': 'Se agregó una descarga a tu cuenta.',
+    'contract-create': 'Se agregó un contrato a tu cuenta.',
   };
-  const base = labels[formType] ?? 'Se registrÃ³ una operaciÃ³n en tu cuenta.';
+  const base = labels[formType] ?? 'Se registró una operación en tu cuenta.';
   const amount = values.amount ? ` Monto: ${money(values.amount)}.` : '';
   const date = values.date || values.session_date
     ? ` Fecha: ${formatDisplayDateOnly(values.date || values.session_date)}.`
@@ -7731,11 +7773,11 @@ function operationReceiptRows(form) {
     rows.push(
       ['Nombre', values.name || '-'],
       ['Ruta storage', values.storage_path || '-'],
-      ['LiberaciÃ³n', values.release_mode === 'membership_delivery' ? 'Entregable de membresÃ­a' : 'Inmediata']
+      ['Liberación', values.release_mode === 'membership_delivery' ? 'Entregable de membresía' : 'Inmediata']
     );
     if (values.release_mode === 'membership_delivery') {
       rows.push(
-        ['MembresÃ­a', values.membership_id || '-'],
+        ['Membresía', values.membership_id || '-'],
         ['Ciclo', values.membership_cycle_number || '-']
       );
     }
@@ -7826,7 +7868,7 @@ async function handleAdminUserCreate(values) {
     return true;
   } catch (err) {
     console.error('[HR] admin-create-user invoke:', err);
-    showToast('Error al contactar la funciÃ³n de creaciÃ³n de usuario.', 'error');
+    showToast('Error al contactar la función de creación de usuario.', 'error');
     return false;
   }
 }
@@ -7843,8 +7885,8 @@ function showAdminCreatedUserResult(values, result) {
     <strong>Usuario creado.</strong>
     <span style="display:block;margin-top:6px;">Email: ${escapeHTML(email)}</span>
     <span style="display:block;margin-top:6px;">User ID: ${escapeHTML(userId || '-')}</span>
-    <span style="display:block;margin-top:6px;">ContraseÃ±a temporal: <code>${escapeHTML(tempPassword)}</code></span>
-    <button class="db-btn-secondary" type="button" data-action="copy-temp-password" data-temp-password="${escapeAttr(tempPassword)}">Copiar contraseÃ±a temporal</button>
+    <span style="display:block;margin-top:6px;">Contraseña temporal: <code>${escapeHTML(tempPassword)}</code></span>
+    <button class="db-btn-secondary" type="button" data-action="copy-temp-password" data-temp-password="${escapeAttr(tempPassword)}">Copiar contraseña temporal</button>
   `;
 }
 
@@ -7861,15 +7903,15 @@ async function handleShareLogin(encodedRow) {
   }
 
   if (!user.email || !user.temp_password) {
-    showToast('El usuario no tiene email o contraseÃ±a temporal visible.', 'error');
+    showToast('El usuario no tiene email o contraseña temporal visible.', 'error');
     return;
   }
 
   const message = [
     'Hola, estos son tus datos de acceso a Hidden Room / Mysauth:',
     `Correo: ${user.email}`,
-    `ContraseÃ±a temporal: ${user.temp_password}`,
-    'Al iniciar sesiÃ³n se te pedirÃ¡ actualizarla.',
+    `Contraseña temporal: ${user.temp_password}`,
+    'Al iniciar sesión se te pedirá actualizarla.',
   ].join('\n');
 
   try {
@@ -7901,12 +7943,12 @@ async function handleAccountUpdate(form) {
 
   if (password || passwordConfirm) {
     if (password !== passwordConfirm) {
-      showToast('Las contraseÃ±as no coinciden.', 'error');
+      showToast('Las contraseñas no coinciden.', 'error');
       return;
     }
 
     if (password.length < 8) {
-      showToast('La contraseÃ±a debe tener al menos 8 caracteres.', 'error');
+      showToast('La contraseña debe tener al menos 8 caracteres.', 'error');
       return;
     }
   }
@@ -7923,7 +7965,7 @@ async function handleAccountUpdate(form) {
   }
 
   // NOTE: public.users.email is intentionally NOT updated here.
-  // A database trigger syncs auth.users.email â†’ public.users.email automatically.
+  // A database trigger syncs auth.users.email → public.users.email automatically.
   const confirmedImmediately = data?.user?.email === email;
 
   const nextUser = {
@@ -7937,7 +7979,7 @@ async function handleAccountUpdate(form) {
   showToast(
     confirmedImmediately
       ? 'Cuenta actualizada correctamente.'
-      : 'Revisa tu correo para confirmar el cambio de email. El cambio se aplicarÃ¡ al confirmar.',
+      : 'Revisa tu correo para confirmar el cambio de email. El cambio se aplicará al confirmar.',
     confirmedImmediately ? 'success' : 'info'
   );
   navigate('account-settings');
@@ -8052,7 +8094,7 @@ function renderEventPermissionsEditor(user) {
         <tr data-search-row data-search-text="${escapeAttr(searchText)}">
           <td class="db-event-permissions__event">
             <strong>${escapeHTML(event.name ?? event.event_key ?? 'Evento')}</strong>
-            <small>${escapeHTML(event.event_key ?? '')} ${event.event_date ? `Â· ${formatDisplayDateOnly(event.event_date)}` : ''}</small>
+            <small>${escapeHTML(event.event_key ?? '')} ${event.event_date ? `· ${formatDisplayDateOnly(event.event_date)}` : ''}</small>
           </td>
           ${EVENT_PERMISSION_FLAGS.map(([flag, label]) => `
             <td>
@@ -8181,7 +8223,7 @@ function showAdminUserEditModal(userUuid) {
         </label>
         <label class="db-field"><span>Email (Auth)</span>
           <input type="email" name="email" value="${escapeAttr(user.email ?? '')}" required />
-          <small class="db-field__hint">Cambiar el email requiere confirmaciÃ³n del usuario. Se enruta via Edge Function.</small>
+          <small class="db-field__hint">Cambiar el email requiere confirmación del usuario. Se enruta via Edge Function.</small>
         </label>
         ${renderEventPermissionsEditor(user)}
         <div class="db-modal__actions">
@@ -8238,7 +8280,7 @@ function showAdminUserEditModal(userUuid) {
  * Admin update of a user's profile fields + email.
  * Email is routed through the Edge Function "admin-update-user" which uses the
  * service-role key server-side to update auth.users.email.
- * The DB trigger then syncs auth.users.email â†’ public.users.email automatically.
+ * The DB trigger then syncs auth.users.email → public.users.email automatically.
  * All other profile fields are updated directly in public.users.
  *
  * @param {Object} selectedUser   Row from public.users (must have .id = auth UUID)
@@ -8280,17 +8322,17 @@ async function handleAdminUserUpdate(selectedUser, newEmail, profileFields) {
         return false;
       }
 
-      showToast('Usuario actualizado. El email se sincronizarÃ¡ tras confirmaciÃ³n.', 'success');
+      showToast('Usuario actualizado. El email se sincronizará tras confirmación.', 'success');
       return true;
 
     } catch (err) {
       console.error('[HR] admin-update-user invoke error:', err);
-      showToast('Error al contactar la funciÃ³n de actualizaciÃ³n.', 'error');
+      showToast('Error al contactar la función de actualización.', 'error');
       return false;
     }
   }
 
-  // Email not changed â€” update only the profile fields directly in public.users.
+  // Email not changed — update only the profile fields directly in public.users.
   const { error: profileError } = await supabase
     .from('users')
     .update(profileFields)
@@ -8354,20 +8396,20 @@ async function saveAdminTableRow(tableName, config, original, payload, options =
   }
 
   // public.users.email must be updated through auth.users via the Edge Function.
-  // The DB trigger then syncs auth.users.email â†’ public.users.email automatically.
+  // The DB trigger then syncs auth.users.email → public.users.email automatically.
   if (tableName === 'users' && 'email' in payload) {
     const newEmail = payload.email ?? '';
     delete payload.email; // never write email directly to public.users
 
     if (!newEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
-      showToast('El email no tiene un formato vÃ¡lido.', 'error');
+      showToast('El email no tiene un formato válido.', 'error');
       return false;
     }
 
     try {
       const { error: fnError } = await supabase.functions.invoke('admin-update-user', {
         body: {
-          id: original.id,   // public.users.id = auth.users.id (UUID) â€” NOT user_id
+          id: original.id,   // public.users.id = auth.users.id (UUID) — NOT user_id
           email: newEmail,
           profile: {
             display_name: payload.display_name ?? original.display_name ?? null,
@@ -8386,7 +8428,7 @@ async function saveAdminTableRow(tableName, config, original, payload, options =
       }
     } catch (err) {
       console.error('[HR] table editor admin-update-user invoke:', err);
-      showToast('Error al contactar la funciÃ³n de actualizaciÃ³n de email.', 'error');
+      showToast('Error al contactar la función de actualización de email.', 'error');
       return false;
     }
 
@@ -8497,7 +8539,7 @@ async function handleAdminTableSaveAll() {
   const extraCount = Math.max(0, summary.length - 18);
   const preview = summary.slice(0, 18).join('\n');
   const confirmed = window.confirm(
-    `Vas a guardar ${pending.length} fila${pending.length === 1 ? '' : 's'} con ${summary.length} cambio${summary.length === 1 ? '' : 's'}:\n\n${preview}${extraCount ? `\n... y ${extraCount} cambio${extraCount === 1 ? '' : 's'} mÃ¡s.` : ''}\n\nÂ¿Confirmas guardar estos cambios?`
+    `Vas a guardar ${pending.length} fila${pending.length === 1 ? '' : 's'} con ${summary.length} cambio${summary.length === 1 ? '' : 's'}:\n\n${preview}${extraCount ? `\n... y ${extraCount} cambio${extraCount === 1 ? '' : 's'} más.` : ''}\n\n¿Confirmas guardar estos cambios?`
   );
 
   if (!confirmed) return;
@@ -8543,7 +8585,7 @@ function collectMembershipSessionNotesFormChange(form) {
 
   if (String(beforeNotes) !== String(afterNotes)) {
     changes.push({
-      field: 'Notas de sesiÃ³n',
+      field: 'Notas de sesión',
       beforeValue: beforeNotes || '-',
       afterValue: afterNotes || '-',
     });
@@ -8555,7 +8597,7 @@ function collectMembershipSessionNotesFormChange(form) {
     type: 'session-notes',
     values,
     changes,
-    label: `SesiÃ³n ${values.session_id || '-'}`,
+    label: `Sesión ${values.session_id || '-'}`,
   };
 }
 
@@ -8588,7 +8630,7 @@ async function handleMembershipDashboardSaveAll() {
   const extraCount = Math.max(0, summary.length - 18);
   const preview = summary.slice(0, 18).join('\n');
   const confirmed = window.confirm(
-    `Vas a guardar ${pending.length} fila${pending.length === 1 ? '' : 's'} con ${summary.length} cambio${summary.length === 1 ? '' : 's'}:\n\n${preview}${extraCount ? `\n... y ${extraCount} cambio${extraCount === 1 ? '' : 's'} mÃ¡s.` : ''}\n\nÂ¿Confirmas guardar estos cambios?`
+    `Vas a guardar ${pending.length} fila${pending.length === 1 ? '' : 's'} con ${summary.length} cambio${summary.length === 1 ? '' : 's'}:\n\n${preview}${extraCount ? `\n... y ${extraCount} cambio${extraCount === 1 ? '' : 's'} más.` : ''}\n\n¿Confirmas guardar estos cambios?`
   );
 
   if (!confirmed) return;
@@ -8633,7 +8675,7 @@ async function handleAdminTableDelete(tableName, encodedRow) {
     ? (original.concept || original.name || original.id || original.user_id || 'esta fila')
     : (original.display_name || original.username || original.concept || original.name || original.id || original.user_id || 'esta fila');
   const confirmed = window.confirm(
-    `Advertencia: vas a eliminar permanentemente ${readable} de ${label}.\n\nEsta acciÃ³n no se puede deshacer. Â¿Confirmas la eliminaciÃ³n?`
+    `Advertencia: vas a eliminar permanentemente ${readable} de ${label}.\n\nEsta acción no se puede deshacer. ¿Confirmas la eliminación?`
   );
 
   if (!confirmed) return;
@@ -8663,7 +8705,7 @@ async function handleAdminTableDelete(tableName, encodedRow) {
 
   if (count === 0) {
     console.warn('[HR] table editor delete affected 0 rows:', { tableName, original });
-    showToast('No se eliminÃ³ ninguna fila. Revisa policies DELETE/RLS.', 'error');
+    showToast('No se eliminó ninguna fila. Revisa policies DELETE/RLS.', 'error');
     return;
   }
 
@@ -8696,7 +8738,7 @@ async function handleAdminUserDelete(user) {
     navigate('admin-table-editor');
   } catch (err) {
     console.error('[HR] admin-delete-user invoke:', err);
-    showToast('Error al contactar la funciÃ³n de eliminaciÃ³n.', 'error');
+    showToast('Error al contactar la función de eliminación.', 'error');
   }
 }
 
@@ -8927,8 +8969,8 @@ function applyAuthAuditFilter(filter = 'all') {
 
 /** Prevent XSS when injecting user-supplied strings into innerHTML */
 function escapeHTML(str) {
-  if (typeof str !== 'string') return '';
-  return str
+  if (str === null || str === undefined) return '';
+  return String(str)
     .replace(/&/g,  '&amp;')
     .replace(/</g,  '&lt;')
     .replace(/>/g,  '&gt;')
@@ -8952,7 +8994,7 @@ function enhancePasswordToggles(root = document) {
     button.type = 'button';
     button.className = 'db-password-toggle';
     button.dataset.action = 'toggle-password';
-    button.setAttribute('aria-label', 'Ver contraseÃ±a');
+    button.setAttribute('aria-label', 'Ver contraseña');
     button.innerHTML = '<span class="password-eye" aria-hidden="true"></span>';
     wrapper.appendChild(button);
   });
@@ -9020,7 +9062,7 @@ function attachMainDelegation() {
         input.type = visible ? 'password' : 'text';
         input.dataset.passwordVisible = visible ? 'false' : 'true';
         passwordToggle.innerHTML = '<span class="password-eye" aria-hidden="true"></span>';
-        passwordToggle.setAttribute('aria-label', visible ? 'Ver contraseÃ±a' : 'Ocultar contraseÃ±a');
+        passwordToggle.setAttribute('aria-label', visible ? 'Ver contraseña' : 'Ocultar contraseña');
       }
       return;
     }
@@ -9090,8 +9132,8 @@ function attachMainDelegation() {
       const btn = e.target.closest('[data-temp-password]');
       if (btn?.dataset.tempPassword) {
         navigator.clipboard?.writeText(btn.dataset.tempPassword)
-          .then(() => showToast('ContraseÃ±a temporal copiada.', 'success'))
-          .catch(() => showToast('No se pudo copiar automÃ¡ticamente.', 'error'));
+          .then(() => showToast('Contraseña temporal copiada.', 'success'))
+          .catch(() => showToast('No se pudo copiar automáticamente.', 'error'));
       }
     }
 
@@ -9101,7 +9143,7 @@ function attachMainDelegation() {
       if (url) {
         navigator.clipboard?.writeText(url)
           .then(() => showToast('URL copiada a portapapeles.', 'success'))
-          .catch(() => showToast('No se pudo copiar automÃ¡ticamente.', 'error'));
+          .catch(() => showToast('No se pudo copiar automáticamente.', 'error'));
       }
     }
 
@@ -9146,7 +9188,7 @@ function attachMainDelegation() {
       if (url) {
         navigator.clipboard?.writeText(url)
           .then(() => showToast('Enlace copiado.', 'success'))
-          .catch(() => showToast('No se pudo copiar automÃ¡ticamente.', 'error'));
+          .catch(() => showToast('No se pudo copiar automáticamente.', 'error'));
       }
       return;
     }
@@ -9428,12 +9470,12 @@ function showOnboardingModal(needsEmail, needsPassword) {
     // Build the inner sections conditionally
     const emailSection = needsEmail ? `
       <section id="js-ob-email-section">
-        <h3 style="margin:0 0 8px;font-size:1rem;">Actualiza tu correo electrÃ³nico</h3>
+        <h3 style="margin:0 0 8px;font-size:1rem;">Actualiza tu correo electrónico</h3>
         <p style="margin:0 0 12px;font-size:.875rem;color:var(--db-muted,#aaa)">
           Tu cuenta usa un correo temporal. Debes ingresar un correo real para continuar.
         </p>
         <label class="db-field">
-          <span>Nuevo correo electrÃ³nico</span>
+          <span>Nuevo correo electrónico</span>
           <input id="js-ob-email" type="email" autocomplete="email" placeholder="Nombre@ejemplo.com" required />
         </label>
         <div id="js-ob-email-error" style="color:#f87171;font-size:.8rem;min-height:18px;margin-top:4px;"></div>
@@ -9442,17 +9484,17 @@ function showOnboardingModal(needsEmail, needsPassword) {
 
     const passwordSection = needsPassword ? `
       <section id="js-ob-password-section" style="${needsEmail ? 'margin-top:20px;padding-top:20px;border-top:1px solid var(--db-border,#333);' : ''}">
-        <h3 style="margin:0 0 8px;font-size:1rem;">Establece una nueva contraseÃ±a</h3>
+        <h3 style="margin:0 0 8px;font-size:1rem;">Establece una nueva contraseña</h3>
         <p style="margin:0 0 12px;font-size:.875rem;color:var(--db-muted,#aaa)">
-          Tu cuenta tiene una contraseÃ±a temporal. Debes crear una nueva contraseÃ±a para continuar.
+          Tu cuenta tiene una contraseña temporal. Debes crear una nueva contraseña para continuar.
         </p>
         <label class="db-field">
-          <span>Nueva contraseÃ±a</span>
-          <input id="js-ob-password" type="password" autocomplete="new-password" placeholder="Nueva contraseÃ±a" required />
+          <span>Nueva contraseña</span>
+          <input id="js-ob-password" type="password" autocomplete="new-password" placeholder="Nueva contraseña" required />
         </label>
         <label class="db-field" style="margin-top:10px;">
-          <span>Confirmar contraseÃ±a</span>
-          <input id="js-ob-password-confirm" type="password" autocomplete="new-password" placeholder="Confirmar contraseÃ±a" required />
+          <span>Confirmar contraseña</span>
+          <input id="js-ob-password-confirm" type="password" autocomplete="new-password" placeholder="Confirmar contraseña" required />
         </label>
         <div id="js-ob-password-error" style="color:#f87171;font-size:.8rem;min-height:18px;margin-top:4px;"></div>
       </section>
@@ -9460,7 +9502,7 @@ function showOnboardingModal(needsEmail, needsPassword) {
 
     overlay.innerHTML = `
       <div style="background:var(--db-bg,#111);border:1px solid var(--db-border,#333);border-radius:10px;padding:28px 24px;max-width:460px;width:100%;max-height:90vh;overflow-y:auto;">
-        <h2 id="onboarding-title" style="margin:0 0 6px;font-size:1.2rem;">ConfiguraciÃ³n inicial requerida</h2>
+        <h2 id="onboarding-title" style="margin:0 0 6px;font-size:1.2rem;">Configuración inicial requerida</h2>
         <p style="margin:0 0 20px;font-size:.875rem;color:var(--db-muted,#aaa)">
           Debes completar los siguientes pasos antes de acceder al panel.
         </p>
@@ -9469,7 +9511,7 @@ function showOnboardingModal(needsEmail, needsPassword) {
         <div id="js-ob-status" style="min-height:18px;font-size:.85rem;margin-top:12px;"></div>
         <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;">
           <button id="js-ob-submit" class="btn-primary" type="button">Guardar y continuar</button>
-          <button id="js-ob-logout" class="db-btn-secondary" type="button">Cerrar sesiÃ³n</button>
+          <button id="js-ob-logout" class="db-btn-secondary" type="button">Cerrar sesión</button>
         </div>
       </div>
     `;
@@ -9495,17 +9537,17 @@ function showOnboardingModal(needsEmail, needsPassword) {
       if (overlay.querySelector('#js-ob-password-error')) overlay.querySelector('#js-ob-password-error').textContent = '';
       if (statusEl) statusEl.textContent = '';
 
-      // â”€â”€ Validate email â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ── Validate email ───────────────────────────────────────────
       let newEmail = null;
       if (needsEmail) {
         newEmail = (overlay.querySelector('#js-ob-email')?.value ?? '').trim();
         const emailErrorEl = overlay.querySelector('#js-ob-email-error');
         if (!newEmail) {
-          if (emailErrorEl) emailErrorEl.textContent = 'El correo no puede estar vacÃ­o.';
+          if (emailErrorEl) emailErrorEl.textContent = 'El correo no puede estar vacío.';
           return;
         }
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
-          if (emailErrorEl) emailErrorEl.textContent = 'El formato del correo no es vÃ¡lido.';
+          if (emailErrorEl) emailErrorEl.textContent = 'El formato del correo no es válido.';
           return;
         }
         if (newEmail.toLowerCase().endsWith('@hiddenroom.local')) {
@@ -9514,34 +9556,34 @@ function showOnboardingModal(needsEmail, needsPassword) {
         }
       }
 
-      // â”€â”€ Validate password â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ── Validate password ────────────────────────────────────────
       let newPassword = null;
       if (needsPassword) {
         newPassword         = overlay.querySelector('#js-ob-password')?.value ?? '';
         const confirmPass   = overlay.querySelector('#js-ob-password-confirm')?.value ?? '';
         const passErrorEl   = overlay.querySelector('#js-ob-password-error');
-        // Retrieve the stored temp_password only for comparison â€” never display it.
+        // Retrieve the stored temp_password only for comparison — never display it.
         const tempPass      = state.user?.temp_password ?? '';
 
         if (!newPassword) {
-          if (passErrorEl) passErrorEl.textContent = 'La contraseÃ±a no puede estar vacÃ­a.';
+          if (passErrorEl) passErrorEl.textContent = 'La contraseña no puede estar vacía.';
           return;
         }
         if (newPassword.length < 8) {
-          if (passErrorEl) passErrorEl.textContent = 'La contraseÃ±a debe tener al menos 8 caracteres.';
+          if (passErrorEl) passErrorEl.textContent = 'La contraseña debe tener al menos 8 caracteres.';
           return;
         }
         if (tempPass && newPassword === tempPass) {
-          if (passErrorEl) passErrorEl.textContent = 'La nueva contraseÃ±a no puede ser igual a la contraseÃ±a temporal.';
+          if (passErrorEl) passErrorEl.textContent = 'La nueva contraseña no puede ser igual a la contraseña temporal.';
           return;
         }
         if (newPassword !== confirmPass) {
-          if (passErrorEl) passErrorEl.textContent = 'Las contraseÃ±as no coinciden.';
+          if (passErrorEl) passErrorEl.textContent = 'Las contraseñas no coinciden.';
           return;
         }
       }
 
-      // â”€â”€ Apply updates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ── Apply updates ────────────────────────────────────────────
       submitBtn.disabled = true;
       if (statusEl) statusEl.textContent = 'Guardando...';
 
@@ -9573,8 +9615,8 @@ function showOnboardingModal(needsEmail, needsPassword) {
         if (statusEl) {
           statusEl.style.color = '#4ade80';
           statusEl.textContent = needsEmail
-            ? 'ConfiguraciÃ³n guardada. Si Supabase requiere confirmaciÃ³n, revisa tu bandeja de entrada. Recargando...'
-            : 'ConfiguraciÃ³n guardada. Recargando...';
+            ? 'Configuración guardada. Si Supabase requiere confirmación, revisa tu bandeja de entrada. Recargando...'
+            : 'Configuración guardada. Recargando...';
         }
 
         setTimeout(() => { window.location.reload(); }, 2200);
@@ -9625,7 +9667,7 @@ async function init() {
 
   await loadAndRenderNotifications();
 
-  // â”€â”€ Onboarding gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Onboarding gate ──────────────────────────────────────────────
   // Check if the user needs to complete mandatory onboarding steps
   // before they can access the dashboard.
   const needsEmailReplacement = (state.user?.email ?? '').toLowerCase().endsWith('@hiddenroom.local');
@@ -9637,7 +9679,7 @@ async function init() {
     // showOnboardingModal only resolves after both required steps are done.
     return; // init() re-runs after reload inside the modal on success.
   }
-  // â”€â”€ End onboarding gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── End onboarding gate ──────────────────────────────────────────
 
   navigate(initialSectionKey());
 }
@@ -9663,7 +9705,3 @@ export {
   hasPermission,
   hasAnyPermission,
 };
-
-
-
-

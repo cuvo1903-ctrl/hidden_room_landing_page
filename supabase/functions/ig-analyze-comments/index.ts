@@ -1,4 +1,4 @@
-﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,21 +6,18 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const INSTAGRAM_API_VERSION = "v24.0";
-const MENTION_PATTERN = /[@＠][a-zA-Z0-9._]+/g;
+const META_API_VERSION = "v24.0";
+const MENTION_PATTERN = /[@\uFF20][a-zA-Z0-9._]+/g;
 const ZERO_WIDTH_PATTERN = /[\u200B-\u200D\uFEFF]/g;
 const COMMENTS_PAGE_LIMIT = 100;
 const MAX_PAGES = 500;
+const API_MODES = new Set(["instagram_login", "facebook_graph"]);
 
 type CommentRow = {
   id?: string;
   text?: string;
   username?: string;
   timestamp?: string;
-  replies?: {
-    data?: CommentRow[];
-    paging?: { next?: string };
-  };
 };
 
 type MentionTotal = {
@@ -32,6 +29,13 @@ type MentionUnique = {
   mention: string;
   count: number;
   authors: string[];
+};
+
+type MetaMediaInfo = {
+  id?: string;
+  permalink?: string;
+  comments_count?: number;
+  media_type?: string;
 };
 
 function json(body: Record<string, unknown>, status = 200) {
@@ -59,14 +63,22 @@ async function readResponseBody(response: Response) {
   }
 }
 
-function friendlyMetaError(status: number, data: Record<string, unknown>) {
+function friendlyMetaError(status: number, data: Record<string, unknown>, mode = "instagram_login") {
   const error = data?.error as Record<string, unknown> | undefined;
-  const message = String(error?.message || data?.raw || "Instagram no pudo responder.");
+  const message = String(error?.message || data?.raw || "Meta no pudo responder.");
   const lower = message.toLowerCase();
   const code = Number(error?.code || 0);
 
-  if (status === 400 && (lower.includes("access token") || lower.includes("token"))) {
-    return "Token invalido o expirado. Genera un nuevo Access Token de Instagram.";
+  if (code === 190 || (status === 400 && (lower.includes("access token") || lower.includes("token")))) {
+    return mode === "facebook_graph"
+      ? "Token de Facebook invalido o expirado. Genera un Facebook User/Page access token valido."
+      : "Token invalido o expirado. Genera un nuevo Access Token de Instagram.";
+  }
+  if (code === 10) {
+    return "Permisos insuficientes en Meta. Verifica instagram_basic, pages_show_list, pages_read_engagement e instagram_business_manage_comments.";
+  }
+  if (code === 100) {
+    return "Parametro invalido para Meta. Verifica que el media_id venga de publicaciones cargadas por esta misma cuenta.";
   }
   if (status === 401 || status === 403 || lower.includes("permission") || lower.includes("permissions")) {
     return "Permisos insuficientes para leer comentarios de esta publicacion.";
@@ -81,18 +93,22 @@ function friendlyMetaError(status: number, data: Record<string, unknown>) {
   return message;
 }
 
+function graphBase(mode: string) {
+  return mode === "facebook_graph" ? "https://graph.facebook.com" : "https://graph.instagram.com";
+}
+
 function normalizeCommentText(value: unknown) {
   return String(value ?? "").normalize("NFKC").replace(ZERO_WIDTH_PATTERN, "");
 }
 
 function maskCommentSample(value: string) {
   return value
-    .replace(MENTION_PATTERN, (mention) => `${mention.slice(0, 1)}***`)
+    .replace(MENTION_PATTERN, (mention) => mention.slice(0, 1) + "***")
     .slice(0, 160);
 }
 
 function normalizeMention(value: string) {
-  return value.trim().replace(/^＠/, "@").toLowerCase();
+  return value.trim().replace(/^\uFF20/, "@").toLowerCase();
 }
 
 function normalizeAuthor(value: unknown, fallback: string) {
@@ -146,59 +162,47 @@ async function requireAdmin(req: Request) {
   return { user: authData.user, adminClient };
 }
 
-async function fetchCommentReplies(commentId: string, accessToken: string) {
-  const replies: CommentRow[] = [];
-  const firstUrl = new URL(`https://graph.instagram.com/${INSTAGRAM_API_VERSION}/${encodeURIComponent(commentId)}/replies`);
+async function fetchMetaMediaInfo(mediaId: string, accessToken: string, mode: string) {
+  const url = new URL(graphBase(mode) + "/" + META_API_VERSION + "/" + encodeURIComponent(mediaId));
+  url.searchParams.set("fields", "id,permalink,comments_count,media_type");
+  url.searchParams.set("access_token", accessToken);
+
+  const response = await fetch(url);
+  const data = await readResponseBody(response);
+  if (!response.ok) {
+    console.error("[ig-analyze-comments] Meta media validation error", {
+      mode,
+      endpoint: url.origin + url.pathname,
+      media_id: mediaId,
+      status: response.status,
+      meta_error: data?.error ?? data,
+    });
+    throw new Error(friendlyMetaError(response.status, data, mode));
+  }
+
+  const media = data as MetaMediaInfo;
+  console.info("[ig-analyze-comments] Media validado", {
+    mode,
+    media_id: media.id ?? mediaId,
+    media_permalink: media.permalink ?? null,
+    comments_count: media.comments_count ?? null,
+    media_type: media.media_type ?? null,
+  });
+  return media;
+}
+
+async function fetchAllComments(mediaId: string, accessToken: string, mediaInfo: MetaMediaInfo, mode: string) {
+  const firstUrl = new URL(graphBase(mode) + "/" + META_API_VERSION + "/" + encodeURIComponent(mediaId) + "/comments");
   firstUrl.searchParams.set("fields", "id,text,username,timestamp");
   firstUrl.searchParams.set("limit", String(COMMENTS_PAGE_LIMIT));
   firstUrl.searchParams.set("access_token", accessToken);
 
-  let nextUrl: string | null = firstUrl.toString();
-  const seenUrls = new Set<string>();
-  let page = 0;
-
-  while (nextUrl && page < MAX_PAGES) {
-    if (seenUrls.has(nextUrl)) break;
-    seenUrls.add(nextUrl);
-    page += 1;
-
-    const response = await fetch(nextUrl);
-    const data = await readResponseBody(response);
-    if (!response.ok) {
-      const errorMessage = friendlyMetaError(response.status, data);
-      if (/no se encontro|no pertenece|permisos insuficientes/i.test(errorMessage)) return replies;
-      throw new Error(errorMessage);
-    }
-
-    if (Array.isArray(data?.data)) replies.push(...data.data);
-    nextUrl = typeof data?.paging?.next === "string" ? data.paging.next : null;
-  }
-
-  return replies;
-}
-
-async function fetchAllComments(mediaId: string, accessToken: string) {
-  const firstUrl = new URL(`https://graph.instagram.com/${INSTAGRAM_API_VERSION}/${encodeURIComponent(mediaId)}/comments`);
-  firstUrl.searchParams.set("fields", "id,text,username,timestamp,replies{id,text,username,timestamp}");
-  firstUrl.searchParams.set("limit", String(COMMENTS_PAGE_LIMIT));
-  firstUrl.searchParams.set("access_token", accessToken);
-
   const comments: CommentRow[] = [];
-  const seenCommentIds = new Set<string>();
-  let repliesCount = 0;
   let nextUrl: string | null = firstUrl.toString();
   const seenUrls = new Set<string>();
   let page = 0;
   let truncated = false;
   let warning: string | null = null;
-
-  const appendComment = (comment: CommentRow) => {
-    const id = String(comment?.id ?? "");
-    if (id && seenCommentIds.has(id)) return false;
-    if (id) seenCommentIds.add(id);
-    comments.push(comment);
-    return true;
-  };
 
   while (nextUrl) {
     if (seenUrls.has(nextUrl)) {
@@ -206,7 +210,7 @@ async function fetchAllComments(mediaId: string, accessToken: string) {
     }
     if (page >= MAX_PAGES) {
       truncated = true;
-      warning = `Se analizaron ${comments.length} comentarios en ${MAX_PAGES} paginas. La publicacion tiene mas paginas disponibles; exporta con cautela porque el ranking puede ser parcial.`;
+      warning = "Se analizaron " + comments.length + " comentarios en " + MAX_PAGES + " paginas. La publicacion tiene mas paginas disponibles; exporta con cautela porque el ranking puede ser parcial.";
       break;
     }
 
@@ -216,30 +220,40 @@ async function fetchAllComments(mediaId: string, accessToken: string) {
     const response = await fetch(nextUrl);
     const data = await readResponseBody(response);
     if (!response.ok) {
-      throw new Error(friendlyMetaError(response.status, data));
+      const safeEndpoint = (() => {
+        try {
+          const parsed = new URL(nextUrl || "");
+          return parsed.origin + parsed.pathname;
+        } catch {
+          return graphBase(mode) + "/comments";
+        }
+      })();
+      console.error("[ig-analyze-comments] Meta comments error", {
+        mode,
+        endpoint: safeEndpoint,
+        media_id: mediaId,
+        media_permalink: mediaInfo.permalink ?? null,
+        comments_count: mediaInfo.comments_count ?? null,
+        status: response.status,
+        meta_error: data?.error ?? data,
+      });
+      throw new Error(friendlyMetaError(response.status, data, mode));
     }
 
-    if (Array.isArray(data?.data)) {
-      for (const comment of data.data as CommentRow[]) {
-        appendComment(comment);
-
-        const inlineReplies = Array.isArray(comment?.replies?.data) ? comment.replies.data : [];
-        for (const reply of inlineReplies) {
-          if (appendComment(reply)) repliesCount += 1;
-        }
-
-        if (comment?.id) {
-          const pagedReplies = await fetchCommentReplies(comment.id, accessToken);
-          for (const reply of pagedReplies) {
-            if (appendComment(reply)) repliesCount += 1;
-          }
-        }
-      }
-    }
+    if (Array.isArray(data?.data)) comments.push(...data.data);
     nextUrl = typeof data?.paging?.next === "string" ? data.paging.next : null;
   }
 
-  return { comments, pages: page, repliesCount, truncated, warning };
+  console.info("[ig-analyze-comments] Comentarios recibidos", {
+    mode,
+    media_id: mediaId,
+    media_permalink: mediaInfo.permalink ?? null,
+    comments_count: mediaInfo.comments_count ?? null,
+    comments_received: comments.length,
+    pages_fetched: page,
+  });
+
+  return { comments, pages: page, repliesCount: 0, truncated, warning };
 }
 
 function analyzeComments(comments: CommentRow[]) {
@@ -253,21 +267,23 @@ function analyzeComments(comments: CommentRow[]) {
 
   for (const comment of comments) {
     const text = normalizeCommentText(comment?.text);
-    if (!text) commentsWithoutTextCount += 1;
-    if (text && sampleTexts.length < 5) sampleTexts.push(maskCommentSample(text));
-    if ((text.includes("@") || text.includes("＠")) && sampleTextsWithAt.length < 5) {
-      sampleTextsWithAt.push(maskCommentSample(text));
+    if (!text) {
+      commentsWithoutTextCount += 1;
+      continue;
     }
-    const mentions = text.match(MENTION_PATTERN) ?? [];
-    if (!mentions.length) continue;
-    commentsWithMentionsCount += 1;
+    if (sampleTexts.length < 5) sampleTexts.push(maskCommentSample(text));
 
-    const author = normalizeAuthor(comment?.username, `comment:${comment?.id ?? "unknown"}`);
+    const mentions = text.match(MENTION_PATTERN) || [];
+    if (!mentions.length) continue;
+
+    commentsWithMentionsCount += 1;
+    if (sampleTextsWithAt.length < 5) sampleTextsWithAt.push(maskCommentSample(text));
+    const author = normalizeAuthor(comment?.username, comment?.id || "autor_desconocido");
 
     for (const rawMention of mentions) {
       const mention = normalizeMention(rawMention);
       mentionsCount += 1;
-      totalCounts.set(mention, (totalCounts.get(mention) ?? 0) + 1);
+      totalCounts.set(mention, (totalCounts.get(mention) || 0) + 1);
       if (!uniqueAuthors.has(mention)) uniqueAuthors.set(mention, new Set());
       uniqueAuthors.get(mention)?.add(author);
     }
@@ -300,6 +316,23 @@ function analyzeComments(comments: CommentRow[]) {
   };
 }
 
+function buildAnalysisWarning(mode: string, mediaInfo: MetaMediaInfo, commentsResult: { warning: string | null }, analysis: { comments_count: number; mentions_count: number }) {
+  if (commentsResult.warning) return commentsResult.warning;
+  const reportedCount = mediaInfo.comments_count ?? 0;
+  if (reportedCount > 0 && analysis.comments_count === 0) {
+    return mode === "instagram_login"
+      ? "Meta reporta comentarios, pero Instagram Login no los entrego. Usa el modo Facebook Graph con un token con instagram_business_manage_comments y verifica que la publicacion pertenezca a la cuenta conectada."
+      : "Meta reporta comentarios, pero la API no los entrego. Regenera token con instagram_business_manage_comments y verifica que la publicacion pertenezca a la cuenta conectada.";
+  }
+  if (reportedCount === 0) {
+    return "Meta reporta 0 comentarios disponibles para esta publicacion.";
+  }
+  if (analysis.mentions_count === 0) {
+    return "Meta devolvio comentarios, pero ninguno contiene @usuario en el campo text. Revisa las muestras enmascaradas para confirmar el formato recibido.";
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -311,22 +344,26 @@ Deno.serve(async (req) => {
   if (!body || typeof body !== "object") return json({ error: "JSON invalido." }, 400);
 
   const payload = body as Record<string, unknown>;
-  const accessToken = String(payload.access_token || Deno.env.get("IG_ACCESS_TOKEN") || "").trim();
+  const rawMode = String(payload.api_mode || payload.mode || "instagram_login").trim();
+  const apiMode = API_MODES.has(rawMode) ? rawMode : "instagram_login";
+  const envTokenName = apiMode === "facebook_graph" ? "FB_ACCESS_TOKEN" : "IG_ACCESS_TOKEN";
+  const accessToken = String(payload.access_token || Deno.env.get(envTokenName) || Deno.env.get("IG_ACCESS_TOKEN") || "").trim();
   const mediaId = String(payload.media_id || "").trim();
   const mediaPermalink = String(payload.media_permalink || "").trim() || null;
 
-  if (!accessToken) return json({ error: "Falta access_token o secreto IG_ACCESS_TOKEN." }, 400);
+  if (!accessToken) return json({ error: "Falta access_token o secreto " + envTokenName + "." }, 400);
   if (!mediaId) return json({ error: "Falta media_id." }, 400);
 
   try {
-    const commentsResult = await fetchAllComments(mediaId, accessToken);
+    const mediaInfo = await fetchMetaMediaInfo(mediaId, accessToken, apiMode);
+    const commentsResult = await fetchAllComments(mediaId, accessToken, mediaInfo, apiMode);
     const analysis = analyzeComments(commentsResult.comments);
 
     const { data: saved, error: saveError } = await auth.adminClient
       .from("ig_mention_analyses")
       .insert({
         media_id: mediaId,
-        media_permalink: mediaPermalink,
+        media_permalink: mediaInfo.permalink || mediaPermalink,
         comments_count: analysis.comments_count,
         mentions_count: analysis.mentions_count,
         unique_mentions_count: analysis.unique_mentions_count,
@@ -339,14 +376,18 @@ Deno.serve(async (req) => {
 
     return json({
       ok: true,
+      api_mode: apiMode,
       ...analysis,
+      media: mediaInfo,
+      meta_comments_count: mediaInfo.comments_count ?? null,
+      media_permalink: mediaInfo.permalink ?? mediaPermalink,
       pages_fetched: commentsResult.pages,
       replies_count: commentsResult.repliesCount,
       comments_page_limit: COMMENTS_PAGE_LIMIT,
       analysis_truncated: commentsResult.truncated,
-      analysis_warning: commentsResult.warning || (analysis.comments_count > 0 && analysis.mentions_count === 0 ? "Meta devolvio comentarios, pero ninguno contiene @usuario en el campo text. Revisa si las menciones estan en otro formato o si Instagram las oculta para este token." : null),
+      analysis_warning: buildAnalysisWarning(apiMode, mediaInfo, commentsResult, analysis),
       saved_analysis_id: saveError ? null : saved?.id ?? null,
-      save_warning: saveError ? `El analisis se genero, pero no se pudo guardar en Supabase: ${saveError.message}` : null,
+      save_warning: saveError ? "El analisis se genero, pero no se pudo guardar en Supabase: " + saveError.message : null,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -357,8 +398,3 @@ Deno.serve(async (req) => {
     }, 502);
   }
 });
-
-
-
-
-
