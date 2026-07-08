@@ -6,6 +6,7 @@ const SUPABASE_BOOT_TIMEOUT_MS = 8000;
 const SUPABASE_REST_TIMEOUT_MS = 9000;
 const LOGIN_RETURN_KEY = "hr_return_after_login";
 const DRAFTS_KEY = "hr_kien_gana_prediction_drafts";
+const PAST_STAGE_SLUGS = new Set(["octavos"]);
 
 function bootTimeout(label, ms = SUPABASE_BOOT_TIMEOUT_MS) {
   return new Promise((_resolve, reject) => {
@@ -97,6 +98,18 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
+
+function normalizeStageName(stage) {
+  return String(stage || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function isPastMatch(match) {
+  return PAST_STAGE_SLUGS.has(normalizeStageName(match?.stage));
+}
 
 function setSessionLoading(isLoading) {
   const label = $("sessionLabel");
@@ -245,13 +258,37 @@ function makeText(tag, className, text) {
   return node;
 }
 
+const TEAM_FLAGS = new Map([
+  ["francia", "🇫🇷"],
+  ["marruecos", "🇲🇦"],
+  ["espana", "🇪🇸"],
+  ["belgica", "🇧🇪"],
+  ["noruega", "🇳🇴"],
+  ["inglaterra", "🏴"],
+  ["argentina", "🇦🇷"],
+  ["suiza", "🇨🇭"],
+]);
+
+const TEAM_DISPLAY_NAMES = new Map([
+  ["espana", "España"],
+  ["belgica", "Bélgica"],
+]);
+
+function teamDisplayName(name) {
+  const teamName = String(name || "").trim();
+  const teamSlug = normalizeStageName(teamName);
+  const flag = TEAM_FLAGS.get(teamSlug);
+  const displayName = TEAM_DISPLAY_NAMES.get(teamSlug) || teamName;
+  return flag ? `${flag} ${displayName}` : displayName;
+}
+
 function renderTeamLabel(node, name) {
   node.replaceChildren();
-  node.append(document.createTextNode(String(name || "").trim()));
+  node.append(document.createTextNode(teamDisplayName(name)));
 }
 
 function predictionSummaryLine(match, draft) {
-  return `${match.home_team} vs ${match.away_team}: ${labelWinner(match, draft.predictedWinner)} ${draft.homeScore}-${draft.awayScore}`;
+  return `${teamDisplayName(match.home_team)} vs ${teamDisplayName(match.away_team)}: ${labelWinner(match, draft.predictedWinner)} ${draft.homeScore}-${draft.awayScore}`;
 }
 
 function confirmPredictionDrafts(drafts) {
@@ -319,6 +356,7 @@ function bindUI() {
   });
   $("logoutBtn").addEventListener("click", logout);
   $("refreshBtn").addEventListener("click", loadGame);
+  $("pastRefreshBtn")?.addEventListener("click", loadGame);
   $("saveAllPredictionsBtn")?.addEventListener("click", saveAllPredictions);
   $("createMatchBtn").addEventListener("click", createMatch);
   $("finalizeMatchBtn").addEventListener("click", finalizeMatch);
@@ -550,9 +588,12 @@ async function loadAdminPredictions() {
 }
 
 function renderMatches() {
-  const list = $("matchesList");
+  const activeList = $("matchesList");
+  const pastList = $("pastMatchesList");
   const template = $("matchTemplate");
-  list.replaceChildren();
+
+  activeList?.replaceChildren();
+  pastList?.replaceChildren();
 
   if (state.isLoadingGame) {
     const loading = document.createElement("div");
@@ -567,98 +608,124 @@ function renderMatches() {
       makeText("h2", "", state.user ? "Cargando tus predicciones" : "Cargando partidos"),
       makeText("p", "sub", "Estamos preparando la quiniela. Esto puede tardar unos segundos."),
     );
-    list.append(loading);
+    activeList?.append(loading);
     return;
   }
 
-  if (!state.matches.length) {
+  const pastMatches = state.matches.filter(isPastMatch);
+  const activeMatches = state.matches.filter((match) => !isPastMatch(match));
+
+  renderMatchList(
+    activeList,
+    template,
+    activeMatches,
+    "No hay partidos abiertos",
+    "Los octavos de final estan en Octavos. Un admin puede crear mas partidos desde esta misma pantalla.",
+  );
+  renderMatchList(
+    pastList,
+    template,
+    pastMatches,
+    "No hay partidos de octavos",
+    "Los partidos de octavos de final apareceran aqui.",
+  );
+}
+
+function renderMatchList(list, template, matches, emptyTitle, emptyCopy) {
+  if (!list || !template) return;
+
+  if (!matches.length) {
     const empty = document.createElement("div");
     empty.className = "hr-card match-card";
     empty.append(
-      makeText("h2", "", "No hay partidos todavia"),
-      makeText("p", "sub", "Un admin puede crear partidos desde esta misma pantalla."),
+      makeText("h2", "", emptyTitle),
+      makeText("p", "sub", emptyCopy),
     );
     list.append(empty);
     return;
   }
 
-  state.matches.forEach((match) => {
-    const node = template.content.firstElementChild.cloneNode(true);
-    const prediction = state.predictions.get(match.id);
-    const draft = state.drafts.get(match.id);
-    const matchLocked = new Date(match.kickoff_at) <= new Date() || match.status !== "open";
-    const userLocked = Boolean(prediction);
-    const locked = matchLocked || userLocked;
-    const final = match.status === "final";
-    node.dataset.matchId = match.id;
-
-    node.querySelector(".stage").textContent = match.stage || "Mundial";
-    node.querySelector(".lock").textContent = final ? "Finalizado" : userLocked && !matchLocked ? "Prediccion enviada" : locked ? "Bloqueado" : "Abierto";
-    node.querySelector(".lock").classList.toggle("locked", locked && !final);
-    node.querySelector(".lock").classList.toggle("final", final);
-    renderTeamLabel(node.querySelector(".homeTeam"), match.home_team);
-    renderTeamLabel(node.querySelector(".awayTeam"), match.away_team);
-    node.querySelector(".kickoff").textContent = formatDate(match.kickoff_at);
-
-    const winnerRow = node.querySelector(".winner-row");
-    const currentWinner = prediction?.predicted_winner || draft?.predictedWinner || state.selectedWinner.get(match.id) || "";
-    if (currentWinner) state.selectedWinner.set(match.id, currentWinner);
-
-    [
-      ["home", match.home_team],
-      ["draw", "Empate"],
-      ["away", match.away_team],
-    ].forEach(([value, label]) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = `pick ${currentWinner === value ? "active" : ""}`;
-      button.dataset.winner = value;
-      button.textContent = label;
-      button.disabled = locked;
-      button.addEventListener("click", () => {
-        setDraft(match.id, { predictedWinner: value });
-        winnerRow.querySelectorAll(".pick").forEach((pick) => pick.classList.remove("active"));
-        button.classList.add("active");
-      });
-      winnerRow.appendChild(button);
-    });
-
-    const homeScore = node.querySelector(".pred-home-score");
-    const awayScore = node.querySelector(".pred-away-score");
-    node.querySelector(".prediction-form")?.classList.toggle("hidden", locked);
-    homeScore.dataset.scoreField = "home";
-    awayScore.dataset.scoreField = "away";
-    homeScore.value = prediction?.home_score ?? draft?.homeScore ?? "";
-    awayScore.value = prediction?.away_score ?? draft?.awayScore ?? "";
-    homeScore.disabled = locked;
-    awayScore.disabled = locked;
-    homeScore.addEventListener("input", () => {
-      setDraft(match.id, { homeScore: homeScore.value });
-    });
-    awayScore.addEventListener("input", () => {
-      setDraft(match.id, { awayScore: awayScore.value });
-    });
-
-    const saveButton = node.querySelector(".save-pred");
-    saveButton.disabled = locked;
-    saveButton.textContent = prediction ? "Prediccion enviada" : "Confirmar prediccion";
-    saveButton.addEventListener("click", () => savePrediction(match, homeScore.value, awayScore.value, {
-      card: node,
-      button: saveButton,
-      resultBox: node.querySelector(".prediction-result"),
-    }));
-
-    const resultBox = node.querySelector(".prediction-result");
-    renderPredictionResult(resultBox, match, prediction, matchLocked || final);
-
-    list.appendChild(node);
+  matches.forEach((match) => {
+    list.appendChild(renderMatchCard(match, template));
   });
+}
+
+function renderMatchCard(match, template) {
+  const node = template.content.firstElementChild.cloneNode(true);
+  const prediction = state.predictions.get(match.id);
+  const draft = state.drafts.get(match.id);
+  const matchLocked = new Date(match.kickoff_at) <= new Date() || match.status !== "open";
+  const userLocked = Boolean(prediction);
+  const locked = matchLocked || userLocked;
+  const final = match.status === "final";
+  node.dataset.matchId = match.id;
+
+  node.querySelector(".stage").textContent = match.stage || "Mundial";
+  node.querySelector(".lock").textContent = final ? "Finalizado" : userLocked && !matchLocked ? "Prediccion enviada" : locked ? "Bloqueado" : "Abierto";
+  node.querySelector(".lock").classList.toggle("locked", locked && !final);
+  node.querySelector(".lock").classList.toggle("final", final);
+  renderTeamLabel(node.querySelector(".homeTeam"), match.home_team);
+  renderTeamLabel(node.querySelector(".awayTeam"), match.away_team);
+  node.querySelector(".kickoff").textContent = formatDate(match.kickoff_at);
+
+  const winnerRow = node.querySelector(".winner-row");
+  const currentWinner = prediction?.predicted_winner || draft?.predictedWinner || state.selectedWinner.get(match.id) || "";
+  if (currentWinner) state.selectedWinner.set(match.id, currentWinner);
+
+  [
+    ["home", teamDisplayName(match.home_team)],
+    ["draw", "Empate"],
+    ["away", teamDisplayName(match.away_team)],
+  ].forEach(([value, label]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `pick ${currentWinner === value ? "active" : ""}`;
+    button.dataset.winner = value;
+    button.textContent = label;
+    button.disabled = locked;
+    button.addEventListener("click", () => {
+      setDraft(match.id, { predictedWinner: value });
+      winnerRow.querySelectorAll(".pick").forEach((pick) => pick.classList.remove("active"));
+      button.classList.add("active");
+    });
+    winnerRow.appendChild(button);
+  });
+
+  const homeScore = node.querySelector(".pred-home-score");
+  const awayScore = node.querySelector(".pred-away-score");
+  node.querySelector(".prediction-form")?.classList.toggle("hidden", locked);
+  homeScore.dataset.scoreField = "home";
+  awayScore.dataset.scoreField = "away";
+  homeScore.value = prediction?.home_score ?? draft?.homeScore ?? "";
+  awayScore.value = prediction?.away_score ?? draft?.awayScore ?? "";
+  homeScore.disabled = locked;
+  awayScore.disabled = locked;
+  homeScore.addEventListener("input", () => {
+    setDraft(match.id, { homeScore: homeScore.value });
+  });
+  awayScore.addEventListener("input", () => {
+    setDraft(match.id, { awayScore: awayScore.value });
+  });
+
+  const saveButton = node.querySelector(".save-pred");
+  saveButton.disabled = locked;
+  saveButton.textContent = prediction ? "Prediccion enviada" : "Confirmar prediccion";
+  saveButton.addEventListener("click", () => savePrediction(match, homeScore.value, awayScore.value, {
+    card: node,
+    button: saveButton,
+    resultBox: node.querySelector(".prediction-result"),
+  }));
+
+  const resultBox = node.querySelector(".prediction-result");
+  renderPredictionResult(resultBox, match, prediction, matchLocked || final);
+
+  return node;
 }
 
 function finalScoreLabel(match) {
   const hasScore = Number.isInteger(match.home_score) && Number.isInteger(match.away_score);
   return hasScore
-    ? `${match.home_team} ${match.home_score}-${match.away_score} ${match.away_team}`
+    ? `${teamDisplayName(match.home_team)} ${match.home_score}-${match.away_score} ${teamDisplayName(match.away_team)}`
     : "Por confirmar";
 }
 
@@ -698,8 +765,8 @@ function renderPredictionResult(resultBox, match, prediction, showFinal = false)
 }
 
 function labelWinner(match, value) {
-  if (value === "home") return match.home_team;
-  if (value === "away") return match.away_team;
+  if (value === "home") return teamDisplayName(match.home_team);
+  if (value === "away") return teamDisplayName(match.away_team);
   return "Empate";
 }
 
@@ -800,7 +867,7 @@ async function savePrediction(match, homeScoreRaw, awayScoreRaw, options = {}) {
 }
 
 async function saveAllPredictions() {
-  const cards = Array.from(document.querySelectorAll(".match-card[data-match-id]"));
+  const cards = Array.from(document.querySelectorAll("#matchesList .match-card[data-match-id]"));
   const editableCards = cards.filter((card) => {
     const match = state.matches.find((item) => item.id === card.dataset.matchId);
     const hasDraft = state.drafts.has(card.dataset.matchId);
