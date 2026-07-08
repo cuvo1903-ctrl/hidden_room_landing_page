@@ -106,47 +106,6 @@ async function igFunctionFetch(functionName, payload) {
   }
   return body;
 }
-
-async function igFunctionFetchStream(functionName, payload, onEvent) {
-  const response = await cloudApiFetch(`${CLOUD_FUNCTION_BASE}/${functionName}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...payload, progress_stream: true }),
-  });
-
-  if (!response.ok || !response.body) {
-    const body = await response.json().catch(() => null) || {};
-    throw new Error(body.error || `No se pudo completar la solicitud (${response.status})`);
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let finalResult = null;
-
-  const handleLine = (line) => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
-    const event = JSON.parse(trimmed);
-    onEvent?.(event);
-    if (event.event === 'complete') finalResult = event.result;
-    if (event.event === 'error') throw new Error(event.error || 'No se pudieron analizar los comentarios.');
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    for (const line of lines) handleLine(line);
-    if (done) break;
-  }
-
-  if (buffer.trim()) handleLine(buffer);
-  if (!finalResult) throw new Error('La funcion termino sin devolver resultado final.');
-  return finalResult;
-}
-
 function buildCloudFunctionUrl(functionName, path = '/') {
   const normalized = normalizeCloudPath(path);
   return `${CLOUD_FUNCTION_BASE}/${functionName}?path=${encodeURIComponent(normalized)}`;
@@ -3476,7 +3435,6 @@ function getIgMentionState() {
       apiMode: 'instagram_login',
       media: [],
       analysis: null,
-      analysisProgress: null,
       selectedMedia: null,
       error: '',
     };
@@ -3496,7 +3454,6 @@ async function renderErpInstagramMentionRank() {
   const igState = getIgMentionState();
   const media = Array.isArray(igState.media) ? igState.media : [];
   const analysis = igState.analysis;
-  const analysisProgress = igState.analysisProgress;
   const apiMode = igState.apiMode || 'instagram_login';
 
   return sectionShell('ERP', 'Instagram Mention Rank', 'title-erp-ig-mention-rank', `
@@ -3558,46 +3515,6 @@ function renderIgMediaCard(media) {
       <div class="db-ig-media-card__actions">
         ${media?.permalink ? `<a class="db-btn-secondary" href="${escapeHTML(media.permalink)}" target="_blank" rel="noopener noreferrer">Abrir</a>` : ''}
         <button class="btn-primary" type="button" data-action="ig-analyze-media" data-media-id="${escapeHTML(media?.id || '')}">Analizar comentarios</button>
-      </div>
-    </article>
-  `;
-}
-
-function formatIgElapsed(ms) {
-  return `${Math.max(0, Number(ms || 0) / 1000).toFixed(1)} s`;
-}
-
-function renderIgAnalysisProgress(progress) {
-  const downloaded = Number(progress?.downloaded || 0);
-  const total = Number(progress?.meta_comments_count || 0);
-  const rawCoverage = total > 0 ? Number(progress?.coverage_percent ?? ((downloaded / total) * 100)) : 0;
-  const coverage = Math.max(0, Math.min(100, rawCoverage));
-  const stage = progress?.stage === 'validating_media'
-    ? 'Validando publicacion'
-    : progress?.type === 'retry'
-      ? 'Reintentando solicitud a Meta'
-      : 'Descargando comentarios';
-  return `
-    <article class="db-card db-ig-progress-card" aria-live="polite">
-      <div class="db-card__inner">
-        <header class="db-card__header"><span class="section-label">Carga de comentarios</span></header>
-        <div class="db-ig-progress">
-          <div class="db-ig-progress__header">
-            <strong>${escapeHTML(stage)}</strong>
-            <span>${escapeHTML(coverage.toFixed(2))}%</span>
-          </div>
-          <div class="db-ig-progress__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${escapeHTML(coverage.toFixed(2))}">
-            <span style="width: ${escapeHTML(Math.max(1, coverage).toFixed(2))}%"></span>
-          </div>
-          <div class="db-ig-progress__stats">
-            <span>Meta comments_count: ${escapeHTML(total || 'Validando...')}</span>
-            <span>Comentarios descargados: ${escapeHTML(downloaded)}</span>
-            <span>Paginas recorridas: ${escapeHTML(progress?.page || progress?.pages || 0)}</span>
-            <span>Reintentos: ${escapeHTML(progress?.retries || 0)}</span>
-            <span>Tiempo total: ${escapeHTML(formatIgElapsed(progress?.elapsed_ms))}</span>
-          </div>
-          ${progress?.reason ? `<p class="db-note">${escapeHTML(progress.reason)} Siguiente intento en ${escapeHTML(formatIgElapsed(progress.wait_ms))}.</p>` : ''}
-        </div>
       </div>
     </article>
   `;
@@ -3916,43 +3833,16 @@ async function handleIgAnalyzeMedia(mediaId) {
   igState.apiMode = apiMode;
   igState.error = '';
   igState.analysis = null;
-  igState.selectedMedia = media || { id: mediaId };
-  igState.analysisProgress = {
-    type: 'status',
-    stage: 'validating_media',
-    downloaded: 0,
-    page: 0,
-    meta_comments_count: media.comments_count ?? null,
-    coverage_percent: 0,
-    elapsed_ms: 0,
-    retries: 0,
-  };
   showToast(apiMode === 'facebook_graph' ? 'Analizando comentarios con Facebook Graph...' : 'Analizando comentarios de Instagram...', 'info');
-  renderSection('erp-ig-mention-rank');
 
-  const startedAt = Date.now();
   try {
-    const result = await igFunctionFetchStream('ig-analyze-comments', {
+    const result = await igFunctionFetch('ig-analyze-comments', {
       access_token: token,
       api_mode: apiMode,
       media_id: mediaId,
       media_permalink: media?.permalink || null,
-    }, (event) => {
-      if (event.event !== 'progress') return;
-      const previous = igState.analysisProgress || {};
-      igState.analysisProgress = {
-        ...previous,
-        ...event,
-        page: event.page ?? previous.page ?? 0,
-        downloaded: event.downloaded ?? previous.downloaded ?? 0,
-        meta_comments_count: event.meta_comments_count ?? previous.meta_comments_count ?? media.comments_count ?? null,
-        elapsed_ms: event.elapsed_ms ?? (Date.now() - startedAt),
-        retries: event.retries ?? previous.retries ?? 0,
-      };
-      renderSection('erp-ig-mention-rank');
     });
     igState.analysis = result;
-    igState.analysisProgress = null;
     igState.selectedMedia = media || { id: mediaId };
     console.info('[Instagram Mention Rank] Analisis completado', {
       media_id: media.id,
@@ -3967,7 +3857,6 @@ async function handleIgAnalyzeMedia(mediaId) {
     renderSection('erp-ig-mention-rank');
   } catch (err) {
     igState.error = err.message || 'No se pudieron analizar los comentarios.';
-    igState.analysisProgress = null;
     showToast(igState.error, 'error');
     renderSection('erp-ig-mention-rank');
   }
