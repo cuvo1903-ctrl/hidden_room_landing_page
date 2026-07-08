@@ -8,6 +8,9 @@ const corsHeaders = {
 
 const META_API_VERSION = "v24.0";
 const MAX_LIMIT = 100;
+const MAX_META_RETRIES = 5;
+const BASE_RETRY_DELAY_MS = 800;
+const MAX_RETRY_DELAY_MS = 20_000;
 const API_MODES = new Set(["instagram_login", "facebook_graph"]);
 
 function json(body: Record<string, unknown>, status = 200) {
@@ -39,6 +42,51 @@ async function readResponseBody(response: Response) {
   } catch {
     return { raw: text };
   }
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryAfterMs(response: Response) {
+  const header = response.headers.get("retry-after");
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const dateMs = Date.parse(header);
+  if (Number.isFinite(dateMs)) return Math.max(0, dateMs - Date.now());
+  return null;
+}
+
+function isTemporaryMetaError(status: number, data: Record<string, unknown>) {
+  const error = data?.error as Record<string, unknown> | undefined;
+  const code = Number(error?.code || 0);
+  const message = String(error?.message || data?.raw || "").toLowerCase();
+  return (
+    status === 408 ||
+    status === 425 ||
+    status === 429 ||
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    code === 1 ||
+    code === 2 ||
+    code === 4 ||
+    code === 17 ||
+    code === 32 ||
+    message.includes("timeout") ||
+    message.includes("temporar") ||
+    message.includes("rate")
+  );
+}
+
+function backoffDelayMs(attempt: number, response?: Response) {
+  const retryAfter = response ? retryAfterMs(response) : null;
+  if (retryAfter !== null) return Math.min(retryAfter, MAX_RETRY_DELAY_MS);
+  const exponential = BASE_RETRY_DELAY_MS * 2 ** Math.max(0, attempt - 1);
+  const jitter = Math.floor(Math.random() * 300);
+  return Math.min(exponential + jitter, MAX_RETRY_DELAY_MS);
 }
 
 function friendlyMetaError(status: number, data: Record<string, unknown>, mode = "instagram_login") {
@@ -111,21 +159,59 @@ async function requireAdmin(req: Request) {
 }
 
 async function metaFetch(url: URL, mode: string) {
-  const response = await fetch(url);
-  const data = await readResponseBody(response);
-  if (!response.ok) {
-    console.error("[ig-list-media] Meta error", {
-      mode,
-      endpoint: url.origin + url.pathname,
-      status: response.status,
-      meta_error: data?.error ?? data,
-    });
-    const error = new Error(friendlyMetaError(response.status, data, mode));
-    (error as Error & { status?: number; meta?: Record<string, unknown> }).status = response.status;
-    (error as Error & { status?: number; meta?: Record<string, unknown> }).meta = data;
-    throw error;
+  let lastStatus = 0;
+  let lastData: Record<string, unknown> = {};
+
+  for (let attempt = 1; ; attempt += 1) {
+    lastStatus = 0;
+    try {
+      const response = await fetch(url);
+      const data = await readResponseBody(response);
+      if (response.ok) return data;
+
+      lastStatus = response.status;
+      lastData = data;
+      if (!isTemporaryMetaError(response.status, data) || attempt > MAX_META_RETRIES) {
+        console.error("[ig-list-media] Meta error", {
+          mode,
+          endpoint: url.origin + url.pathname,
+          status: response.status,
+          meta_error: data?.error ?? data,
+        });
+        const error = new Error(friendlyMetaError(response.status, data, mode));
+        (error as Error & { status?: number; meta?: Record<string, unknown> }).status = response.status;
+        (error as Error & { status?: number; meta?: Record<string, unknown> }).meta = data;
+        throw error;
+      }
+
+      const waitMs = backoffDelayMs(attempt, response);
+      console.info("[ig-list-media] Reintentando Meta", {
+        mode,
+        endpoint: url.origin + url.pathname,
+        status: response.status,
+        attempt,
+        wait_ms: waitMs,
+      });
+      await sleep(waitMs);
+    } catch (error) {
+      if (error instanceof Error && lastStatus) throw error;
+      if (attempt > MAX_META_RETRIES) {
+        const wrapped = new Error(error instanceof Error ? error.message : "Meta no pudo responder.");
+        (wrapped as Error & { status?: number; meta?: Record<string, unknown> }).status = lastStatus || 0;
+        (wrapped as Error & { status?: number; meta?: Record<string, unknown> }).meta = lastData;
+        throw wrapped;
+      }
+
+      const waitMs = backoffDelayMs(attempt);
+      console.info("[ig-list-media] Reintentando red", {
+        mode,
+        endpoint: url.origin + url.pathname,
+        attempt,
+        wait_ms: waitMs,
+      });
+      await sleep(waitMs);
+    }
   }
-  return data;
 }
 
 async function listInstagramLoginMedia(accessToken: string, limit: number) {

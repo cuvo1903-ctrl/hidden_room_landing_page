@@ -10,7 +10,9 @@ const META_API_VERSION = "v24.0";
 const MENTION_PATTERN = /[@\uFF20][a-zA-Z0-9._]+/g;
 const ZERO_WIDTH_PATTERN = /[\u200B-\u200D\uFEFF]/g;
 const COMMENTS_PAGE_LIMIT = 100;
-const MAX_PAGES = 500;
+const MAX_META_RETRIES = 7;
+const BASE_RETRY_DELAY_MS = 900;
+const MAX_RETRY_DELAY_MS = 30_000;
 const API_MODES = new Set(["instagram_login", "facebook_graph"]);
 
 type CommentRow = {
@@ -38,6 +40,24 @@ type MetaMediaInfo = {
   media_type?: string;
 };
 
+type ProgressPayload = Record<string, unknown>;
+type ProgressHandler = (payload: ProgressPayload) => void | Promise<void>;
+type AdminContext = {
+  user: { id: string };
+  adminClient: ReturnType<typeof createClient>;
+};
+
+type CommentsResult = {
+  comments: CommentRow[];
+  pages: number;
+  repliesCount: number;
+  warning: string | null;
+  completionReason: string;
+  incompleteReasons: string[];
+  retries: number;
+  elapsedMs: number;
+};
+
 function json(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -61,6 +81,20 @@ async function readResponseBody(response: Response) {
   } catch {
     return { raw: text };
   }
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryAfterMs(response: Response) {
+  const header = response.headers.get("retry-after");
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const dateMs = Date.parse(header);
+  if (Number.isFinite(dateMs)) return Math.max(0, dateMs - Date.now());
+  return null;
 }
 
 function friendlyMetaError(status: number, data: Record<string, unknown>, mode = "instagram_login") {
@@ -91,6 +125,85 @@ function friendlyMetaError(status: number, data: Record<string, unknown>, mode =
   }
 
   return message;
+}
+
+function isTemporaryMetaError(status: number, data: Record<string, unknown>) {
+  const error = data?.error as Record<string, unknown> | undefined;
+  const code = Number(error?.code || 0);
+  const message = String(error?.message || data?.raw || "").toLowerCase();
+  return (
+    status === 408 ||
+    status === 425 ||
+    status === 429 ||
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    code === 1 ||
+    code === 2 ||
+    code === 4 ||
+    code === 17 ||
+    code === 32 ||
+    message.includes("timeout") ||
+    message.includes("temporar") ||
+    message.includes("rate")
+  );
+}
+
+function backoffDelayMs(attempt: number, response?: Response) {
+  const retryAfter = response ? retryAfterMs(response) : null;
+  if (retryAfter !== null) return Math.min(retryAfter, MAX_RETRY_DELAY_MS);
+  const exponential = BASE_RETRY_DELAY_MS * 2 ** Math.max(0, attempt - 1);
+  const jitter = Math.floor(Math.random() * 350);
+  return Math.min(exponential + jitter, MAX_RETRY_DELAY_MS);
+}
+
+async function metaFetchJson(url: string, mode: string, endpointLabel: string, onProgress?: ProgressHandler) {
+  let retries = 0;
+  let lastStatus = 0;
+
+  for (let attempt = 1; ; attempt += 1) {
+    lastStatus = 0;
+    try {
+      const response = await fetch(url);
+      const data = await readResponseBody(response);
+      if (response.ok) return { data, retries, status: response.status };
+
+      lastStatus = response.status;
+      if (!isTemporaryMetaError(response.status, data) || attempt > MAX_META_RETRIES) {
+        throw new Error(friendlyMetaError(response.status, data, mode));
+      }
+
+      retries += 1;
+      const waitMs = backoffDelayMs(attempt, response);
+      await onProgress?.({
+        type: "retry",
+        endpoint: endpointLabel,
+        attempt,
+        status: response.status,
+        wait_ms: waitMs,
+        reason: friendlyMetaError(response.status, data, mode),
+      });
+      await sleep(waitMs);
+    } catch (error) {
+      if (error instanceof Error && lastStatus) throw error;
+      if (attempt > MAX_META_RETRIES) {
+        throw new Error(error instanceof Error ? error.message : "Meta no pudo responder.");
+      }
+
+      retries += 1;
+      const waitMs = backoffDelayMs(attempt);
+      await onProgress?.({
+        type: "retry",
+        endpoint: endpointLabel,
+        attempt,
+        status: lastStatus || null,
+        wait_ms: waitMs,
+        reason: error instanceof Error ? error.message : "Error temporal de red.",
+      });
+      await sleep(waitMs);
+    }
+  }
 }
 
 function graphBase(mode: string) {
@@ -162,24 +275,12 @@ async function requireAdmin(req: Request) {
   return { user: authData.user, adminClient };
 }
 
-async function fetchMetaMediaInfo(mediaId: string, accessToken: string, mode: string) {
+async function fetchMetaMediaInfo(mediaId: string, accessToken: string, mode: string, onProgress?: ProgressHandler) {
   const url = new URL(graphBase(mode) + "/" + META_API_VERSION + "/" + encodeURIComponent(mediaId));
   url.searchParams.set("fields", "id,permalink,comments_count,media_type");
   url.searchParams.set("access_token", accessToken);
 
-  const response = await fetch(url);
-  const data = await readResponseBody(response);
-  if (!response.ok) {
-    console.error("[ig-analyze-comments] Meta media validation error", {
-      mode,
-      endpoint: url.origin + url.pathname,
-      media_id: mediaId,
-      status: response.status,
-      meta_error: data?.error ?? data,
-    });
-    throw new Error(friendlyMetaError(response.status, data, mode));
-  }
-
+  const { data } = await metaFetchJson(url.toString(), mode, "media", onProgress);
   const media = data as MetaMediaInfo;
   console.info("[ig-analyze-comments] Media validado", {
     mode,
@@ -191,7 +292,28 @@ async function fetchMetaMediaInfo(mediaId: string, accessToken: string, mode: st
   return media;
 }
 
-async function fetchAllComments(mediaId: string, accessToken: string, mediaInfo: MetaMediaInfo, mode: string) {
+function coveragePercent(downloaded: number, reported?: number) {
+  const total = Number(reported ?? 0);
+  if (!total) return downloaded > 0 ? 100 : 0;
+  return Number(((downloaded / total) * 100).toFixed(2));
+}
+
+function incompleteReasonsFor(reported: unknown, downloaded: number) {
+  const total = Number(reported ?? 0);
+  if (!Number.isFinite(total) || total <= 0 || downloaded >= total) return [];
+  return [
+    "Meta ya no devolvio paging.next antes de alcanzar comments_count.",
+    "La diferencia puede venir de comentarios eliminados, ocultos, inaccesibles por permisos, replies contadas por Meta o comentarios creados durante la ejecucion.",
+  ];
+}
+
+async function fetchAllComments(
+  mediaId: string,
+  accessToken: string,
+  mediaInfo: MetaMediaInfo,
+  mode: string,
+  onProgress?: ProgressHandler,
+): Promise<CommentsResult> {
   const firstUrl = new URL(graphBase(mode) + "/" + META_API_VERSION + "/" + encodeURIComponent(mediaId) + "/comments");
   firstUrl.searchParams.set("fields", "id,text,username,timestamp");
   firstUrl.searchParams.set("limit", String(COMMENTS_PAGE_LIMIT));
@@ -201,48 +323,37 @@ async function fetchAllComments(mediaId: string, accessToken: string, mediaInfo:
   let nextUrl: string | null = firstUrl.toString();
   const seenUrls = new Set<string>();
   let page = 0;
-  let truncated = false;
   let warning: string | null = null;
+  let retries = 0;
+  const startedAt = Date.now();
 
   while (nextUrl) {
     if (seenUrls.has(nextUrl)) {
       throw new Error("La paginacion de Meta regreso una pagina repetida.");
     }
-    if (page >= MAX_PAGES) {
-      truncated = true;
-      warning = "Se analizaron " + comments.length + " comentarios en " + MAX_PAGES + " paginas. La publicacion tiene mas paginas disponibles; exporta con cautela porque el ranking puede ser parcial.";
-      break;
-    }
 
     seenUrls.add(nextUrl);
     page += 1;
 
-    const response = await fetch(nextUrl);
-    const data = await readResponseBody(response);
-    if (!response.ok) {
-      const safeEndpoint = (() => {
-        try {
-          const parsed = new URL(nextUrl || "");
-          return parsed.origin + parsed.pathname;
-        } catch {
-          return graphBase(mode) + "/comments";
-        }
-      })();
-      console.error("[ig-analyze-comments] Meta comments error", {
-        mode,
-        endpoint: safeEndpoint,
-        media_id: mediaId,
-        media_permalink: mediaInfo.permalink ?? null,
-        comments_count: mediaInfo.comments_count ?? null,
-        status: response.status,
-        meta_error: data?.error ?? data,
-      });
-      throw new Error(friendlyMetaError(response.status, data, mode));
-    }
+    const { data, retries: pageRetries } = await metaFetchJson(nextUrl, mode, "comments_page_" + page, onProgress);
+    retries += pageRetries;
 
     if (Array.isArray(data?.data)) comments.push(...data.data);
     nextUrl = typeof data?.paging?.next === "string" ? data.paging.next : null;
+    await onProgress?.({
+      type: "page",
+      page,
+      downloaded: comments.length,
+      meta_comments_count: mediaInfo.comments_count ?? null,
+      coverage_percent: coveragePercent(comments.length, mediaInfo.comments_count),
+      has_next: Boolean(nextUrl),
+      elapsed_ms: Date.now() - startedAt,
+      retries,
+    });
   }
+
+  const incompleteReasons = incompleteReasonsFor(mediaInfo.comments_count, comments.length);
+  if (incompleteReasons.length) warning = incompleteReasons.join(" ");
 
   console.info("[ig-analyze-comments] Comentarios recibidos", {
     mode,
@@ -251,9 +362,21 @@ async function fetchAllComments(mediaId: string, accessToken: string, mediaInfo:
     comments_count: mediaInfo.comments_count ?? null,
     comments_received: comments.length,
     pages_fetched: page,
+    retries,
+    elapsed_ms: Date.now() - startedAt,
+    incomplete_reasons: incompleteReasons,
   });
 
-  return { comments, pages: page, repliesCount: 0, truncated, warning };
+  return {
+    comments,
+    pages: page,
+    repliesCount: 0,
+    warning,
+    completionReason: "Meta dejo de enviar paging.next.",
+    incompleteReasons,
+    retries,
+    elapsedMs: Date.now() - startedAt,
+  };
 }
 
 function analyzeComments(comments: CommentRow[]) {
@@ -333,6 +456,101 @@ function buildAnalysisWarning(mode: string, mediaInfo: MetaMediaInfo, commentsRe
   return null;
 }
 
+async function runAnalysis(auth: AdminContext, payload: Record<string, unknown>, onProgress?: ProgressHandler) {
+  const rawMode = String(payload.api_mode || payload.mode || "instagram_login").trim();
+  const apiMode = API_MODES.has(rawMode) ? rawMode : "instagram_login";
+  const envTokenName = apiMode === "facebook_graph" ? "FB_ACCESS_TOKEN" : "IG_ACCESS_TOKEN";
+  const accessToken = String(payload.access_token || Deno.env.get(envTokenName) || Deno.env.get("IG_ACCESS_TOKEN") || "").trim();
+  const mediaId = String(payload.media_id || "").trim();
+  const mediaPermalink = String(payload.media_permalink || "").trim() || null;
+
+  if (!accessToken) throw new Error("Falta access_token o secreto " + envTokenName + ".");
+  if (!mediaId) throw new Error("Falta media_id.");
+
+  const startedAt = Date.now();
+  await onProgress?.({ type: "status", stage: "validating_media", downloaded: 0, pages: 0 });
+  const mediaInfo = await fetchMetaMediaInfo(mediaId, accessToken, apiMode, onProgress);
+  await onProgress?.({
+    type: "status",
+    stage: "fetching_comments",
+    meta_comments_count: mediaInfo.comments_count ?? null,
+    downloaded: 0,
+    pages: 0,
+  });
+  const commentsResult = await fetchAllComments(mediaId, accessToken, mediaInfo, apiMode, onProgress);
+  const analysis = analyzeComments(commentsResult.comments);
+
+  const { data: saved, error: saveError } = await auth.adminClient
+    .from("ig_mention_analyses")
+    .insert({
+      media_id: mediaId,
+      media_permalink: mediaInfo.permalink || mediaPermalink,
+      comments_count: analysis.comments_count,
+      mentions_count: analysis.mentions_count,
+      unique_mentions_count: analysis.unique_mentions_count,
+      ranking_total: analysis.ranking_total,
+      ranking_unique_authors: analysis.ranking_unique_authors,
+      created_by: auth.user.id,
+    })
+    .select("id")
+    .maybeSingle();
+
+  const elapsedMs = Date.now() - startedAt;
+  return {
+    ok: true,
+    api_mode: apiMode,
+    ...analysis,
+    media: mediaInfo,
+    meta_comments_count: mediaInfo.comments_count ?? null,
+    media_permalink: mediaInfo.permalink ?? mediaPermalink,
+    pages_fetched: commentsResult.pages,
+    replies_count: commentsResult.repliesCount,
+    comments_page_limit: COMMENTS_PAGE_LIMIT,
+    analysis_truncated: false,
+    analysis_warning: buildAnalysisWarning(apiMode, mediaInfo, commentsResult, analysis),
+    completion_reason: commentsResult.completionReason,
+    incomplete_reasons: commentsResult.incompleteReasons,
+    coverage_percent: coveragePercent(analysis.comments_count, mediaInfo.comments_count),
+    retry_count: commentsResult.retries,
+    elapsed_ms: elapsedMs,
+    elapsed_seconds: Number((elapsedMs / 1000).toFixed(2)),
+    saved_analysis_id: saveError ? null : saved?.id ?? null,
+    save_warning: saveError ? "El analisis se genero, pero no se pudo guardar en Supabase: " + saveError.message : null,
+  };
+}
+
+function streamAnalysis(auth: AdminContext, payload: Record<string, unknown>) {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event: Record<string, unknown>) => {
+        controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+      };
+
+      try {
+        const result = await runAnalysis(auth, payload, (progress) => send({ event: "progress", ...progress }));
+        send({ event: "complete", result });
+      } catch (error) {
+        send({
+          event: "error",
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -344,51 +562,10 @@ Deno.serve(async (req) => {
   if (!body || typeof body !== "object") return json({ error: "JSON invalido." }, 400);
 
   const payload = body as Record<string, unknown>;
-  const rawMode = String(payload.api_mode || payload.mode || "instagram_login").trim();
-  const apiMode = API_MODES.has(rawMode) ? rawMode : "instagram_login";
-  const envTokenName = apiMode === "facebook_graph" ? "FB_ACCESS_TOKEN" : "IG_ACCESS_TOKEN";
-  const accessToken = String(payload.access_token || Deno.env.get(envTokenName) || Deno.env.get("IG_ACCESS_TOKEN") || "").trim();
-  const mediaId = String(payload.media_id || "").trim();
-  const mediaPermalink = String(payload.media_permalink || "").trim() || null;
-
-  if (!accessToken) return json({ error: "Falta access_token o secreto " + envTokenName + "." }, 400);
-  if (!mediaId) return json({ error: "Falta media_id." }, 400);
+  if (payload.progress_stream === true) return streamAnalysis(auth, payload);
 
   try {
-    const mediaInfo = await fetchMetaMediaInfo(mediaId, accessToken, apiMode);
-    const commentsResult = await fetchAllComments(mediaId, accessToken, mediaInfo, apiMode);
-    const analysis = analyzeComments(commentsResult.comments);
-
-    const { data: saved, error: saveError } = await auth.adminClient
-      .from("ig_mention_analyses")
-      .insert({
-        media_id: mediaId,
-        media_permalink: mediaInfo.permalink || mediaPermalink,
-        comments_count: analysis.comments_count,
-        mentions_count: analysis.mentions_count,
-        unique_mentions_count: analysis.unique_mentions_count,
-        ranking_total: analysis.ranking_total,
-        ranking_unique_authors: analysis.ranking_unique_authors,
-        created_by: auth.user.id,
-      })
-      .select("id")
-      .maybeSingle();
-
-    return json({
-      ok: true,
-      api_mode: apiMode,
-      ...analysis,
-      media: mediaInfo,
-      meta_comments_count: mediaInfo.comments_count ?? null,
-      media_permalink: mediaInfo.permalink ?? mediaPermalink,
-      pages_fetched: commentsResult.pages,
-      replies_count: commentsResult.repliesCount,
-      comments_page_limit: COMMENTS_PAGE_LIMIT,
-      analysis_truncated: commentsResult.truncated,
-      analysis_warning: buildAnalysisWarning(apiMode, mediaInfo, commentsResult, analysis),
-      saved_analysis_id: saveError ? null : saved?.id ?? null,
-      save_warning: saveError ? "El analisis se genero, pero no se pudo guardar en Supabase: " + saveError.message : null,
-    });
+    return json(await runAnalysis(auth, payload));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const noComments = /comments/i.test(message) && /unsupported|get|permission/i.test(message);

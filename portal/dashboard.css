@@ -3337,3 +3337,71 @@ input[data-user-search] {
   max-height: 520px;
   overflow: auto;
 }
+
+.db-ig-progress-card .db-card__inner {
+  gap: 14px;
+}
+
+.db-ig-progress {
+  display: grid;
+  gap: 12px;
+}
+
+.db-ig-progress__header,
+.db-ig-progress__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.db-ig-progress__header strong,
+.db-ig-progress__header span {
+  color: var(--db-text);
+  font-size: 0.95rem;
+}
+
+.db-ig-progress__bar {
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  border: 1px solid var(--db-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.db-ig-progress__bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--hr-primary), var(--hr-accent));
+  transition: width 180ms ease;
+}
+
+.db-ig-progress__stats {
+  justify-content: flex-start;
+  color: var(--db-muted);
+  font-family: var(--hr-font-mono);
+  font-size: 0.78rem;
+}
+
+.db-ig-audit-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 14px;
+  padding: 12px;
+  border: 1px solid var(--db-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.db-ig-audit-summary p {
+  margin: 0;
+  color: var(--db-muted);
+  font-size: 0.9rem;
+}
+
+.db-ig-audit-summary strong {
+  color: var(--db-text);
+}
