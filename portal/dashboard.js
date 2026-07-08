@@ -3519,10 +3519,25 @@ function renderIgMediaCard(media) {
     </article>
   `;
 }
+function igCommentScopeSummary(analysis, media = {}) {
+  const processed = Number(analysis?.comments_count ?? 0);
+  const metaCount = Number(analysis?.meta_comments_count ?? media?.comments_count ?? 0);
+  const excludedReplies = Math.max(0, metaCount - processed);
+  return {
+    processed,
+    metaCount,
+    excludedReplies,
+    processedLabel: processed.toLocaleString('es-MX'),
+    metaCountLabel: metaCount.toLocaleString('es-MX'),
+    excludedRepliesLabel: excludedReplies.toLocaleString('es-MX'),
+  };
+}
+
 function renderIgAnalysisSummary(analysis, media) {
   const coverage = Number(analysis.coverage_percent ?? 0);
   const incompleteReasons = Array.isArray(analysis.incomplete_reasons) ? analysis.incomplete_reasons : [];
   const shouldExplain = coverage < 100 && Number(analysis.meta_comments_count || 0) > Number(analysis.comments_count || 0);
+  const commentScope = igCommentScopeSummary(analysis, media);
   return `
     <article class="db-card">
       <div class="db-card__inner">
@@ -3535,8 +3550,10 @@ function renderIgAnalysisSummary(analysis, media) {
           ${renderStatCard('Usuarios arrobados', analysis.unique_mentions_count ?? 0)}
         </div>
         <div class="db-ig-audit-summary">
-          <p>Meta comments_count: <strong>${escapeHTML(analysis.meta_comments_count ?? 0)}</strong></p>
-          <p>Comentarios descargados: <strong>${escapeHTML(analysis.comments_count ?? 0)}</strong></p>
+          <p>Comentarios principales procesados: <strong>${escapeHTML(commentScope.processedLabel)}</strong></p>
+          <p>Replies excluidas por regla del concurso: <strong>${escapeHTML(commentScope.excludedRepliesLabel)} aprox.</strong></p>
+          <p>comments_count Meta: <strong>${escapeHTML(commentScope.metaCountLabel)}</strong></p>
+          <p>Nota: <strong>Meta incluye replies en comments_count.</strong></p>
           <p>Cobertura: <strong>${escapeHTML(coverage.toFixed(2))}%</strong></p>
           <p>Paginas recorridas: <strong>${escapeHTML(analysis.pages_fetched ?? 0)}</strong></p>
           <p>Tiempo total: <strong>${escapeHTML(Number(analysis.elapsed_seconds ?? 0).toFixed(2))} s</strong></p>
@@ -3549,6 +3566,7 @@ function renderIgAnalysisSummary(analysis, media) {
             <ul>${(incompleteReasons.length ? incompleteReasons : ['Meta no devolvio mas comentarios accesibles.']).map((item) => `<li>${escapeHTML(item)}</li>`).join('')}</ul>
           </div>
         ` : ''}
+        <p class="db-note">Este ranking cuenta unicamente comentarios principales. Las respuestas a comentarios no se consideran para la dinamica, aunque Meta las incluya dentro de comments_count.</p>
         <p class="db-note">Media: <code>${escapeHTML(media?.id || '')}</code>${analysis.saved_analysis_id ? ` · Guardado: <code>${escapeHTML(analysis.saved_analysis_id)}</code>` : ''} · Comentarios con @: ${escapeHTML(analysis.comments_with_mentions_count ?? 0)}</p>
         ${Number(analysis.mentions_count ?? 0) === 0 ? renderIgMentionDebug(analysis.mention_debug) : ''}
         <div class="db-form__actions">
@@ -3688,6 +3706,7 @@ async function exportIgAnalysisPdf() {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
     const generatedAt = new Date().toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
     const apiModeLabel = analysis.api_mode === 'facebook_graph' || media.api_mode === 'facebook_graph' ? 'Facebook Graph' : 'Instagram Login';
+    const commentScope = igCommentScopeSummary(analysis, media);
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 40;
 
@@ -3705,8 +3724,10 @@ async function exportIgAnalysisPdf() {
     doc.autoTable({
       head: [['Metrica', 'Valor']],
       body: [
-        ['Comentarios recibidos', String(analysis.comments_count ?? 0)],
-        ['Meta comments_count', String(analysis.meta_comments_count ?? media.comments_count ?? 0)],
+        ['Comentarios principales procesados', commentScope.processedLabel],
+        ['Replies excluidas por regla del concurso', commentScope.excludedRepliesLabel + ' aprox.'],
+        ['comments_count Meta', commentScope.metaCountLabel],
+        ['Nota', 'Meta incluye replies en comments_count.'],
         ['Menciones detectadas', String(analysis.mentions_count ?? 0)],
         ['Usuarios arrobados', String(analysis.unique_mentions_count ?? 0)],
         ['Paginas leidas', String(analysis.pages_fetched ?? 0)],
@@ -3720,6 +3741,9 @@ async function exportIgAnalysisPdf() {
     });
 
     let nextY = (doc.lastAutoTable?.finalY || 132) + 28;
+    doc.setFontSize(10);
+    doc.text('Este ranking cuenta unicamente comentarios principales. Las respuestas a comentarios no se consideran para la dinamica, aunque Meta las incluya dentro de comments_count.', margin, nextY, { maxWidth: pageWidth - margin * 2 });
+    nextY += 44;
     if (analysis.analysis_warning) {
       doc.setFontSize(10);
       doc.text('Nota: ' + analysis.analysis_warning, margin, nextY, { maxWidth: pageWidth - margin * 2 });
