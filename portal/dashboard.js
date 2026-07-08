@@ -3530,16 +3530,14 @@ async function renderErpInstagramMentionRank() {
         </div>
       </article>
 
-      ${analysis ? '' : `
+      ${analysis ? '' : (analysisProgress ? renderIgAnalysisProgress(analysisProgress) : `
         <article class="db-card">
           <div class="db-card__inner">
             <header class="db-card__header"><span class="section-label">Publicaciones</span></header>
             ${media.length ? `<div class="db-ig-media-grid">${media.map(renderIgMediaCard).join('')}</div>` : '<p class="db-empty">Carga publicaciones para elegir una y analizar comentarios.</p>'}
           </div>
         </article>
-      `}
-
-      ${analysisProgress ? renderIgAnalysisProgress(analysisProgress) : ''}
+      `)}
       ${analysis ? renderIgAnalysisSummary(analysis, igState.selectedMedia) : ''}
       ${analysis ? renderIgRankingTables(analysis) : ''}
     </div>
