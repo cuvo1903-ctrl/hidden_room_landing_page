@@ -3600,6 +3600,7 @@ function renderIgRankingTables(analysis) {
         <div class="db-card__inner">
           <header class="db-card__header"><span class="section-label">Mas arrobados total</span></header>
           <button class="db-btn-secondary" type="button" data-action="ig-export-csv" data-ranking="total">Exportar CSV</button>
+          ${renderIgRankingChart(analysis.ranking_total, 'Menciones totales')}
           ${renderIgRankingTable(analysis.ranking_total, false)}
         </div>
       </article>
@@ -3607,9 +3608,37 @@ function renderIgRankingTables(analysis) {
         <div class="db-card__inner">
           <header class="db-card__header"><span class="section-label">Mas arrobados por usuarios unicos</span></header>
           <button class="db-btn-secondary" type="button" data-action="ig-export-csv" data-ranking="unique">Exportar CSV</button>
+          ${renderIgRankingChart(analysis.ranking_unique_authors, 'Usuarios unicos')}
           ${renderIgRankingTable(analysis.ranking_unique_authors, true)}
         </div>
       </article>
+    </div>
+  `;
+}
+
+function renderIgRankingChart(rows, valueLabel) {
+  const safeRows = (Array.isArray(rows) ? rows : []).slice(0, 15);
+  if (!safeRows.length) return '';
+  const maxCount = Math.max(1, ...safeRows.map((row) => Number(row?.count) || 0));
+  return `
+    <div class="db-ig-chart" role="img" aria-label="Grafica de barras de ${escapeHTML(valueLabel)}">
+      <div class="db-ig-chart__header">
+        <strong>Top ${safeRows.length}</strong>
+        <span>${escapeHTML(valueLabel)}</span>
+      </div>
+      <div class="db-ig-chart__plot">
+        ${safeRows.map((row) => {
+          const count = Number(row?.count) || 0;
+          const width = Math.max(2, (count / maxCount) * 100);
+          return `
+            <div class="db-ig-chart__row">
+              <code title="${escapeHTML(row?.mention || '')}">${escapeHTML(row?.mention || '')}</code>
+              <div class="db-ig-chart__track"><span style="width:${width.toFixed(2)}%"></span></div>
+              <strong>${escapeHTML(count.toLocaleString('es-MX'))}</strong>
+            </div>
+          `;
+        }).join('')}
+      </div>
     </div>
   `;
 }
@@ -3691,6 +3720,42 @@ function igSafePdfFilename(mediaId) {
   return 'instagram-mention-rank-' + cleanId + '-' + new Date().toISOString().slice(0, 10) + '.pdf';
 }
 
+function drawIgPdfBarChart(doc, rows, title, startY, margin) {
+  const safeRows = (Array.isArray(rows) ? rows : []).slice(0, 15);
+  if (!safeRows.length) return startY;
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const chartHeight = 30 + safeRows.length * 18;
+  let y = startY;
+  if (y + chartHeight > pageHeight - 38) {
+    doc.addPage();
+    y = 48;
+  }
+
+  const maxCount = Math.max(1, ...safeRows.map((row) => Number(row?.count) || 0));
+  const labelWidth = 105;
+  const valueWidth = 35;
+  const chartWidth = doc.internal.pageSize.getWidth() - margin * 2 - labelWidth - valueWidth;
+  doc.setFontSize(12);
+  doc.text(title, margin, y);
+  y += 18;
+
+  safeRows.forEach((row) => {
+    const count = Number(row?.count) || 0;
+    const barWidth = Math.max(2, (count / maxCount) * chartWidth);
+    doc.setFontSize(8);
+    doc.setTextColor(45, 45, 45);
+    doc.text(String(row?.mention || ''), margin, y + 8, { maxWidth: labelWidth - 8 });
+    doc.setFillColor(231, 233, 236);
+    doc.rect(margin + labelWidth, y, chartWidth, 10, 'F');
+    doc.setFillColor(220, 40, 84);
+    doc.rect(margin + labelWidth, y, barWidth, 10, 'F');
+    doc.text(count.toLocaleString('es-MX'), margin + labelWidth + chartWidth + 7, y + 8);
+    y += 18;
+  });
+  doc.setTextColor(0, 0, 0);
+  return y + 12;
+}
+
 async function exportIgAnalysisPdf() {
   const igState = getIgMentionState();
   const analysis = igState.analysis;
@@ -3751,6 +3816,7 @@ async function exportIgAnalysisPdf() {
     }
 
     doc.setFontSize(12);
+    nextY = drawIgPdfBarChart(doc, analysis.ranking_total, 'Grafica: menciones totales', nextY, margin);
     doc.text('Mas arrobados total', margin, nextY - 8);
     const totalRows = igPdfRows(analysis.ranking_total, false);
     doc.autoTable({
@@ -3768,6 +3834,7 @@ async function exportIgAnalysisPdf() {
       nextY = 52;
     }
     doc.setFontSize(12);
+    nextY = drawIgPdfBarChart(doc, analysis.ranking_unique_authors, 'Grafica: usuarios unicos', nextY, margin);
     doc.text('Mas arrobados por usuarios unicos', margin, nextY - 8);
     const uniqueRows = igPdfRows(analysis.ranking_unique_authors, true);
     doc.autoTable({

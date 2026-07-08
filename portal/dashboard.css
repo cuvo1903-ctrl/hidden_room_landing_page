@@ -3338,6 +3338,73 @@ input[data-user-search] {
   overflow: auto;
 }
 
+.db-ig-chart {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--db-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.db-ig-chart__header,
+.db-ig-chart__row {
+  display: grid;
+  align-items: center;
+}
+
+.db-ig-chart__header {
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  color: var(--db-muted);
+  font-size: 0.78rem;
+}
+
+.db-ig-chart__header strong { color: var(--db-text); }
+.db-ig-chart__plot { display: grid; gap: 8px; }
+
+.db-ig-chart__row {
+  grid-template-columns: minmax(82px, 120px) minmax(80px, 1fr) minmax(32px, auto);
+  gap: 8px;
+  min-width: 0;
+}
+
+.db-ig-chart__row code {
+  overflow: hidden;
+  color: var(--db-muted);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-ig-chart__row strong {
+  color: var(--db-text);
+  font-family: var(--hr-font-mono);
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+.db-ig-chart__track {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.db-ig-chart__track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--hr-primary);
+}
+
+@media (max-width: 520px) {
+  .db-ig-chart__row {
+    grid-template-columns: minmax(70px, 92px) minmax(60px, 1fr) minmax(28px, auto);
+    gap: 6px;
+  }
+}
+
 .db-ig-progress-card .db-card__inner {
   gap: 14px;
 }
