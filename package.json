@@ -1,9 +1,12 @@
-﻿{
-    "scripts":  {
-                    "dev":  "node .codex-static-server.js"
-                },
-    "dependencies":  {
-                         "@supabase/supabase-js":  "^2.107.0",
-                         "dotenv":  "^17.4.2"
-                     }
+{
+    "scripts": {
+        "dev": "node .codex-static-server.js",
+        "instagram:login": "node tools/instagram-comments/server.js --login",
+        "instagram:scraper": "node tools/instagram-comments/server.js"
+    },
+    "dependencies": {
+        "@supabase/supabase-js": "^2.107.0",
+        "dotenv": "^17.4.2",
+        "playwright": "1.55.0"
+    }
 }

@@ -129,10 +129,22 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
       });
     });
 
+    const fullGraph = new Graph({ type: "undirected" });
+    artistsMap.forEach((_, handle) => fullGraph.addNode(`artist:${handle}`));
+    authorsMap.forEach((_, handle) => fullGraph.addNode(`author:${handle}`));
+    edgesMap.forEach((edge, key) => {
+      fullGraph.addEdgeWithKey(`full:${key}`, `author:${edge.author}`, `artist:${edge.artist}`, { weight: edge.weight });
+    });
+    const fullPartition = fullGraph.order
+      ? louvain(fullGraph, { getEdgeWeight: "weight", resolution: 1.15, randomWalk: false })
+      : {};
+
     const artists = [...artistsMap.values()].map(item => ({
       handle: item.handle,
       total_mentions: item.total_mentions,
-      unique_authors: item.authorSet.size
+      unique_authors: item.authorSet.size,
+      conversion_potential: Number((item.authorSet.size / Math.max(1, item.total_mentions)).toFixed(3)),
+      artist_cluster: fullPartition[`artist:${item.handle}`]
     }));
     rankWithTies(artists, "total_mentions", "rank_total_mentions");
     rankWithTies(artists, "unique_authors", "rank_unique_authors");
@@ -142,13 +154,22 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
     artists.sort((a, b) => b.combined_score - a.combined_score || b.total_mentions - a.total_mentions);
     artists.forEach((item, index) => { item.combined_rank = index + 1; });
 
-    const authors = [...authorsMap.values()].map(item => ({
-      handle: item.handle,
-      comment_count: item.comment_count,
-      artists_supported: item.artistSet.size,
-      total_mentions_made: item.total_mentions_made,
-      ambassador_score: item.artistSet.size * 10 + item.total_mentions_made
-    })).sort((a, b) => b.ambassador_score - a.ambassador_score || a.handle.localeCompare(b.handle));
+    const authors = [...authorsMap.values()].map(item => {
+      const artistClusters = new Set([...item.artistSet]
+        .map(handle => fullPartition[`artist:${handle}`])
+        .filter(cluster => cluster !== undefined));
+      const artistsSupported = item.artistSet.size;
+      return {
+        handle: item.handle,
+        comment_count: item.comment_count,
+        artists_supported: artistsSupported,
+        total_mentions_made: item.total_mentions_made,
+        ambassador_score: artistsSupported * 10 + item.total_mentions_made,
+        unique_artist_clusters: artistClusters.size,
+        bridge_score: artistsSupported * Math.max(1, artistClusters.size),
+        spam_score: Number((item.total_mentions_made / Math.max(1, artistsSupported)).toFixed(2))
+      };
+    }).sort((a, b) => b.ambassador_score - a.ambassador_score || b.bridge_score - a.bridge_score || a.handle.localeCompare(b.handle));
 
     const edges = [...edgesMap.values()].sort((a, b) => b.weight - a.weight || a.author.localeCompare(b.author));
     return { comments, artists, authors, edges };
@@ -209,7 +230,7 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
         data: {
           id: `artist:${handle}`, type: "artist", label: handle, parent: `scene:${community}`,
           community: communityIndex.get(community), total_mentions: artist.total_mentions,
-          unique_authors: artist.unique_authors, rank: artist.combined_rank, combined_score: artist.combined_score,
+          unique_authors: artist.unique_authors, rank: artist.combined_rank, combined_score: artist.combined_score, conversion_potential: artist.conversion_potential,
           size: Math.min(96, 30 + Math.sqrt(artist.unique_authors) * 12),
           color: artist.combined_rank <= 3 ? "#ff3832" : artist.combined_rank <= 10 ? "#ed6a32" : "#8d211f"
         },
@@ -220,7 +241,8 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
     visibleAuthors.forEach(handle => {
       const author = authorByHandle.get(handle);
       const ambassador = author.artists_supported >= 3;
-      const bridge = authorScenes.get(handle).size >= 2;
+      const visibleSceneCount = authorScenes.get(handle).size;
+      const bridge = visibleSceneCount >= 2 || author.unique_artist_clusters >= 2;
       const community = partition[`author:${handle}`];
       elements.push({
         group: "nodes",
@@ -228,8 +250,9 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
           id: `author:${handle}`, type: "author", label: handle, parent: `scene:${community}`,
           community: communityIndex.get(community), comment_count: author.comment_count,
           artists_supported: author.artists_supported, total_mentions_made: author.total_mentions_made,
-          ambassador_score: author.ambassador_score, is_bridge: bridge, connected_scenes: authorScenes.get(handle).size,
-          size: Math.min(36, 12 + Math.sqrt(author.ambassador_score) * 2),
+          ambassador_score: author.ambassador_score, bridge_score: author.bridge_score, spam_score: author.spam_score,
+          unique_artist_clusters: author.unique_artist_clusters, is_bridge: bridge, connected_scenes: visibleSceneCount,
+          size: Math.min(42, 12 + Math.sqrt(author.ambassador_score + author.bridge_score * 3) * 2),
           color: bridge ? "#42e879" : ambassador ? "#38bdf8" : "#326ee8"
         },
         classes: ["author", ambassador ? "ambassador" : "", bridge ? "bridge" : ""].filter(Boolean).join(" ")
@@ -245,7 +268,7 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
           width: Math.min(14, .8 + Math.sqrt(edge.weight) * 3),
           opacity: Math.min(.92, .18 + Math.log2(edge.weight + 1) * .2)
         },
-        classes: authorScenes.get(edge.author).size >= 2 ? "bridge-edge" : ""
+        classes: (authorScenes.get(edge.author).size >= 2 || authorByHandle.get(edge.author)?.unique_artist_clusters >= 2) ? "bridge-edge" : ""
       });
     });
     return elements;
@@ -357,11 +380,11 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
     cy.on("mouseover", "node, edge", event => {
       const data = event.target.data();
       if (data.type === "artist") {
-        showTooltip(`<strong>${escapeHtml(data.label)}</strong><dl><dt>Menciones totales</dt><dd>${data.total_mentions}</dd><dt>Usuarios únicos</dt><dd>${data.unique_authors}</dd><dt>Ranking combinado</dt><dd>#${data.rank}</dd><dt>Score</dt><dd>${data.combined_score}</dd></dl>`, event.originalEvent);
+        showTooltip(`<strong>${escapeHtml(data.label)}</strong><dl><dt>Menciones totales</dt><dd>${data.total_mentions}</dd><dt>Usuarios únicos</dt><dd>${data.unique_authors}</dd><dt>Conversion potential</dt><dd>${data.conversion_potential}</dd><dt>Ranking combinado</dt><dd>#${data.rank}</dd><dt>Score</dt><dd>${data.combined_score}</dd></dl>`, event.originalEvent);
       } else if (data.type === "scene") {
         showTooltip(`<strong>${escapeHtml(data.label)}</strong><dl><dt>Comunidad Louvain</dt><dd>${data.label.replace("ESCENA ", "#")}</dd></dl>`, event.originalEvent);
       } else if (data.type === "author") {
-        showTooltip(`<strong>${escapeHtml(data.label)}</strong><dl><dt>Comentarios</dt><dd>${data.comment_count}</dd><dt>Artistas apoyados</dt><dd>${data.artists_supported}</dd><dt>Menciones hechas</dt><dd>${data.total_mentions_made}</dd><dt>Ambassador score</dt><dd>${data.ambassador_score}</dd><dt>Escenas conectadas</dt><dd>${data.connected_scenes}</dd><dt>Puente</dt><dd>${data.is_bridge ? "Sí" : "No"}</dd></dl>`, event.originalEvent);
+        showTooltip(`<strong>${escapeHtml(data.label)}</strong><dl><dt>Comentarios</dt><dd>${data.comment_count}</dd><dt>Artistas apoyados</dt><dd>${data.artists_supported}</dd><dt>Menciones hechas</dt><dd>${data.total_mentions_made}</dd><dt>Ambassador score</dt><dd>${data.ambassador_score}</dd><dt>Bridge score</dt><dd>${data.bridge_score}</dd><dt>Spam score</dt><dd>${data.spam_score}</dd><dt>Clusters únicos</dt><dd>${data.unique_artist_clusters}</dd><dt>Puente</dt><dd>${data.is_bridge ? "Sí" : "No"}</dd></dl>`, event.originalEvent);
       } else {
         showTooltip(`<strong>Conexión</strong><dl><dt>Autor</dt><dd>${escapeHtml(data.author)}</dd><dt>Artista</dt><dd>${escapeHtml(data.artist)}</dd><dt>Menciones</dt><dd>${data.weight}</dd></dl>`, event.originalEvent);
       }
@@ -414,7 +437,7 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
       const handle = document.createElement("strong");
       handle.textContent = author.handle;
       const detail = document.createElement("span");
-      detail.textContent = `${author.artists_supported} artistas · ${author.total_mentions_made} menciones`;
+      detail.textContent = `${author.artists_supported} artistas · bridge ${author.bridge_score} · spam ${author.spam_score}`;
       button.append(handle, detail);
       fragment.append(button);
     });
@@ -473,11 +496,11 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
 
   function renderTables() {
     document.querySelector("#artistsTable").innerHTML = model.artists.slice(0, 20).map((item, index) =>
-      `<tr><td><span class="rank">${String(index + 1).padStart(2, "0")}</span>${escapeHtml(item.handle)}</td><td>${item.total_mentions}</td><td>${item.unique_authors}</td><td>${item.combined_score}</td></tr>`
-    ).join("") || `<tr><td colspan="4">Sin datos</td></tr>`;
+      `<tr><td><span class="rank">${String(index + 1).padStart(2, "0")}</span>${escapeHtml(item.handle)}</td><td>${item.total_mentions}</td><td>${item.unique_authors}</td><td>${item.conversion_potential}</td><td>${item.combined_score}</td></tr>`
+    ).join("") || `<tr><td colspan="5">Sin datos</td></tr>`;
     document.querySelector("#ambassadorsTable").innerHTML = model.authors.slice(0, 20).map((item, index) =>
-      `<tr><td><span class="rank">${String(index + 1).padStart(2, "0")}</span>${escapeHtml(item.handle)}</td><td>${item.comment_count}</td><td>${item.artists_supported}</td><td>${item.ambassador_score}</td></tr>`
-    ).join("") || `<tr><td colspan="4">Sin datos</td></tr>`;
+      `<tr><td><span class="rank">${String(index + 1).padStart(2, "0")}</span>${escapeHtml(item.handle)}</td><td>${item.artists_supported}</td><td>${item.bridge_score}</td><td>${item.spam_score}</td><td>${item.ambassador_score}</td></tr>`
+    ).join("") || `<tr><td colspan="5">Sin datos</td></tr>`;
     document.querySelector("#connectionsTable").innerHTML = model.edges.slice(0, 20).map((item, index) =>
       `<tr><td><span class="rank">${String(index + 1).padStart(2, "0")}</span>${escapeHtml(item.author)}</td><td>${escapeHtml(item.artist)}</td><td>${item.weight}</td></tr>`
     ).join("") || `<tr><td colspan="3">Sin datos</td></tr>`;
@@ -631,4 +654,3 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
 
   processDataset();
 })();
-
