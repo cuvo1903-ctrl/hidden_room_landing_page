@@ -8,6 +8,7 @@ const corsHeaders = {
 
 const META_API_VERSION = "v24.0";
 const MAX_LIMIT = 100;
+const MAX_PERMALINK_PAGES = 100;
 const MAX_META_RETRIES = 5;
 const BASE_RETRY_DELAY_MS = 800;
 const MAX_RETRY_DELAY_MS = 20_000;
@@ -32,6 +33,24 @@ function normalizeLimit(value: unknown) {
   const parsed = Number.parseInt(String(value ?? "25"), 10);
   if (!Number.isFinite(parsed) || parsed < 1) return 25;
   return Math.min(parsed, MAX_LIMIT);
+}
+
+function normalizeInstagramPermalink(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+    const pathname = url.pathname.replace(/\/+$/, "");
+    if (hostname !== "instagram.com" || !/^\/(p|reel|reels|tv)\/[a-zA-Z0-9_-]+$/.test(pathname)) return null;
+    return "instagram.com" + pathname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function mediaMatchesPermalink(item: Record<string, unknown>, target: string) {
+  return normalizeInstagramPermalink(item?.permalink) === target;
 }
 
 async function readResponseBody(response: Response) {
@@ -214,23 +233,33 @@ async function metaFetch(url: URL, mode: string) {
   }
 }
 
-async function listInstagramLoginMedia(accessToken: string, limit: number) {
+async function listInstagramLoginMedia(accessToken: string, limit: number, targetPermalink: string | null) {
   const url = new URL("https://graph.instagram.com/" + META_API_VERSION + "/me/media");
   url.searchParams.set("fields", "id,caption,permalink,media_type,timestamp,comments_count,thumbnail_url");
-  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("limit", String(targetPermalink ? MAX_LIMIT : limit));
   url.searchParams.set("access_token", accessToken);
-  const data = await metaFetch(url, "instagram_login");
+
+  const media: Record<string, unknown>[] = [];
+  let nextUrl: URL | null = url;
+  let page = 0;
+  while (nextUrl && page < (targetPermalink ? MAX_PERMALINK_PAGES : 1)) {
+    page += 1;
+    const data = await metaFetch(nextUrl, "instagram_login");
+    const rows = Array.isArray(data?.data) ? data.data : [];
+    const selected = targetPermalink ? rows.filter((item: Record<string, unknown>) => mediaMatchesPermalink(item, targetPermalink)) : rows;
+    media.push(...selected.map((item: Record<string, unknown>) => ({ ...item, api_mode: "instagram_login" })));
+    if (media.length || !targetPermalink || typeof data?.paging?.next !== "string") break;
+    nextUrl = new URL(data.paging.next);
+  }
+
   return {
-    media: (Array.isArray(data?.data) ? data.data : []).map((item: Record<string, unknown>) => ({
-      ...item,
-      api_mode: "instagram_login",
-    })),
+    media,
     pages: [],
     ig_accounts: [],
   };
 }
 
-async function listFacebookGraphMedia(accessToken: string, limit: number) {
+async function listFacebookGraphMedia(accessToken: string, limit: number, targetPermalink: string | null) {
   const accountsUrl = new URL("https://graph.facebook.com/" + META_API_VERSION + "/me/accounts");
   accountsUrl.searchParams.set("fields", "id,name,access_token");
   accountsUrl.searchParams.set("limit", "100");
@@ -278,18 +307,27 @@ async function listFacebookGraphMedia(accessToken: string, limit: number) {
 
     const mediaUrl = new URL("https://graph.facebook.com/" + META_API_VERSION + "/" + encodeURIComponent(igUserId) + "/media");
     mediaUrl.searchParams.set("fields", "id,caption,comments_count,permalink,timestamp,media_type,thumbnail_url");
-    mediaUrl.searchParams.set("limit", String(limit));
+    mediaUrl.searchParams.set("limit", String(targetPermalink ? MAX_LIMIT : limit));
     mediaUrl.searchParams.set("access_token", pageToken);
-    const mediaData = await metaFetch(mediaUrl, "facebook_graph");
-    if (Array.isArray(mediaData?.data)) {
-      media.push(...mediaData.data.map((item: Record<string, unknown>) => ({
-        ...item,
-        api_mode: "facebook_graph",
-        page_id: pageId,
-        page_name: page?.name || null,
-        ig_user_id: igUserId,
-      })));
+
+    let nextUrl: URL | null = mediaUrl;
+    let mediaPage = 0;
+    while (nextUrl && mediaPage < (targetPermalink ? MAX_PERMALINK_PAGES : 1)) {
+      mediaPage += 1;
+      const mediaData = await metaFetch(nextUrl, "facebook_graph");
+      const rows = Array.isArray(mediaData?.data) ? mediaData.data : [];
+      const selected = targetPermalink ? rows.filter((item: Record<string, unknown>) => mediaMatchesPermalink(item, targetPermalink)) : rows;
+      media.push(...selected.map((item: Record<string, unknown>) => ({
+          ...item,
+          api_mode: "facebook_graph",
+          page_id: pageId,
+          page_name: page?.name || null,
+          ig_user_id: igUserId,
+        })));
+      if (media.length || !targetPermalink || typeof mediaData?.paging?.next !== "string") break;
+      nextUrl = new URL(mediaData.paging.next);
     }
+    if (targetPermalink && media.length) break;
   }
 
   return {
@@ -319,11 +357,20 @@ Deno.serve(async (req) => {
   }
 
   const limit = normalizeLimit(payload.limit);
+  const rawPermalink = String(payload.permalink || "").trim();
+  const targetPermalink = normalizeInstagramPermalink(rawPermalink);
+  if (rawPermalink && !targetPermalink) {
+    return json({ error: "Pega un enlace valido de una publicacion, reel o video de Instagram." }, 400);
+  }
 
   try {
     const result = apiMode === "facebook_graph"
-      ? await listFacebookGraphMedia(accessToken, limit)
-      : await listInstagramLoginMedia(accessToken, limit);
+      ? await listFacebookGraphMedia(accessToken, limit, targetPermalink)
+      : await listInstagramLoginMedia(accessToken, limit, targetPermalink);
+
+    if (targetPermalink && !result.media.length) {
+      return json({ ok: false, error: "No se encontro ese enlace entre las publicaciones de la cuenta conectada." }, 404);
+    }
 
     return json({
       ok: true,

@@ -3516,11 +3516,17 @@ async function renderErpInstagramMentionRank() {
               <input id="js-ig-access-token" name="access_token" type="password" autocomplete="off" spellcheck="false" value="${escapeHTML(igState.accessToken || '')}" placeholder="Pega un token para pruebas o deja vacio si el secreto ya esta configurado" />
             </label>
             <p class="db-note">Instagram Login puede listar publicaciones, pero si Meta reporta comentarios y no los entrega, usa Facebook Graph con un token con permisos de paginas e Instagram Business.</p>
+            <label class="db-field">
+              <span>Enlace de tu publicacion</span>
+              <input name="permalink" type="url" inputmode="url" placeholder="https://www.instagram.com/p/.../" />
+              <small>Puedes analizar directamente un enlace que pertenezca a la cuenta conectada.</small>
+            </label>
             <div class="db-form__row">
               <label class="db-field"><span>Limite</span><input name="limit" type="number" min="1" max="100" value="25" /></label>
             </div>
             <div class="db-form__actions">
-              <button class="btn-primary" type="submit">Cargar publicaciones</button>
+              <button class="btn-primary" type="submit" data-operation-action="list">Cargar publicaciones</button>
+              <button class="db-btn-secondary" type="submit" data-operation-action="resolve">Analizar enlace</button>
             </div>
             <div class="db-field__hint" data-ig-status aria-live="polite"></div>
           </form>
@@ -4063,15 +4069,26 @@ async function handleIgListMedia(form) {
   const token = String(formData.get('access_token') || '').trim();
   const apiMode = String(formData.get('api_mode') || 'instagram_login');
   const limit = Number(formData.get('limit') || 25);
+  const permalink = String(formData.get('permalink') || '').trim();
+  const resolvePermalink = form.dataset.operationAction === 'resolve';
   const igState = getIgMentionState();
   igState.accessToken = token;
   igState.apiMode = apiMode;
   igState.error = '';
-  if (status) status.textContent = 'Cargando publicaciones...';
+  if (resolvePermalink && !permalink) {
+    showToast('Pega el enlace de una publicacion de Instagram.', 'error');
+    return;
+  }
+  if (status) status.textContent = resolvePermalink ? 'Buscando publicacion en tu cuenta...' : 'Cargando publicaciones...';
   if (submit) submit.disabled = true;
 
   try {
-    const result = await igFunctionFetch('ig-list-media', { access_token: token, api_mode: apiMode, limit });
+    const result = await igFunctionFetch('ig-list-media', {
+      access_token: token,
+      api_mode: apiMode,
+      limit,
+      permalink: resolvePermalink ? permalink : '',
+    });
     igState.media = Array.isArray(result.media) ? result.media.map((item) => ({ ...item, api_mode: item.api_mode || result.api_mode || apiMode })) : [];
     igState.apiMode = result.api_mode || apiMode;
     console.info('[Instagram Mention Rank] Publicaciones cargadas', {
@@ -4087,6 +4104,12 @@ async function handleIgListMedia(form) {
     igState.analysis = null;
     igState.selectedMedia = null;
     igState.isAnalyzing = false;
+    if (resolvePermalink) {
+      const resolvedMedia = igState.media[0];
+      showToast('Publicacion encontrada. Iniciando analisis.', 'success');
+      await handleIgAnalyzeMedia(resolvedMedia?.id);
+      return;
+    }
     showToast('Publicaciones cargadas.', 'success');
     renderSection('erp-ig-mention-rank');
   } catch (err) {
