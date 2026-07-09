@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07080c">
+  <title>Mysauth ORBIT — Hidden Room</title>
+  <meta name="description" content="Mapa de relaciones entre comunidad y artistas de Hidden Room.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307080c'/%3E%3Ccircle cx='32' cy='32' r='19' fill='none' stroke='%23f02c27' stroke-width='7'/%3E%3Ccircle cx='49' cy='20' r='5' fill='%23f2efe8'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Unbounded:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="orbit.css">
+</head>
+<body>
+  <div class="orbit-app">
+    <header class="orbit-header">
+      <div>
+        <p class="eyebrow">Mysauth intelligence systems / beta 0.1</p>
+        <h1>Mysauth <span>ORBIT</span></h1>
+        <p class="subtitle">Omnichannel Relationship &amp; Behavioral Intelligence Tensor</p>
+      </div>
+      <div class="header-status"><i></i><span id="datasetName">Sin dataset</span></div>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar" aria-label="Controles del grafo">
+        <section class="panel upload-panel">
+          <div class="panel-heading">
+            <span>01</span>
+            <h2>Fuente</h2>
+          </div>
+          <label class="dropzone" id="dropzone" for="fileInput">
+            <input id="fileInput" type="file" accept=".md,text/markdown,text/plain" multiple>
+            <strong>Subir comentarios .md</strong>
+            <span>Arrastra uno o varios archivos, o haz clic</span>
+          </label>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <span>02</span>
+            <h2>Resumen</h2>
+          </div>
+          <dl class="summary-grid">
+            <div><dt id="statComments">0</dt><dd>Comentarios</dd></div>
+            <div><dt id="statArtists">0</dt><dd>Artistas</dd></div>
+            <div><dt id="statAuthors">0</dt><dd>Autores</dd></div>
+            <div><dt id="statEdges">0</dt><dd>Conexiones</dd></div>
+          </dl>
+        </section>
+
+        <section class="panel filters">
+          <div class="panel-heading">
+            <span>03</span>
+            <h2>Filtros</h2>
+          </div>
+          <label>
+            <span>Top artistas <output id="topNValue">Todos</output></span>
+            <input id="topN" type="range" min="1" max="50" value="25">
+          </label>
+          <label>
+            <span>Peso mínimo <output id="minWeightValue">1</output></span>
+            <input id="minWeight" type="range" min="1" max="10" value="1">
+          </label>
+          <label>
+            <span>Mín. comentarios autor <output id="minCommentsValue">1</output></span>
+            <input id="minComments" type="range" min="1" max="20" value="1">
+          </label>
+          <label class="field">
+            <span>Handles ignorados</span>
+            <textarea id="ignoredHandles" rows="3" spellcheck="false" placeholder="@hiddenroom.mx, @cuvo1903"></textarea>
+            <small>Separados por coma, espacio o línea.</small>
+          </label>
+          <label class="switch-row">
+            <span>Solo embajadores <small>3+ artistas</small></span>
+            <input id="ambassadorsOnly" type="checkbox">
+            <i aria-hidden="true"></i>
+          </label>
+          <label class="switch-row">
+            <span>Labels de comunidad</span>
+            <input id="communityLabels" type="checkbox">
+            <i aria-hidden="true"></i>
+          </label>
+          <button class="button secondary" id="recalculate" type="button">Recalcular layout</button>
+        </section>
+
+        <button class="button export" id="exportPng" type="button">Exportar PNG <span>↗</span></button>
+      </aside>
+
+      <main class="main-content">
+        <section class="graph-card" aria-label="Mapa de relaciones">
+          <div class="graph-toolbar">
+            <div>
+              <span class="live-dot"></span>
+              <span id="graphStatus">Scene graph activo</span>
+            </div>
+            <div class="legend">
+              <span><i class="artist-dot"></i>Artista</span>
+              <span><i class="community-dot"></i>Comunidad</span>
+              <span><i class="ambassador-dot"></i>Embajador</span>
+              <span><i class="bridge-dot"></i>Puente</span>
+            </div>
+          </div>
+          <div id="cy" role="img" aria-label="Grafo interactivo de comunidad y artistas"></div>
+          <div class="empty-state" id="emptyState" hidden>
+            <strong>Sin conexiones visibles</strong>
+            <span>Ajusta los filtros o carga otro archivo.</span>
+          </div>
+          <div class="graph-hint">Scroll: zoom · Arrastrar: navegar · Nodo: detalles</div>
+          <div class="tooltip" id="tooltip" hidden></div>
+        </section>
+
+        <section class="tables-section">
+          <div class="section-title">
+            <div><span>Data intelligence</span><h2>Lecturas de la órbita</h2></div>
+            <p>Rankings calculados sobre el dataset completo.</p>
+          </div>
+          <div class="table-grid">
+            <article class="data-card">
+              <header><span>01</span><h3>Top Artists</h3></header>
+              <div class="table-scroll">
+                <table>
+                  <thead><tr><th>Handle</th><th>Menciones</th><th>Únicos</th><th>Score</th></tr></thead>
+                  <tbody id="artistsTable"></tbody>
+                </table>
+              </div>
+            </article>
+            <article class="data-card">
+              <header><span>02</span><h3>Top Ambassadors</h3></header>
+              <div class="table-scroll">
+                <table>
+                  <thead><tr><th>Handle</th><th>Comentarios</th><th>Artistas</th><th>Score</th></tr></thead>
+                  <tbody id="ambassadorsTable"></tbody>
+                </table>
+              </div>
+            </article>
+            <article class="data-card">
+              <header><span>03</span><h3>Strongest Connections</h3></header>
+              <div class="table-scroll">
+                <table>
+                  <thead><tr><th>Autor</th><th>Artista</th><th>Peso</th></tr></thead>
+                  <tbody id="connectionsTable"></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="https://unpkg.com/cytoscape@3.33.1/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/layout-base@2.0.1/layout-base.js"></script>
+  <script src="https://unpkg.com/cose-base@2.2.0/cose-base.js"></script>
+  <script src="https://unpkg.com/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js"></script>
+  <script type="module" src="orbit.js"></script>
+</body>
+</html>
