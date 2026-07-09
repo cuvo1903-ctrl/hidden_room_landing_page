@@ -106,6 +106,44 @@ async function igFunctionFetch(functionName, payload) {
   }
   return body;
 }
+async function igAnalyzeCommentsStream(payload) {
+  const response = await cloudApiFetch(`${CLOUD_FUNCTION_BASE}/ig-analyze-comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...payload, progress_stream: true }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.error || `No se pudo completar el analisis (${response.status})`);
+  }
+  if (!response.body) throw new Error('El navegador no pudo abrir el stream del analisis.');
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result = null;
+
+  const consumeLine = (line) => {
+    if (!line.trim()) return;
+    const event = JSON.parse(line);
+    if (event.event === 'error') throw new Error(event.error || 'No se pudo analizar la publicacion.');
+    if (event.event === 'complete') result = event.result;
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    lines.forEach(consumeLine);
+    if (done) break;
+  }
+  if (buffer.trim()) consumeLine(buffer);
+  if (!result?.ok) throw new Error(result?.error || 'El analisis termino sin devolver resultados.');
+  return result;
+}
+
 function buildCloudFunctionUrl(functionName, path = '/') {
   const normalized = normalizeCloudPath(path);
   return `${CLOUD_FUNCTION_BASE}/${functionName}?path=${encodeURIComponent(normalized)}`;
@@ -3436,7 +3474,8 @@ function getIgMentionState() {
       media: [],
       analysis: null,
       selectedMedia: null,
-      error: '',
+      isAnalyzing: false,
+      error: ''
     };
   }
   return state.data.instagramMentionRank;
@@ -3454,6 +3493,7 @@ async function renderErpInstagramMentionRank() {
   const igState = getIgMentionState();
   const media = Array.isArray(igState.media) ? igState.media : [];
   const analysis = igState.analysis;
+  const isAnalyzing = Boolean(igState.isAnalyzing);
   const apiMode = igState.apiMode || 'instagram_login';
 
   return sectionShell('ERP', 'Instagram Mention Rank', 'title-erp-ig-mention-rank', `
@@ -3487,7 +3527,13 @@ async function renderErpInstagramMentionRank() {
         </div>
       </article>
 
-      ${analysis ? '' : `
+      ${isAnalyzing ? `
+        <article class="db-card db-ig-loading-card" aria-live="polite" aria-busy="true">
+          <div class="db-card__inner">
+            <p class="hr-table-loading">Analizando comentarios</p>
+          </div>
+        </article>
+      ` : analysis ? '' : `
         <article class="db-card">
           <div class="db-card__inner">
             <header class="db-card__header"><span class="section-label">Publicaciones</span></header>
@@ -3495,8 +3541,8 @@ async function renderErpInstagramMentionRank() {
           </div>
         </article>
       `}
-      ${analysis ? renderIgAnalysisSummary(analysis, igState.selectedMedia) : ''}
-      ${analysis ? renderIgRankingTables(analysis) : ''}
+      ${!isAnalyzing && analysis ? renderIgAnalysisSummary(analysis, igState.selectedMedia) : ''}
+      ${!isAnalyzing && analysis ? renderIgRankingTables(analysis) : ''}
     </div>
   `);
 }
@@ -3571,6 +3617,7 @@ function renderIgAnalysisSummary(analysis, media) {
         ${Number(analysis.mentions_count ?? 0) === 0 ? renderIgMentionDebug(analysis.mention_debug) : ''}
         <div class="db-form__actions">
           <button class="btn-primary" type="button" data-action="ig-export-pdf">Exportar PDF</button>
+          <button class="db-btn-secondary" type="button" data-action="ig-export-comments-markdown">Exportar comentarios Markdown</button>
           <button class="db-btn-secondary" type="button" data-action="ig-reset-analysis">Analizar otra publicacion</button>
         </div>
       </div>
@@ -3612,6 +3659,77 @@ function renderIgRankingTables(analysis) {
           ${renderIgRankingTable(analysis.ranking_unique_authors, true)}
         </div>
       </article>
+    </div>
+    <article class="db-card db-ig-author-summary">
+      <div class="db-card__inner">
+        <header class="db-card__header"><span class="section-label">Resumen de autores</span></header>
+        <p class="db-note">Usuarios ordenados por cantidad de comentarios principales y artistas etiquetados.</p>
+        ${renderIgRankingChart((analysis.ranking_authors || []).map((row) => ({ mention: '@' + row.author, count: row.count })), 'Comentarios')}
+        ${renderIgAuthorSummaryTable(analysis.ranking_authors)}
+      </div>
+    </article>
+    <article class="db-card db-ig-author-summary">
+      <div class="db-card__inner">
+        <header class="db-card__header"><span class="section-label">Artistas distintos mencionados</span></header>
+        <p class="db-note">Usuarios ordenados por la cantidad de artistas diferentes que etiquetaron.</p>
+        ${renderIgRankingChart(igDistinctArtistAuthors(analysis.ranking_authors).map((row) => ({ mention: '@' + row.author, count: row.count })), 'Artistas distintos')}
+        ${renderIgDistinctAuthorsTable(igDistinctArtistAuthors(analysis.ranking_authors))}
+      </div>
+    </article>
+  `;
+}
+
+function igDistinctArtistAuthors(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => ({
+      author: String(row?.author || ''),
+      count: Array.isArray(row?.mentions) ? row.mentions.length : 0,
+      mentions: Array.isArray(row?.mentions) ? row.mentions : [],
+    }))
+    .filter((row) => row.count > 0)
+    .sort((a, b) => b.count - a.count || a.author.localeCompare(b.author));
+}
+
+function renderIgDistinctAuthorsTable(rows) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (!safeRows.length) return '<p class="db-empty">Ningun autor etiqueto artistas.</p>';
+  return `
+    <div class="db-table-wrap">
+      <table class="db-table">
+        <thead><tr><th>#</th><th>Autor</th><th>Artistas distintos</th><th>Artistas etiquetados</th></tr></thead>
+        <tbody>
+          ${safeRows.map((row, index) => `
+            <tr>
+              <td>${index + 1}</td>
+              <td><code>@${escapeHTML(row.author || '')}</code></td>
+              <td>${escapeHTML(row.count ?? 0)}</td>
+              <td>${escapeHTML((row.mentions || []).join(', '))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderIgAuthorSummaryTable(rows) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (!safeRows.length) return '<p class="db-empty">Sin autores disponibles.</p>';
+  return `
+    <div class="db-table-wrap">
+      <table class="db-table">
+        <thead><tr><th>#</th><th>Autor</th><th>Comentarios</th><th>Artistas etiquetados</th></tr></thead>
+        <tbody>
+          ${safeRows.map((row, index) => `
+            <tr>
+              <td>${index + 1}</td>
+              <td><code>@${escapeHTML(row.author || '')}</code></td>
+              <td>${escapeHTML(row.count ?? 0)}</td>
+              <td>${escapeHTML((row.mentions || []).join(', ') || 'Sin etiquetas')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
     </div>
   `;
 }
@@ -3705,6 +3823,38 @@ function exportIgRankingCsv(type) {
 
   const rows = [['mention', 'count'], ...(analysis.ranking_total || []).map((row) => [row.mention, row.count])];
   downloadCsv('instagram-mention-rank-total.csv', rows);
+}
+
+function exportIgCommentsMarkdown() {
+  const igState = getIgMentionState();
+  const comments = Array.isArray(igState.analysis?.comments_export) ? igState.analysis.comments_export : [];
+  if (!comments.length) {
+    showToast('No hay comentarios disponibles para exportar.', 'error');
+    return;
+  }
+
+  const markdown = comments.map((comment) => {
+    const username = String(comment?.username || 'usuario_desconocido').trim();
+    const timestamp = String(comment?.timestamp || '').trim();
+    const text = String(comment?.text || '').replace(/\r\n?/g, '\n').trim();
+    const quotedText = (text || '(Comentario sin texto)')
+      .split('\n')
+      .map((line) => `> ${line}`)
+      .join('\n');
+    return `### @${username.replace(/^@+/, '')}\n${timestamp ? `\n${timestamp}\n` : ''}\n${quotedText}`;
+  }).join('\n\n---\n\n');
+
+  const mediaId = String(igState.selectedMedia?.id || 'publicacion').replace(/[^a-z0-9_-]+/gi, '-');
+  const blob = new Blob([markdown + '\n'], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `instagram-comments-${mediaId}.md`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast('Comentarios exportados en Markdown.', 'success');
 }
 
 function igPdfRows(rows, includeAuthors, limit = 100) {
@@ -3847,6 +3997,50 @@ async function exportIgAnalysisPdf() {
       margin: { left: margin, right: margin },
     });
 
+    nextY = (doc.lastAutoTable?.finalY || nextY) + 32;
+    const authorRanking = Array.isArray(analysis.ranking_authors) ? analysis.ranking_authors : [];
+    const authorChartRows = authorRanking.map((row) => ({ mention: '@' + String(row.author || ''), count: row.count }));
+    nextY = drawIgPdfBarChart(doc, authorChartRows, 'Grafica: autores con mas comentarios', nextY, margin);
+    doc.setFontSize(12);
+    doc.text('Resumen de autores', margin, nextY - 8);
+    const authorRows = authorRanking.slice(0, 100).map((row, index) => [
+      String(index + 1),
+      '@' + String(row.author || ''),
+      String(row.count ?? 0),
+      Array.isArray(row.mentions) && row.mentions.length ? row.mentions.join(', ') : 'Sin etiquetas',
+    ]);
+    doc.autoTable({
+      head: [['#', 'Autor', 'Comentarios', 'Artistas etiquetados']],
+      body: authorRows.length ? authorRows : [['-', 'Sin autores disponibles', '0', '']],
+      startY: nextY,
+      styles: { fontSize: 7, cellPadding: 4, overflow: 'linebreak', valign: 'top' },
+      headStyles: { fillColor: [32, 32, 32] },
+      columnStyles: { 3: { cellWidth: 260 } },
+      margin: { left: margin, right: margin },
+    });
+
+    nextY = (doc.lastAutoTable?.finalY || nextY) + 32;
+    const distinctAuthorRanking = igDistinctArtistAuthors(authorRanking);
+    const distinctChartRows = distinctAuthorRanking.map((row) => ({ mention: '@' + row.author, count: row.count }));
+    nextY = drawIgPdfBarChart(doc, distinctChartRows, 'Grafica: artistas distintos mencionados', nextY, margin);
+    doc.setFontSize(12);
+    doc.text('Artistas distintos mencionados por autor', margin, nextY - 8);
+    const distinctRows = distinctAuthorRanking.slice(0, 100).map((row, index) => [
+      String(index + 1),
+      '@' + row.author,
+      String(row.count),
+      row.mentions.join(', '),
+    ]);
+    doc.autoTable({
+      head: [['#', 'Autor', 'Artistas distintos', 'Artistas etiquetados']],
+      body: distinctRows.length ? distinctRows : [['-', 'Sin autores disponibles', '0', '']],
+      startY: nextY,
+      styles: { fontSize: 7, cellPadding: 4, overflow: 'linebreak', valign: 'top' },
+      headStyles: { fillColor: [32, 32, 32] },
+      columnStyles: { 3: { cellWidth: 260 } },
+      margin: { left: margin, right: margin },
+    });
+
     const pageCount = doc.internal.getNumberOfPages();
     for (let page = 1; page <= pageCount; page += 1) {
       doc.setPage(page);
@@ -3892,6 +4086,7 @@ async function handleIgListMedia(form) {
     });
     igState.analysis = null;
     igState.selectedMedia = null;
+    igState.isAnalyzing = false;
     showToast('Publicaciones cargadas.', 'success');
     renderSection('erp-ig-mention-rank');
   } catch (err) {
@@ -3924,10 +4119,13 @@ async function handleIgAnalyzeMedia(mediaId) {
   igState.apiMode = apiMode;
   igState.error = '';
   igState.analysis = null;
+  igState.selectedMedia = media;
+  igState.isAnalyzing = true;
   showToast(apiMode === 'facebook_graph' ? 'Analizando comentarios con Facebook Graph...' : 'Analizando comentarios de Instagram...', 'info');
+  renderSection('erp-ig-mention-rank');
 
   try {
-    const result = await igFunctionFetch('ig-analyze-comments', {
+    const result = await igAnalyzeCommentsStream({
       access_token: token,
       api_mode: apiMode,
       media_id: mediaId,
@@ -3935,6 +4133,7 @@ async function handleIgAnalyzeMedia(mediaId) {
     });
     igState.analysis = result;
     igState.selectedMedia = media || { id: mediaId };
+    igState.isAnalyzing = false;
     console.info('[Instagram Mention Rank] Analisis completado', {
       media_id: media.id,
       meta_comments_count: result.meta_comments_count ?? null,
@@ -3947,6 +4146,7 @@ async function handleIgAnalyzeMedia(mediaId) {
     showToast('Analisis completado.', 'success');
     renderSection('erp-ig-mention-rank');
   } catch (err) {
+    igState.isAnalyzing = false;
     igState.error = err.message || 'No se pudieron analizar los comentarios.';
     showToast(igState.error, 'error');
     renderSection('erp-ig-mention-rank');
@@ -9437,10 +9637,16 @@ function attachMainDelegation() {
       return;
     }
 
+    if (action === 'ig-export-comments-markdown') {
+      exportIgCommentsMarkdown();
+      return;
+    }
+
     if (action === 'ig-reset-analysis') {
       const igState = getIgMentionState();
       igState.analysis = null;
       igState.selectedMedia = null;
+      igState.isAnalyzing = false;
       igState.error = '';
       renderSection('erp-ig-mention-rank');
       return;

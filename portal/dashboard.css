@@ -3338,6 +3338,11 @@ input[data-user-search] {
   overflow: auto;
 }
 
+.db-ig-author-summary .db-table-wrap {
+  max-height: 620px;
+  overflow: auto;
+}
+
 .db-ig-chart {
   display: grid;
   gap: 12px;
@@ -3403,6 +3408,16 @@ input[data-user-search] {
     grid-template-columns: minmax(70px, 92px) minmax(60px, 1fr) minmax(28px, auto);
     gap: 6px;
   }
+}
+
+.db-ig-loading-card .db-card__inner {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+}
+
+.db-ig-loading-card .hr-table-loading {
+  margin: 0;
 }
 
 .db-ig-progress-card .db-card__inner {

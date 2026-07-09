@@ -33,6 +33,12 @@ type MentionUnique = {
   authors: string[];
 };
 
+type AuthorSummary = {
+  author: string;
+  count: number;
+  mentions: string[];
+};
+
 type MetaMediaInfo = {
   id?: string;
   permalink?: string;
@@ -382,6 +388,8 @@ async function fetchAllComments(
 function analyzeComments(comments: CommentRow[]) {
   const totalCounts = new Map<string, number>();
   const uniqueAuthors = new Map<string, Set<string>>();
+  const authorCommentCounts = new Map<string, number>();
+  const authorMentions = new Map<string, Set<string>>();
   let mentionsCount = 0;
   let commentsWithMentionsCount = 0;
   let commentsWithoutTextCount = 0;
@@ -389,6 +397,10 @@ function analyzeComments(comments: CommentRow[]) {
   const sampleTextsWithAt: string[] = [];
 
   for (const comment of comments) {
+    const author = normalizeAuthor(comment?.username, comment?.id || "autor_desconocido");
+    authorCommentCounts.set(author, (authorCommentCounts.get(author) || 0) + 1);
+    if (!authorMentions.has(author)) authorMentions.set(author, new Set());
+
     const text = normalizeCommentText(comment?.text);
     if (!text) {
       commentsWithoutTextCount += 1;
@@ -401,7 +413,6 @@ function analyzeComments(comments: CommentRow[]) {
 
     commentsWithMentionsCount += 1;
     if (sampleTextsWithAt.length < 5) sampleTextsWithAt.push(maskCommentSample(text));
-    const author = normalizeAuthor(comment?.username, comment?.id || "autor_desconocido");
 
     for (const rawMention of mentions) {
       const mention = normalizeMention(rawMention);
@@ -409,6 +420,7 @@ function analyzeComments(comments: CommentRow[]) {
       totalCounts.set(mention, (totalCounts.get(mention) || 0) + 1);
       if (!uniqueAuthors.has(mention)) uniqueAuthors.set(mention, new Set());
       uniqueAuthors.get(mention)?.add(author);
+      authorMentions.get(author)?.add(mention);
     }
   }
 
@@ -424,6 +436,14 @@ function analyzeComments(comments: CommentRow[]) {
     })),
   );
 
+  const rankingAuthors: AuthorSummary[] = [...authorCommentCounts.entries()]
+    .map(([author, count]) => ({
+      author,
+      count,
+      mentions: [...(authorMentions.get(author) || new Set<string>())].sort((a, b) => a.localeCompare(b)),
+    }))
+    .sort((a, b) => b.count - a.count || a.author.localeCompare(b.author));
+
   return {
     comments_count: comments.length,
     mentions_count: mentionsCount,
@@ -436,6 +456,7 @@ function analyzeComments(comments: CommentRow[]) {
     },
     ranking_total: rankingTotal,
     ranking_unique_authors: rankingUniqueAuthors,
+    ranking_authors: rankingAuthors,
   };
 }
 
@@ -500,6 +521,12 @@ async function runAnalysis(auth: AdminContext, payload: Record<string, unknown>,
     ok: true,
     api_mode: apiMode,
     ...analysis,
+    comments_export: commentsResult.comments.map((comment) => ({
+      id: String(comment.id ?? ""),
+      username: String(comment.username ?? ""),
+      timestamp: String(comment.timestamp ?? ""),
+      text: normalizeCommentText(comment.text),
+    })),
     media: mediaInfo,
     meta_comments_count: mediaInfo.comments_count ?? null,
     media_permalink: mediaInfo.permalink ?? mediaPermalink,
