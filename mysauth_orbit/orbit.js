@@ -2,7 +2,7 @@ import Graph from "https://esm.sh/graphology@0.26.0";
 import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
 
 /* global cytoscape */
-(() => {
+(async () => {
   "use strict";
 
 
@@ -18,18 +18,53 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
     communityLabels: document.querySelector("#communityLabels"),
     tooltip: document.querySelector("#tooltip"),
     emptyState: document.querySelector("#emptyState"),
-    toast: document.querySelector("#toast")
+    toast: document.querySelector("#toast"),
+    userSearch: document.querySelector("#userSearch"),
+    userSearchResults: document.querySelector("#userSearchResults"),
+    clearUserFocus: document.querySelector("#clearUserFocus")
   };
 
   let rawMarkdown = "";
   let model = null;
   let cy = null;
   let toastTimer = null;
+  let pendingAuthorFocus = "";
 
   const normalise = value => {
     const clean = String(value || "").trim().toLowerCase();
     return clean ? `@${clean.replace(/^@/, "")}` : "";
   };
+
+  function rolesIncludeAdmin(rawRoles) {
+    return String(rawRoles || "").split(",").map(role => role.trim().toLowerCase()).includes("admin");
+  }
+
+  async function requireAdminAccess() {
+    try {
+      const supabase = await window.HiddenRoomSupabase.getClient();
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        localStorage.setItem("hr_return_after_login", "/mysauth_orbit/");
+        window.location.replace("/portal/");
+        return false;
+      }
+      const { data: profile, error: profileError } = await supabase
+        .from("users")
+        .select("roles")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (profileError || !rolesIncludeAdmin(profile?.roles)) {
+        window.location.replace("/portal/dashboard.html");
+        return false;
+      }
+      document.body.classList.remove("orbit-auth-pending");
+      return true;
+    } catch (error) {
+      console.error("[ORBIT] No fue posible verificar el acceso admin:", error);
+      window.location.replace("/portal/");
+      return false;
+    }
+  }
 
   function getIgnoredHandles() {
     return new Set(els.ignored.value.split(/[\s,;]+/).map(normalise).filter(Boolean));
@@ -290,11 +325,27 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
           }
         },
         { selector: "edge.bridge-edge", style: { "line-color": "#42e879" } },
+        { selector: ".search-dim", style: { opacity: .07, "text-opacity": 0 } },
+        { selector: "edge.search-focus", style: { opacity: .95, "line-color": "#f2efe8" } },
+        { selector: "node.search-focus", style: { "underlay-color": "#f2efe8", "underlay-opacity": .14, "underlay-padding": 8 } },
+        { selector: "node.search-origin", style: { "border-width": 5, "border-color": "#42e879", "underlay-color": "#42e879", "underlay-opacity": .35, "underlay-padding": 14 } },
         { selector: "node:selected", style: { "overlay-color": "#ff3832", "overlay-opacity": .18, "overlay-padding": 8 } }
       ],
       layout: layoutOptions()
     });
     bindGraphEvents();
+    if (pendingAuthorFocus) {
+      const handle = pendingAuthorFocus;
+      pendingAuthorFocus = "";
+      let focused = false;
+      const focusAfterLayout = () => {
+        if (focused) return;
+        focused = true;
+        applyAuthorFocus(handle);
+      };
+      cy.one("layoutstop", focusAfterLayout);
+      window.setTimeout(focusAfterLayout, 1400);
+    }
     const hasElements = cy.nodes(".artist, .author").length > 0;
     els.emptyState.hidden = hasElements;
     document.querySelector("#graphStatus").textContent = hasElements
@@ -337,6 +388,87 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
     return String(value).replace(/[&<>"']/g, char => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
     })[char]);
+  }
+
+  function matchingAuthors(query) {
+    if (!model) return [];
+    const normalizedQuery = normalise(query);
+    if (!normalizedQuery || normalizedQuery === "@") return [];
+    return model.authors
+      .filter(author => author.handle.includes(normalizedQuery))
+      .slice(0, 8);
+  }
+
+  function renderUserSearchResults(query = els.userSearch.value) {
+    const matches = matchingAuthors(query);
+    els.userSearchResults.replaceChildren();
+    if (!matches.length) {
+      els.userSearchResults.hidden = true;
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    matches.forEach(author => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.userHandle = author.handle;
+      const handle = document.createElement("strong");
+      handle.textContent = author.handle;
+      const detail = document.createElement("span");
+      detail.textContent = `${author.artists_supported} artistas · ${author.total_mentions_made} menciones`;
+      button.append(handle, detail);
+      fragment.append(button);
+    });
+    els.userSearchResults.append(fragment);
+    els.userSearchResults.hidden = false;
+  }
+
+  function applyAuthorFocus(handle) {
+    if (!cy) return;
+    const authorNode = cy.$id(`author:${handle}`);
+    if (!authorNode.length) {
+      notify(`${handle} no tiene conexiones visibles.`);
+      return;
+    }
+    cy.elements().removeClass("search-dim search-focus search-origin");
+    const neighborhood = authorNode.closedNeighborhood();
+    cy.nodes(".artist, .author").difference(neighborhood.nodes()).addClass("search-dim");
+    cy.edges().difference(neighborhood.edges()).addClass("search-dim");
+    neighborhood.addClass("search-focus");
+    authorNode.addClass("search-origin");
+    cy.fit(neighborhood, 95);
+    els.clearUserFocus.hidden = false;
+    document.querySelector("#graphStatus").textContent = `${handle} · ${neighborhood.nodes(".artist").length} artistas conectados`;
+  }
+
+  function focusAuthor(handle) {
+    if (!model?.authors.some(author => author.handle === handle)) {
+      notify("Usuario no encontrado en el dataset.");
+      return;
+    }
+    els.topN.max = Math.max(1, model.artists.length);
+    els.topN.value = Math.max(1, model.artists.length);
+    els.minWeight.value = 1;
+    els.minComments.value = 1;
+    els.ambassadorsOnly.checked = false;
+    renderTopNValue();
+    document.querySelector("#minWeightValue").textContent = "1";
+    document.querySelector("#minCommentsValue").textContent = "1";
+    els.userSearch.value = handle;
+    els.userSearchResults.hidden = true;
+    pendingAuthorFocus = handle;
+    initGraph();
+  }
+
+  function clearAuthorFocus() {
+    pendingAuthorFocus = "";
+    if (cy) {
+      cy.elements().removeClass("search-dim search-focus search-origin");
+      cy.fit(cy.elements(), 36);
+      document.querySelector("#graphStatus").textContent = `${cy.nodes(".scene").length} escenas / ${cy.nodes(".artist").length} artistas / ${cy.edges().length} conexiones`;
+    }
+    els.userSearch.value = "";
+    els.userSearchResults.hidden = true;
+    els.clearUserFocus.hidden = true;
   }
 
   function renderTables() {
@@ -462,6 +594,22 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
     image.onerror = () => notify("No fue posible generar la imagen.");
     image.src = graphDataUrl;
   }
+
+  if (!await requireAdminAccess()) return;
+
+  els.userSearch.addEventListener("input", () => renderUserSearchResults());
+  els.userSearch.addEventListener("keydown", event => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    const exact = model?.authors.find(author => author.handle === normalise(els.userSearch.value));
+    const selected = exact || matchingAuthors(els.userSearch.value)[0];
+    if (selected) focusAuthor(selected.handle);
+  });
+  els.userSearchResults.addEventListener("click", event => {
+    const button = event.target.closest("[data-user-handle]");
+    if (button) focusAuthor(button.dataset.userHandle);
+  });
+  els.clearUserFocus.addEventListener("click", clearAuthorFocus);
 
   els.fileInput.addEventListener("change", event => handleFiles(event.target.files));
   ["dragenter", "dragover"].forEach(name => els.dropzone.addEventListener(name, event => {

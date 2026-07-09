@@ -11,6 +11,7 @@ const ECOSYSTEM_LINKS = [
   ["beat-store", "/store/beat_store/", "Beat Store"],
   ["kairen", "/kairen/", "Kairen AI"],
   ["tickets", "/tickets/", "Tickets"],
+  ["orbit", "/mysauth_orbit/", "ORBIT", true],
 ];
 
 function getHiddenRoomSupabaseClient() {
@@ -205,8 +206,8 @@ function renderGlobalDrawer(activeModule) {
       </header>
       <p class="hr-global-drawer__label">Ecosistema</p>
       <nav class="hr-global-drawer__links" aria-label="Navegación móvil">
-        ${ECOSYSTEM_LINKS.map(([key, href, label]) => `
-          <a href="${href}"${(key === activeModule && !(activeModule === "store" && window.location.pathname.startsWith("/store/beat_store/"))) || (key === "beat-store" && window.location.pathname.startsWith("/store/beat_store/")) ? ' aria-current="page"' : ""}>
+        ${ECOSYSTEM_LINKS.map(([key, href, label, adminOnly]) => `
+          <a href="${href}"${adminOnly ? ' data-admin-nav-link hidden' : ""}${(key === activeModule && !(activeModule === "store" && window.location.pathname.startsWith("/store/beat_store/"))) || (key === "beat-store" && window.location.pathname.startsWith("/store/beat_store/")) ? ' aria-current="page"' : ""}>
             <span>${label}</span>
           </a>
         `).join("")}
@@ -365,6 +366,20 @@ function attachGlobalNotificationListeners() {
   });
 }
 
+function roleListIncludesAdmin(rawRoles) {
+  return String(rawRoles || "").split(",").map((role) => role.trim().toLowerCase()).includes("admin");
+}
+
+function setAdminNavigationVisibility(visible) {
+  document.querySelectorAll("[data-admin-nav-link]").forEach((link) => {
+    link.hidden = !visible;
+  });
+}
+
+window.HiddenRoomNavigation = window.HiddenRoomNavigation || {
+  setAdminLinksVisible: setAdminNavigationVisibility,
+};
+
 async function hydrateGlobalSession() {
   if (document.body.classList.contains("db-body")) return;
   const sessionTargets = document.querySelectorAll("[data-hr-session]");
@@ -381,6 +396,7 @@ async function hydrateGlobalSession() {
       drawerTargets.forEach((target) => {
         target.innerHTML = guestHeaderMarkup(true);
       });
+      setAdminNavigationVisibility(false);
       renderGlobalNotifications([]);
       toggleGlobalNotifications(false);
       return;
@@ -388,7 +404,7 @@ async function hydrateGlobalSession() {
 
     const { data: profile } = await supabase
       .from("users")
-      .select("user_id,display_name,username,email,avatar_url")
+      .select("user_id,display_name,username,email,avatar_url,roles")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -404,6 +420,7 @@ async function hydrateGlobalSession() {
       notifications = data || [];
     }
     const unread = notifications.filter((item) => !item.read).length;
+    setAdminNavigationVisibility(roleListIncludesAdmin(profile?.roles));
 
     sessionTargets.forEach((target) => {
       target.innerHTML = authenticatedHeaderMarkup(profile, user, unread);
@@ -520,8 +537,8 @@ function renderGlobalNav() {
           <span>Hidden Room</span>
         </a>
         <nav class="hr-nav__links" aria-label="Navegación principal">
-          ${ECOSYSTEM_LINKS.map(([key, href, label]) => `
-            <a href="${href}"${(key === activeModule && !(activeModule === "store" && navPath.startsWith("/store/beat_store/"))) || (key === "beat-store" && navPath.startsWith("/store/beat_store/")) ? ' aria-current="page"' : ""}>${label}</a>
+          ${ECOSYSTEM_LINKS.map(([key, href, label, adminOnly]) => `
+            <a href="${href}"${adminOnly ? ' data-admin-nav-link hidden' : ""}${(key === activeModule && !(activeModule === "store" && navPath.startsWith("/store/beat_store/"))) || (key === "beat-store" && navPath.startsWith("/store/beat_store/")) ? ' aria-current="page"' : ""}>${label}</a>
           `).join("")}
         </nav>
         <div class="${actionsClass}">${renderNavActions(module)}</div>

@@ -10,9 +10,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Unbounded:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles.css">
   <link rel="stylesheet" href="orbit.css">
 </head>
-<body>
+<body class="orbit-auth-pending" data-hr-chrome data-hr-context="orbit">
+  <div id="hr-global-nav"></div>
   <div class="orbit-app">
     <header class="orbit-header">
       <div>
@@ -37,9 +39,22 @@
           </label>
         </section>
 
-        <section class="panel">
+        <section class="panel user-search-panel">
           <div class="panel-heading">
             <span>02</span>
+            <h2>Explorar usuario</h2>
+          </div>
+          <label class="user-search-field">
+            <span class="sr-only">Buscar usuario</span>
+            <input id="userSearch" type="search" autocomplete="off" placeholder="@usuario">
+          </label>
+          <div class="user-search-results" id="userSearchResults" hidden></div>
+          <button class="text-button" id="clearUserFocus" type="button" hidden>Restaurar mapa completo</button>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <span>03</span>
             <h2>Resumen</h2>
           </div>
           <dl class="summary-grid">
@@ -52,7 +67,7 @@
 
         <section class="panel filters">
           <div class="panel-heading">
-            <span>03</span>
+            <span>04</span>
             <h2>Filtros</h2>
           </div>
           <label>
@@ -155,6 +170,7 @@
   <script src="https://unpkg.com/layout-base@2.0.1/layout-base.js"></script>
   <script src="https://unpkg.com/cose-base@2.2.0/cose-base.js"></script>
   <script src="https://unpkg.com/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js"></script>
+  <script src="../site.js"></script>
   <script type="module" src="orbit.js"></script>
 </body>
 </html>

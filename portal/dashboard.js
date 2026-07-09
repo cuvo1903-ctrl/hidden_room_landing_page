@@ -404,6 +404,9 @@ const state = {
  */
 function setState(patch) {
   Object.assign(state, patch);
+  if (Array.isArray(patch.roles)) {
+    window.HiddenRoomNavigation?.setAdminLinksVisible(patch.roles.includes("admin"));
+  }
 }
 
 function getCloudBreadcrumb(path) {

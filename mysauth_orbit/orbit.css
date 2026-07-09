@@ -26,6 +26,7 @@ button, input, textarea { font: inherit; }
 button { color: inherit; }
 
 .orbit-app { min-height: 100vh; }
+.orbit-auth-pending .orbit-app { visibility: hidden; }
 .orbit-header {
   min-height: 126px; padding: 24px 32px; display: flex; align-items: center; justify-content: space-between;
   border-bottom: 1px solid var(--line); background: rgba(7,8,12,.88); backdrop-filter: blur(16px);
@@ -53,6 +54,15 @@ h1 span { color: var(--red); }
 .dropzone strong { font-size: 10px; color: var(--text); }
 .dropzone span, .field small { font-size: 8px; color: var(--muted); }
 .text-button { width: 100%; border: 0; padding: 10px 0 0; background: none; color: var(--muted); font-size: 8px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.user-search-field { display: block; }
+.user-search-field input { width: 100%; border: 1px solid var(--line); background: var(--surface); color: var(--text); padding: 10px 11px; outline: 0; font-size: 10px; }
+.user-search-field input:focus { border-color: var(--line-hot); }
+.user-search-results { margin-top: 6px; border: 1px solid var(--line); background: #0b0d12; max-height: 220px; overflow-y: auto; }
+.user-search-results button { width: 100%; display: flex; justify-content: space-between; gap: 10px; border: 0; border-top: 1px solid var(--line); padding: 9px 10px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.user-search-results button:first-child { border-top: 0; }
+.user-search-results button:hover, .user-search-results button:focus-visible { background: rgba(66,232,121,.09); outline: 0; }
+.user-search-results strong { font-size: 9px; font-weight: 500; }
+.user-search-results span { color: var(--muted); font-size: 7px; white-space: nowrap; }
 .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin: 0; background: var(--line); }
 .summary-grid div { padding: 12px; background: var(--surface); }
 .summary-grid dt { font: 600 20px/1 var(--display); }
