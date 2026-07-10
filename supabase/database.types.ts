@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -207,6 +207,7 @@ export type Database = {
           updated_at: string
           used_at: string | null
           used_by: string | null
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -225,6 +226,7 @@ export type Database = {
           updated_at?: string
           used_at?: string | null
           used_by?: string | null
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -243,6 +245,7 @@ export type Database = {
           updated_at?: string
           used_at?: string | null
           used_by?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -564,6 +567,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ig_contest: {
+        Row: {
+          concepto: string
+          created_at: string
+          id: string
+          ig_username: string
+          user_id: string | null
+        }
+        Insert: {
+          concepto: string
+          created_at?: string
+          id?: string
+          ig_username: string
+          user_id?: string | null
+        }
+        Update: {
+          concepto?: string
+          created_at?: string
+          id?: string
+          ig_username?: string
+          user_id?: string | null
+        }
+        Relationships: []
       }
       ig_mention_analyses: {
         Row: {
@@ -1918,6 +1945,7 @@ export type Database = {
         Args: { check_user_id?: string; permission_name: string }
         Returns: boolean
       }
+      hr_normalize_ig_username: { Args: { p_value: string }; Returns: string }
       increment_media_post_views: {
         Args: { post_slug: string }
         Returns: number
@@ -1943,6 +1971,7 @@ export type Database = {
           updated_at: string
           used_at: string | null
           used_by: string | null
+          user_id: string | null
         }[]
         SetofOptions: {
           from: "*"
@@ -1961,6 +1990,15 @@ export type Database = {
       predictor_prediction_exists: {
         Args: { p_match_id: string; p_user_id: string }
         Returns: boolean
+      }
+      sync_ig_contest_benefits_for_user: {
+        Args: {
+          p_display_name?: string
+          p_email?: string
+          p_ig_username: string
+          p_user_id: string
+        }
+        Returns: undefined
       }
     }
     Enums: {
