@@ -936,17 +936,21 @@ const TABLE_EDITOR_CONFIG = {
   users: {
     label: 'Usuarios',
     primaryKey: 'id',
-    select: 'id, user_id, display_name, email, whatsapp, avatar_url, username, roles, has_auth, old_id, temp_password',
+    select: 'id, user_id, display_name, email, whatsapp, avatar_url, username, occupations, ig_username, passline_tracking, roles, has_auth, old_id, temp_password',
     lockedFields: ['id', 'user_id', 'roles', 'has_auth', 'old_id', 'temp_password'],
-    editableFields: ['user_id', 'display_name', 'email', 'whatsapp', 'avatar_url', 'username'],
+    editableFields: ['user_id', 'display_name', 'email', 'whatsapp', 'avatar_url', 'username', 'occupations', 'ig_username', 'passline_tracking'],
     hiddenColumns: ['id', 'old_id', 'temp_password'],
-    pdfColumns: ['user_id', 'display_name', 'email', 'whatsapp', 'username', 'roles', 'has_auth'],
+    summaryFields: ['user_id', 'display_name', 'email', 'whatsapp', 'username', 'ig_username', 'passline_tracking', 'roles', 'has_auth'],
+    pdfColumns: ['user_id', 'display_name', 'email', 'whatsapp', 'username', 'occupations', 'ig_username', 'passline_tracking', 'roles', 'has_auth'],
     pdfColumnLabels: {
       user_id: 'User ID',
       display_name: 'Nombre',
       email: 'Email',
       whatsapp: 'WhatsApp',
       username: 'Username',
+      occupations: 'Ocupaciones',
+      ig_username: 'Instagram',
+      passline_tracking: 'Passline tracking',
       roles: 'Roles',
       has_auth: 'Auth',
     },
@@ -1017,6 +1021,32 @@ const TABLE_EDITOR_CONFIG = {
     lockedFields: ['id'],
     editableFields: ['user_id', 'concept'],
     hiddenColumns: ['id'],
+  },
+  passline_tickets: {
+    label: 'Passline Tickets',
+    primaryKey: 'id',
+    select: 'id, buyer_name, event_key, buyer_email, total, buyer_phone, rrpp, rrpp_name, user_id, ticket_id, event_date, purchase_id, ticket_type, purchase_status, ticket_status, is_courtesy, rrpp_email, service_fee, discount_code, discount_amount, validation_datetime, activation_code, imported_by, imported_at, source_file, raw_row',
+    defaultSort: { field: 'imported_at', direction: 'desc' },
+    lockedFields: ['id', 'imported_by', 'imported_at', 'raw_row'],
+    editableFields: ['buyer_name', 'event_key', 'buyer_email', 'total', 'buyer_phone', 'rrpp', 'rrpp_name', 'user_id', 'ticket_id', 'event_date', 'purchase_id', 'ticket_type', 'purchase_status', 'ticket_status', 'is_courtesy', 'rrpp_email', 'service_fee', 'discount_code', 'discount_amount', 'validation_datetime', 'activation_code', 'source_file'],
+    hiddenColumns: ['id', 'imported_by', 'raw_row'],
+    hidden: true,
+    summaryFields: ['buyer_name', 'event_key', 'buyer_email', 'total', 'buyer_phone', 'rrpp', 'rrpp_name', 'user_id', 'ticket_id', 'ticket_status'],
+    pdfColumns: ['buyer_name', 'event_key', 'buyer_email', 'total', 'buyer_phone', 'rrpp', 'rrpp_name', 'user_id', 'ticket_id', 'ticket_status', 'purchase_status', 'validation_datetime'],
+    pdfColumnLabels: {
+      buyer_name: 'Nombre',
+      event_key: 'Evento',
+      buyer_email: 'Email',
+      total: 'Total',
+      buyer_phone: 'Telefono',
+      rrpp: 'RRPP',
+      rrpp_name: 'Nombre RRPP',
+      user_id: 'User ID',
+      ticket_id: 'Ticket',
+      ticket_status: 'Estado ticket',
+      purchase_status: 'Estado compra',
+      validation_datetime: 'Validacion',
+    },
   },
   membership_dashboard: {
     label: 'Membresia',
@@ -1407,6 +1437,98 @@ function normalizeSearchText(value) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim();
+}
+function normalizePhoneForMatch(value) {
+  return String(value ?? '').replace(/[^0-9+]/g, '').trim();
+}
+
+function normalizeOccupationsValue(value) {
+  const source = Array.isArray(value) ? value : String(value ?? '').split(',');
+  const occupations = source.map((item) => String(item ?? '').trim()).filter(Boolean);
+  return occupations.length ? occupations : ['Comunidad'];
+}
+
+function displayOccupationsValue(value) {
+  return normalizeOccupationsValue(value).join(', ');
+}
+
+function normalizePasslineTrackingValue(value) {
+  const source = Array.isArray(value) ? value : String(value ?? '').split(',');
+  return source.map((item) => String(item ?? '').trim()).filter(Boolean);
+}
+
+function displayPasslineTrackingValue(value) {
+  return normalizePasslineTrackingValue(value).join(', ');
+}
+
+function buildPasslineTrackingIndex(users = []) {
+  const index = new Map();
+  const ambiguous = new Set();
+  users.forEach((user) => {
+    if (!user?.user_id) return;
+    normalizePasslineTrackingValue(user.passline_tracking).forEach((alias) => {
+      const key = normalizeSearchText(alias);
+      if (!key) return;
+      const existing = index.get(key);
+      if (existing && existing !== user.user_id) {
+        ambiguous.add(key);
+        return;
+      }
+      index.set(key, user.user_id);
+    });
+  });
+  ambiguous.forEach((key) => index.delete(key));
+  return index;
+}
+
+function applyPasslineTracking(row, trackingIndex = new Map()) {
+  if (row.user_id) return row;
+  const key = normalizeSearchText(row.buyer_name);
+  const userId = key ? trackingIndex.get(key) : null;
+  return userId ? { ...row, user_id: userId } : row;
+}
+
+function renderUserMergeDuplicateAlerts(mode = 'email') {
+  const labels = { email: 'Email', name: 'Nombre', whatsapp: 'WhatsApp' };
+  const groups = new Map();
+  (state.data.users ?? []).forEach((user) => {
+    const rawKey = mode === 'name'
+      ? (user.display_name || user.username || '')
+      : mode === 'whatsapp'
+        ? user.whatsapp
+        : user.email;
+    const key = mode === 'whatsapp' ? normalizePhoneForMatch(rawKey) : normalizeSearchText(rawKey);
+    if (!key) return;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(user);
+  });
+
+  const duplicates = [...groups.values()].filter((items) => items.length > 1).slice(0, 8);
+  const rows = duplicates.map((items) => {
+    const title = mode === 'whatsapp'
+      ? normalizePhoneForMatch(items[0].whatsapp)
+      : mode === 'name'
+        ? (items[0].display_name || items[0].username || 'Sin nombre')
+        : (items[0].email || 'Sin email');
+    const detail = items.map((user) => `${user.display_name || user.username || user.email || 'Usuario'} - ${user.user_id ?? '-'} - ${user.email ?? 'sin email'} - ${user.whatsapp ?? 'sin WhatsApp'}`).join(' | ');
+    return `<li><strong>${escapeHTML(title)}</strong><br><small>${escapeHTML(detail)}</small></li>`;
+  }).join('');
+
+  return `
+    <div class="db-field">
+      <span>Detectar posibles duplicados por</span>
+      <select data-action="merge-duplicate-mode" aria-label="Detectar duplicados por">
+        ${optionHTML('email', 'Email', mode)}
+        ${optionHTML('name', 'Nombre', mode)}
+        ${optionHTML('whatsapp', 'WhatsApp', mode)}
+      </select>
+      <small class="db-field__hint">Email es la senal mas importante. Nombre y WhatsApp son alertas operativas, no fusion automatica.</small>
+    </div>
+    <div class="db-empty">
+      <strong>Posibles mismas personas por ${escapeHTML(labels[mode] || 'Email')}</strong>
+      ${duplicates.length ? `<ul>${rows}</ul>` : '<p>Sin duplicados detectados con este criterio.</p>'}
+    </div>
+  `;
 }
 
 const userLabel = (userId) => {
@@ -3034,7 +3156,7 @@ async function renderCollabTasks(contextLabel = 'Colaborador') {
   const [{ data: users, error: usersError }, eventsResult] = await Promise.all([
     supabase
       .from('users')
-      .select('user_id, display_name, username, email')
+      .select('user_id, display_name, username, email, passline_tracking')
       .order('display_name', { ascending: true }),
     fetchScrumEvents(),
   ]);
@@ -4652,6 +4774,7 @@ function renderPasslinePreviewTable(rows = []) {
         <td>${escapeHTML(row.buyer_name ?? '-')}</td>
         <td>${escapeHTML(row.buyer_email ?? '-')}</td>
         <td>${escapeHTML(row.buyer_phone ?? '-')}</td>
+        <td>${escapeHTML(row.user_id ?? '-')}</td>
         <td>${escapeHTML(row.event_key ?? '-')}</td>
         <td>${escapeHTML(row.ticket_type ?? '-')}</td>
         <td>${escapeHTML(row.purchase_status ?? '-')}</td>
@@ -4659,7 +4782,7 @@ function renderPasslinePreviewTable(rows = []) {
         <td>${money(row.total ?? 0)}</td>
       </tr>
     `).join('')
-    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="9" class="db-empty hr-table-empty">Carga un CSV para ver las primeras 20 filas.</td></tr>';
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="10" class="db-empty hr-table-empty">Carga un CSV para ver las primeras 20 filas.</td></tr>';
 
   return `
     <div class="db-table-wrap hr-table-wrap">
@@ -4851,8 +4974,11 @@ function normalizePasslineRow(row, fileName = '') {
 
 async function previewPasslineImport(rows) {
   const importState = passlineImportState();
+  await ensureUsersLoaded();
+  const trackingIndex = buildPasslineTrackingIndex(state.data.users ?? []);
   const normalizedRows = rows
     .map((row) => normalizePasslineRow(row, row.__source_file || importState.fileName))
+    .map((row) => applyPasslineTracking(row, trackingIndex))
     .filter((row) => row.ticket_id);
   const existingIds = await fetchExistingPasslineTicketIds(normalizedRows.map((row) => row.ticket_id));
   const summary = buildPasslineSummary(normalizedRows, existingIds);
@@ -4992,6 +5118,7 @@ async function renderErpOps() {
   const financeEntities = await fetchFinanceEntities();
   const memberships = await fetchMembershipOptionsForOps();
   const activeForm = persistedDataValue('erpOpsForm', 'transaction');
+  const mergeDuplicateMode = persistedDataValue('mergeDuplicateMode', 'email');
   const opsForms = {
     transaction: {
       label: 'Finanzas',
@@ -5124,6 +5251,7 @@ async function renderErpOps() {
       label: 'Fusionar usuarios',
       html: `
         <form class="db-form" data-form="user-merge">
+          ${renderUserMergeDuplicateAlerts(mergeDuplicateMode)}
           ${renderUserPicker('keep_user_id', 'User ID histÃ³rico a conservar', '', {
             valueField: 'user_id',
             placeholder: 'Buscar perfil histÃ³rico',
@@ -6433,7 +6561,7 @@ async function renderAdminTableEditor() {
     .filter((field, index, arr) => arr.indexOf(field) === index);
   const visibleColumns = columns.filter((field) => !(config.hiddenColumns ?? []).includes(field));
   const showAllColumns = persistedDataValue(`adminTableShowAll:${tableName}`, '0') === '1';
-  const summaryColumns = getAdminTableSummaryColumns(visibleColumns);
+  const summaryColumns = getAdminTableSummaryColumns(visibleColumns, config);
   const displayedColumns = showAllColumns ? visibleColumns : summaryColumns;
   const canToggleColumns = tableName !== 'membership_dashboard' && visibleColumns.length > summaryColumns.length;
   const tableId = `admin-${tableName}`;
@@ -6540,7 +6668,11 @@ function renderMembershipDashboardUserPicker(selectedUserId = '') {
   return picker;
 }
 
-function getAdminTableSummaryColumns(visibleColumns = []) {
+function getAdminTableSummaryColumns(visibleColumns = [], config = {}) {
+  if (Array.isArray(config.summaryFields) && config.summaryFields.length) {
+    return config.summaryFields.filter((field) => visibleColumns.includes(field));
+  }
+
   const selected = [];
   const available = new Set(visibleColumns);
 
@@ -6613,6 +6745,9 @@ function adminTableCellValue(tableName, field, row) {
     if (field === 'sesiones_usadas') return formatMembershipSessionDates(row) || '-';
     if (field === 'periodo') return row.periodo || '-';
   }
+
+  if (tableName === 'users' && field === 'occupations') return displayOccupationsValue(row[field]);
+  if (tableName === 'users' && field === 'passline_tracking') return displayPasslineTrackingValue(row[field]);
 
   return row[field] ?? '';
 }
@@ -6796,7 +6931,7 @@ async function ensureUsersLoaded() {
 
   const { data, error } = await supabase
     .from('users')
-    .select('user_id, display_name, username, email')
+    .select('user_id, display_name, username, email, passline_tracking')
     .order('display_name', { ascending: true });
 
   if (error) {
@@ -8762,7 +8897,7 @@ async function handleAdminUserMerge(form, values = formValues(form)) {
   }
 
   const confirmed = window.confirm(
-    `Advertencia: vas a conectar el Auth/email de ${duplicateEmail} al User ID historico ${keepUserId}.\n\nSe conservaran los datos operativos del User ID historico. No se importara el historial del perfil duplicado. Â¿Confirmas la fusion?`
+    `Advertencia: vas a vincular el historico operativo de ${keepUserId} al perfil con Auth/email ${duplicateEmail}.\n\nNo se modificaran Auth ni public.users. Solo se re-asignaran operaciones, sesiones, transacciones, premios, contratos, descargas y puntuaciones. Confirmas la fusion?`
   );
 
   if (!confirmed) return;
@@ -8785,10 +8920,10 @@ async function handleAdminUserMerge(form, values = formValues(form)) {
     }
 
     state.data.users = null;
-    showToast('Usuarios fusionados.', 'success');
+    showToast('Historico operativo vinculado.', 'success');
     if (holder) {
       holder.hidden = false;
-      holder.textContent = `Fusion realizada. User ID conservado: ${data?.kept_user_id ?? keepUserId}. Email activo: ${data?.email ?? duplicateEmail}.`;
+      holder.textContent = `Fusion realizada sin modificar Auth ni public.users. Historico: ${data?.historical_user_id ?? keepUserId}. User ID con Auth: ${data?.target_user_id ?? '-'}. Email activo: ${data?.email ?? duplicateEmail}.`;
     }
     form.reset();
   } catch (err) {
@@ -9647,6 +9782,13 @@ async function handleAdminTableUpdate(form) {
 }
 
 async function saveAdminTableRow(tableName, config, original, payload, options = {}) {
+  if (tableName === 'users' && 'occupations' in payload) {
+    payload.occupations = normalizeOccupationsValue(payload.occupations);
+  }
+  if (tableName === 'users' && 'passline_tracking' in payload) {
+    payload.passline_tracking = normalizePasslineTrackingValue(payload.passline_tracking);
+  }
+
   if (tableName === 'users' && 'user_id' in payload && String(payload.user_id ?? '') !== String(original.user_id ?? '') && options.confirmUserId !== false) {
     const confirmed = window.confirm(
       `Advertencia: vas a cambiar el User ID operativo de este usuario.\n\nAnterior: ${original.user_id ?? '-'}\nNuevo: ${payload.user_id || '-'}\n\nEste campo conecta historial, sesiones, transacciones y membresias. Confirma solo si sabes que este cambio es intencional.`
@@ -10637,6 +10779,13 @@ function attachMainDelegation() {
       return;
     }
 
+    const mergeDuplicateMode = e.target.closest('select[data-action="merge-duplicate-mode"]');
+    if (mergeDuplicateMode) {
+      setPersistedDataValue('mergeDuplicateMode', mergeDuplicateMode.value);
+      navigate('erp-ops');
+      return;
+    }
+
     const opsForm = e.target.closest('select[data-action="erp-ops-form"]');
     if (opsForm) {
       setPersistedDataValue('erpOpsForm', opsForm.value);
@@ -10996,6 +11145,12 @@ async function init() {
   navigate(initialSectionKey());
 }
 
+window.addEventListener('hiddenroom:ig-username-updated', (event) => {
+  const igUsername = event.detail?.ig_username;
+  if (!igUsername || !state.user) return;
+  state.user = { ...state.user, ig_username: igUsername };
+  hydrateTopbar();
+});
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {

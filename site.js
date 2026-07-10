@@ -256,6 +256,105 @@ function globalAvatarSrc(value) {
   }
 }
 
+function cleanGlobalInstagramUsername(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/^https?:\/\/(www\.)?instagram\.com\//i, "")
+    .replace(/^@+/, "")
+    .split(/[/?#\s]/)[0]
+    .replace(/[^a-zA-Z0-9._]/g, "")
+    .slice(0, 30);
+}
+
+let instagramUsernamePromptOpen = false;
+let instagramUsernamePromptResolved = false;
+
+function showGlobalInstagramUsernamePrompt(profile, user, supabase) {
+  if (!user?.id || profile?.ig_username || instagramUsernamePromptOpen || instagramUsernamePromptResolved) return;
+  if (document.getElementById("js-onboarding-gate")) {
+    window.setTimeout(() => showGlobalInstagramUsernamePrompt(profile, user, supabase), 1800);
+    return;
+  }
+
+  document.getElementById("hr-instagram-username-gate")?.remove();
+  instagramUsernamePromptOpen = true;
+
+  const displayName = profile?.display_name || profile?.username || user?.email?.split("@")[0] || "Usuario";
+  const overlay = document.createElement("div");
+  overlay.id = "hr-instagram-username-gate";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-labelledby", "hr-instagram-username-title");
+  overlay.style.cssText = [
+    "position:fixed",
+    "inset:0",
+    "background:rgba(0,0,0,.82)",
+    "z-index:99998",
+    "display:flex",
+    "align-items:center",
+    "justify-content:center",
+    "padding:16px",
+  ].join(";");
+
+  overlay.innerHTML = `
+    <div style="width:min(460px,100%);background:#101010;color:#f8f8f8;border:1px solid rgba(255,255,255,.16);border-radius:8px;box-shadow:0 24px 80px rgba(0,0,0,.45);padding:20px;">
+      <h2 id="hr-instagram-username-title" style="margin:0 0 8px;font-size:1.2rem;">Instagram</h2>
+      <p style="margin:0 0 16px;color:#d7d7d7;line-height:1.45;">
+        <strong>${escapeNavText(displayName)}</strong> Escribe tu usuario de instagram, es importante para que no tengas problemas con tus beneficios.
+      </p>
+      <form data-hr-instagram-username-form>
+        <label style="display:grid;gap:6px;margin-bottom:14px;">
+          <span style="font-size:.86rem;color:#bdbdbd;">Usuario de Instagram</span>
+          <input name="ig_username" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="tu_usuario" required
+            style="width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,.18);border-radius:8px;background:#050505;color:#fff;padding:12px;font:inherit;" />
+        </label>
+        <button type="submit" style="width:100%;border:0;border-radius:8px;background:#fff;color:#000;padding:12px 14px;font-weight:700;cursor:pointer;">Guardar Instagram</button>
+        <div data-hr-instagram-username-status hidden style="margin-top:10px;color:#fca5a5;font-size:.86rem;"></div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  overlay.querySelector("input[name='ig_username']")?.focus();
+
+  overlay.querySelector("form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = form.querySelector("button[type='submit']");
+    const status = form.querySelector("[data-hr-instagram-username-status]");
+    const igUsername = cleanGlobalInstagramUsername(new FormData(form).get("ig_username"));
+
+    if (!igUsername || igUsername.length < 2) {
+      if (status) {
+        status.hidden = false;
+        status.textContent = "Escribe un usuario de Instagram valido.";
+      }
+      return;
+    }
+
+    submit.disabled = true;
+    try {
+      const { error } = await supabase
+        .from("users")
+        .update({ ig_username: igUsername })
+        .eq("id", user.id);
+
+      if (error) throw error;
+
+      instagramUsernamePromptResolved = true;
+      instagramUsernamePromptOpen = false;
+      overlay.remove();
+      window.dispatchEvent(new CustomEvent("hiddenroom:ig-username-updated", { detail: { ig_username: igUsername } }));
+    } catch (error) {
+      console.info("[HR] No se pudo guardar Instagram:", error?.message || error);
+      submit.disabled = false;
+      if (status) {
+        status.hidden = false;
+        status.textContent = error?.message || "No se pudo guardar tu Instagram.";
+      }
+    }
+  });
+}
 function authenticatedHeaderMarkup(profile, user, unread = 0, drawer = false) {
   const name = firstName(profile?.display_name || profile?.username || user?.email?.split("@")[0]);
   const avatarSrc = globalAvatarSrc(profile?.avatar_url);
@@ -404,7 +503,7 @@ async function hydrateGlobalSession() {
 
     const { data: profile } = await supabase
       .from("users")
-      .select("user_id,display_name,username,email,avatar_url,roles")
+      .select("user_id,display_name,username,email,avatar_url,roles,ig_username")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -429,11 +528,29 @@ async function hydrateGlobalSession() {
       target.innerHTML = authenticatedHeaderMarkup(profile, user, unread, true);
     });
     renderGlobalNotifications(notifications);
+    showGlobalInstagramUsernamePrompt(profile, user, supabase);
   } catch (error) {
     console.info("[HR] No fue posible hidratar la sesión global:", error?.message || error);
   }
 }
 
+async function hydrateGlobalInstagramUsernamePrompt() {
+  try {
+    const supabase = await getHiddenRoomSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: profile } = await supabase
+      .from("users")
+      .select("id,display_name,username,email,ig_username")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    showGlobalInstagramUsernamePrompt(profile, user, supabase);
+  } catch (error) {
+    console.info("[HR] No fue posible validar Instagram global:", error?.message || error);
+  }
+}
 async function attachGlobalSessionSync() {
   if (document.body.classList.contains("db-body")) return;
 
@@ -441,6 +558,7 @@ async function attachGlobalSessionSync() {
     const supabase = await getHiddenRoomSupabaseClient();
     supabase.auth.onAuthStateChange(() => {
       window.setTimeout(hydrateGlobalSession, 0);
+      window.setTimeout(hydrateGlobalInstagramUsernamePrompt, 0);
     });
   } catch (error) {
     console.info("[HR] No fue posible sincronizar la sesion global:", error?.message || error);
@@ -605,6 +723,7 @@ function syncPortalSubNav() {
 window.addEventListener("hashchange", syncPortalSubNav);
 window.addEventListener("DOMContentLoaded", syncPortalSubNav);
 window.addEventListener("DOMContentLoaded", () => {
+  hydrateGlobalInstagramUsernamePrompt();
   window.setTimeout(syncPortalSubNav, 500);
   window.setTimeout(syncPortalSubNav, 1400);
 });

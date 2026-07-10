@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -11,31 +11,6 @@ export type Database = {
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
-  }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
   }
   public: {
     Tables: {
@@ -590,6 +565,45 @@ export type Database = {
           },
         ]
       }
+      ig_mention_analyses: {
+        Row: {
+          comments_count: number | null
+          created_at: string
+          created_by: string | null
+          id: string
+          media_id: string
+          media_permalink: string | null
+          mentions_count: number | null
+          ranking_total: Json | null
+          ranking_unique_authors: Json | null
+          unique_mentions_count: number | null
+        }
+        Insert: {
+          comments_count?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          media_id: string
+          media_permalink?: string | null
+          mentions_count?: number | null
+          ranking_total?: Json | null
+          ranking_unique_authors?: Json | null
+          unique_mentions_count?: number | null
+        }
+        Update: {
+          comments_count?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          media_id?: string
+          media_permalink?: string | null
+          mentions_count?: number | null
+          ranking_total?: Json | null
+          ranking_unique_authors?: Json | null
+          unique_mentions_count?: number | null
+        }
+        Relationships: []
+      }
       media_posts: {
         Row: {
           author_id: string | null
@@ -805,6 +819,93 @@ export type Database = {
           link?: string | null
           user_id?: string | null
           username?: string | null
+        }
+        Relationships: []
+      }
+      passline_tickets: {
+        Row: {
+          activation_code: string | null
+          buyer_email: string | null
+          buyer_name: string | null
+          buyer_phone: string | null
+          discount_amount: number | null
+          discount_code: string | null
+          event_date: string | null
+          event_key: string | null
+          id: string
+          imported_at: string | null
+          imported_by: string | null
+          is_courtesy: boolean | null
+          purchase_id: string | null
+          purchase_status: string | null
+          raw_row: Json
+          rrpp: string | null
+          rrpp_email: string | null
+          rrpp_name: string | null
+          service_fee: number | null
+          source_file: string | null
+          ticket_id: string
+          ticket_status: string | null
+          ticket_type: string | null
+          total: number | null
+          user_id: string | null
+          validation_datetime: string | null
+        }
+        Insert: {
+          activation_code?: string | null
+          buyer_email?: string | null
+          buyer_name?: string | null
+          buyer_phone?: string | null
+          discount_amount?: number | null
+          discount_code?: string | null
+          event_date?: string | null
+          event_key?: string | null
+          id?: string
+          imported_at?: string | null
+          imported_by?: string | null
+          is_courtesy?: boolean | null
+          purchase_id?: string | null
+          purchase_status?: string | null
+          raw_row?: Json
+          rrpp?: string | null
+          rrpp_email?: string | null
+          rrpp_name?: string | null
+          service_fee?: number | null
+          source_file?: string | null
+          ticket_id: string
+          ticket_status?: string | null
+          ticket_type?: string | null
+          total?: number | null
+          user_id?: string | null
+          validation_datetime?: string | null
+        }
+        Update: {
+          activation_code?: string | null
+          buyer_email?: string | null
+          buyer_name?: string | null
+          buyer_phone?: string | null
+          discount_amount?: number | null
+          discount_code?: string | null
+          event_date?: string | null
+          event_key?: string | null
+          id?: string
+          imported_at?: string | null
+          imported_by?: string | null
+          is_courtesy?: boolean | null
+          purchase_id?: string | null
+          purchase_status?: string | null
+          raw_row?: Json
+          rrpp?: string | null
+          rrpp_email?: string | null
+          rrpp_name?: string | null
+          service_fee?: number | null
+          source_file?: string | null
+          ticket_id?: string
+          ticket_status?: string | null
+          ticket_type?: string | null
+          total?: number | null
+          user_id?: string | null
+          validation_datetime?: string | null
         }
         Relationships: []
       }
@@ -1494,7 +1595,10 @@ export type Database = {
           email: string | null
           has_auth: boolean | null
           id: string
+          ig_username: string | null
+          occupations: string[]
           old_id: string | null
+          passline_tracking: string[]
           roles: string | null
           temp_password: string | null
           user_id: string | null
@@ -1507,7 +1611,10 @@ export type Database = {
           email?: string | null
           has_auth?: boolean | null
           id?: string
+          ig_username?: string | null
+          occupations?: string[]
           old_id?: string | null
+          passline_tracking?: string[]
           roles?: string | null
           temp_password?: string | null
           user_id?: string | null
@@ -1520,7 +1627,10 @@ export type Database = {
           email?: string | null
           has_auth?: boolean | null
           id?: string
+          ig_username?: string | null
+          occupations?: string[]
           old_id?: string | null
+          passline_tracking?: string[]
           roles?: string | null
           temp_password?: string | null
           user_id?: string | null
@@ -1759,6 +1869,10 @@ export type Database = {
         Returns: Json
       }
       can_edit_tickets: { Args: { check_user_id?: string }; Returns: boolean }
+      can_import_passline_tickets: {
+        Args: { check_user_id?: string }
+        Returns: boolean
+      }
       can_validate_tickets: {
         Args: { check_user_id?: string }
         Returns: boolean
@@ -1976,9 +2090,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },
