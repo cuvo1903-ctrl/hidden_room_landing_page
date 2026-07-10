@@ -26,6 +26,10 @@ function normalizePhone(value: unknown) {
   return phone || null;
 }
 
+function authPhone(value: string | null) {
+  return value ? `+${value}` : undefined;
+}
+
 function nullableString(value: unknown) {
   const clean = String(value ?? '').trim();
   return clean || null;
@@ -98,7 +102,7 @@ Deno.serve(async (req) => {
 
   const { data: created, error: createError } = await adminClient.auth.admin.createUser({
     email,
-    phone: whatsapp ?? undefined,
+    phone: authPhone(whatsapp),
     password: tempPassword,
     email_confirm: true,
     phone_confirm: Boolean(whatsapp),

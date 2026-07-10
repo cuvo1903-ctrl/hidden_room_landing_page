@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ================================================================
  *  HIDDEN ROOM / MYSAUTH - Dashboard Controller
  *  portal/dashboard.js
@@ -23,13 +23,31 @@
    Section 1  SUPABASE CLIENT
 ================================================================ */
 
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
-
 const SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
-const supabase = createClient(
-  SUPABASE_URL,
-  "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
-);
+const SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
+const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+async function getSupabaseClient() {
+  if (window.HiddenRoomSupabase?.getClient) {
+    return window.HiddenRoomSupabase.getClient();
+  }
+
+  if (window.__hiddenRoomSupabaseClient) {
+    return window.__hiddenRoomSupabaseClient;
+  }
+
+  if (!window.__hiddenRoomSupabaseClientPromise) {
+    window.__hiddenRoomSupabaseClientPromise = import(SUPABASE_CDN).then(({ createClient }) => {
+      window.__hiddenRoomSupabaseClient = window.__hiddenRoomSupabaseClient
+        || createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      return window.__hiddenRoomSupabaseClient;
+    });
+  }
+
+  return window.__hiddenRoomSupabaseClientPromise;
+}
+
+const supabase = await getSupabaseClient();
 
 const PROFILE_UPDATE_WHATSAPP = '5210000000000';
 const SHARE_LOGIN_WHATSAPP_FALLBACK = '5210000000000';
@@ -777,6 +795,11 @@ const SECTIONS = {
     roleRequired: 'admin',
     render: renderErpInstagramMentionRank,
   },
+  'erp-ig-benefits-audit': {
+    label: 'IG Beneficios',
+    roleRequired: 'admin',
+    render: renderErpIgBenefitsAudit,
+  },
   'erp-instagram-scraper': {
     label: 'Instagram Comments Scraper',
     roleRequired: 'admin',
@@ -861,6 +884,7 @@ const PORTAL_NAV_GROUPS = [
       { label: 'Servidor Mysauth', section: 'erp-infrastructure', icon: 'server' },
       { label: 'Cloud Hidden Room', section: 'erp-cloud', icon: 'cloud' },
       { label: 'Instagram Mention Rank', section: 'erp-ig-mention-rank', icon: 'chart' },
+      { label: 'IG Beneficios', section: 'erp-ig-benefits-audit', icon: 'gift' },
       { label: 'Instagram Comments Scraper', section: 'erp-instagram-scraper', icon: 'activity' },
       { label: 'Boletera', href: '../tickets/', icon: 'ticket' },
       { label: 'BB.DD', section: 'admin-table-editor', icon: 'settings' },
@@ -905,7 +929,6 @@ const SUGGESTED_PERMISSIONS = [
 const EVENT_PERMISSION_FLAGS = [
   ['can_view', 'Ver Evento'],
   ['can_add_finance', 'Capturar Finanzas'],
-  ['can_edit_finance', 'Editar Finanzas'],
   ['can_view_scrum', 'SCRUM View'],
   ['can_edit_scrum', 'Editar SCRUM'],
 ];
@@ -1880,6 +1903,10 @@ async function renderSection(sectionKey) {
   } finally {
     if (state.renderToken === renderToken && skeleton) skeleton.hidden = true;
   }
+  if (sectionKey === 'client-tickets') {
+    requestAnimationFrame(() => renderClientTicketQrs(wrap));
+  }
+
 
   // Trigger reveal after paint
   requestAnimationFrame(() => {
@@ -2920,17 +2947,7 @@ async function renderClientTickets() {
   }
 
   const listHTML = tickets.length
-    ? tickets.map((ticket) => {
-      const folio = String(ticket.folio ?? '').trim();
-      const href = ticket.qr_payload || `../tickets/validate.html?folio=${encodeURIComponent(folio)}`;
-      return `
-        <li class="db-card-list__item">
-          <span class="db-card-list__label">${escapeHTML(ticket.event_key ?? '-')} · ${escapeHTML(ticket.ticket_type ?? 'TICKET')}</span>
-          <span class="db-card-list__value">${escapeHTML(folio)} · ${escapeHTML(ticket.status ?? '')}</span>
-          <a class="btn-primary" href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer">Abrir ticket</a>
-        </li>
-      `;
-    }).join('')
+    ? tickets.map((ticket) => renderClientTicketCard(ticket)).join('')
     : '<li class="db-empty">Sin tickets adquiridos.</li>';
 
   return `
@@ -2944,6 +2961,60 @@ async function renderClientTickets() {
       </ul>
     </section>
   `;
+}
+
+function safeDomId(value) {
+  return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+function clientTicketQrPayload(ticket) {
+  const folio = String(ticket?.folio ?? '').trim();
+  return String(ticket?.qr_payload || `https://hiddenroom.mx/tickets/validate.html?folio=${encodeURIComponent(folio)}`).trim();
+}
+
+function clientTicketQrId(ticket) {
+  return `client-ticket-qr-${safeDomId(ticket?.folio || ticket?.id)}`;
+}
+
+function renderClientTicketCard(ticket) {
+  const folio = String(ticket.folio ?? '').trim();
+  return `
+    <li class="db-client-ticket-card">
+      <div class="db-client-ticket-card__qr" id="${escapeAttr(clientTicketQrId(ticket))}" data-ticket-qr="${escapeAttr(clientTicketQrPayload(ticket))}" aria-label="QR del ticket ${escapeAttr(folio)}"></div>
+      <div class="db-client-ticket-card__body">
+        <span class="section-label">${escapeHTML(ticket.event_key ?? 'Evento')}</span>
+        <strong class="db-client-ticket-card__folio">${escapeHTML(folio || '-')}</strong>
+        <dl class="db-client-ticket-card__meta">
+          <div><dt>Tipo</dt><dd>${escapeHTML(ticket.ticket_type ?? 'TICKET')}</dd></div>
+          <div><dt>Estado</dt><dd>${escapeHTML(ticket.status ?? '-')}</dd></div>
+          ${ticket.used_at ? `<div><dt>Usado</dt><dd>${escapeHTML(formatDateTime(ticket.used_at))}</dd></div>` : ''}
+        </dl>
+      </div>
+    </li>
+  `;
+}
+
+function renderClientTicketQrs(root = document) {
+  root.querySelectorAll('[data-ticket-qr]').forEach((container) => {
+    const payload = container.dataset.ticketQr;
+    if (!payload || container.dataset.qrRendered === 'true') return;
+    container.dataset.qrRendered = 'true';
+    container.textContent = '';
+
+    if (!window.QRCode) {
+      container.textContent = 'QR no disponible';
+      return;
+    }
+
+    new window.QRCode(container, {
+      text: payload,
+      width: 132,
+      height: 132,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
+      correctLevel: window.QRCode.CorrectLevel.M,
+    });
+  });
 }
 
 
@@ -4033,6 +4104,308 @@ function resetInstagramScraperAnalysis() {
   renderSection('erp-instagram-scraper');
 }
 
+function normalizeIgAuditUsername(value) {
+  return String(value || '').trim().replace(/^@+/, '').toLowerCase();
+}
+
+function safePostgrestSearchTerm(value) {
+  return String(value || '').trim().replace(/[%,()]/g, ' ').replace(/\s+/g, ' ').slice(0, 80);
+}
+
+function mergeRowsById(rows) {
+  const map = new Map();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const key = row?.id ?? `${row?.user_id || ''}:${row?.ig_username || ''}:${row?.concepto || ''}:${row?.folio || ''}`;
+    if (key) map.set(String(key), row);
+  });
+  return [...map.values()];
+}
+
+async function fetchErpIgBenefitsAudit(query = '') {
+  const rawQuery = String(query || '').trim();
+  const normalizedIg = normalizeIgAuditUsername(rawQuery);
+  const search = safePostgrestSearchTerm(rawQuery.replace(/^@+/, ''));
+  const hasSearch = search.length >= 2;
+  const contestSelect = 'id, concepto, user_id, ig_username, created_at';
+  const userSelect = 'id, user_id, display_name, username, email, whatsapp, ig_username, has_auth';
+  const ticketSelect = 'id, event_key, folio, status, ticket_type, customer_name, customer_email, user_id, created_at, used_at, qr_payload';
+
+  let contestQuery = supabase
+    .from('ig_contest')
+    .select(contestSelect)
+    .order('created_at', { ascending: false })
+    .limit(hasSearch ? 500 : 200);
+
+  if (hasSearch) {
+    contestQuery = contestQuery.or(`ig_username.ilike.%${search}%,concepto.ilike.%${search}%,user_id.ilike.%${search}%`);
+  }
+
+  let usersBySearch = [];
+  if (hasSearch) {
+    const { data, error } = await supabase
+      .from('users')
+      .select(userSelect)
+      .or(`ig_username.ilike.%${search}%,user_id.ilike.%${search}%,display_name.ilike.%${search}%,email.ilike.%${search}%,whatsapp.ilike.%${search}%`)
+      .limit(100);
+    if (error) throw error;
+    usersBySearch = data ?? [];
+  }
+
+  const { data: contestData, error: contestError } = await contestQuery;
+  if (contestError) throw contestError;
+
+  const extraContest = [];
+  const searchedUserIds = [...new Set(usersBySearch.map((user) => user.user_id).filter(Boolean).map(String))];
+  const searchedHandles = [...new Set(usersBySearch.map((user) => normalizeIgAuditUsername(user.ig_username)).filter(Boolean))];
+
+  if (searchedUserIds.length) {
+    const { data, error } = await supabase.from('ig_contest').select(contestSelect).in('user_id', searchedUserIds).limit(500);
+    if (error) throw error;
+    extraContest.push(...(data ?? []));
+  }
+
+  if (searchedHandles.length) {
+    const { data, error } = await supabase.from('ig_contest').select(contestSelect).in('ig_username', searchedHandles).limit(500);
+    if (error) throw error;
+    extraContest.push(...(data ?? []));
+  }
+
+  const contestRows = mergeRowsById([...(contestData ?? []), ...extraContest]);
+  const relatedUserIds = new Set(searchedUserIds);
+  const relatedHandles = new Set(searchedHandles);
+
+  contestRows.forEach((row) => {
+    if (row.user_id) relatedUserIds.add(String(row.user_id));
+    const handle = normalizeIgAuditUsername(row.ig_username);
+    if (handle) relatedHandles.add(handle);
+  });
+  if (hasSearch && normalizedIg) relatedHandles.add(normalizedIg);
+
+  const users = [...usersBySearch];
+  const userIds = [...relatedUserIds];
+  const handles = [...relatedHandles];
+
+  if (userIds.length) {
+    const { data, error } = await supabase.from('users').select(userSelect).in('user_id', userIds).limit(500);
+    if (error) throw error;
+    users.push(...(data ?? []));
+  }
+
+  if (handles.length) {
+    const { data, error } = await supabase.from('users').select(userSelect).in('ig_username', handles).limit(500);
+    if (error) throw error;
+    users.push(...(data ?? []));
+  }
+
+  const userRows = mergeRowsById(users);
+  const ticketQueries = [];
+  const ticketUserIds = [...new Set(userRows.map((user) => user.user_id).filter(Boolean).map(String))];
+
+  if (ticketUserIds.length) {
+    ticketQueries.push(supabase.from('event_tickets').select(ticketSelect).in('user_id', ticketUserIds).limit(500));
+  }
+
+  if (hasSearch) {
+    ticketQueries.push(
+      supabase
+        .from('event_tickets')
+        .select(ticketSelect)
+        .or(`folio.ilike.%${search}%,event_key.ilike.%${search}%,customer_name.ilike.%${search}%,customer_email.ilike.%${search}%,user_id.ilike.%${search}%`)
+        .limit(200)
+    );
+  } else {
+    ticketQueries.push(
+      supabase
+        .from('event_tickets')
+        .select(ticketSelect)
+        .eq('event_key', 'HRCDMX-17-21')
+        .order('created_at', { ascending: false })
+        .limit(200)
+    );
+  }
+
+  const ticketResults = await Promise.all(ticketQueries);
+  const tickets = [];
+  ticketResults.forEach(({ data, error }) => {
+    if (error) throw error;
+    tickets.push(...(data ?? []));
+  });
+
+  return {
+    query: rawQuery,
+    contestRows,
+    userRows,
+    ticketRows: mergeRowsById(tickets),
+  };
+}
+
+function buildErpIgBenefitsAuditRows(result) {
+  const usersById = new Map();
+  const usersByIg = new Map();
+  const contestByIg = new Map();
+  const ticketsByUserId = new Map();
+
+  result.userRows.forEach((user) => {
+    if (user.user_id) usersById.set(String(user.user_id), user);
+    const handle = normalizeIgAuditUsername(user.ig_username);
+    if (handle) usersByIg.set(handle, user);
+  });
+
+  result.contestRows.forEach((row) => {
+    const handle = normalizeIgAuditUsername(row.ig_username) || `user:${row.user_id || row.id}`;
+    if (!contestByIg.has(handle)) contestByIg.set(handle, []);
+    contestByIg.get(handle).push(row);
+  });
+
+  result.ticketRows.forEach((ticket) => {
+    const key = String(ticket.user_id || 'sin-user-id');
+    if (!ticketsByUserId.has(key)) ticketsByUserId.set(key, []);
+    ticketsByUserId.get(key).push(ticket);
+  });
+
+  const rowKeys = new Set([...contestByIg.keys()]);
+  result.userRows.forEach((user) => {
+    const handle = normalizeIgAuditUsername(user.ig_username);
+    if (handle) rowKeys.add(handle);
+    else if (user.user_id) rowKeys.add(`user:${user.user_id}`);
+  });
+
+  result.ticketRows.forEach((ticket) => {
+    const user = usersById.get(String(ticket.user_id || ''));
+    const handle = normalizeIgAuditUsername(user?.ig_username);
+    rowKeys.add(handle || `user:${ticket.user_id || ticket.id}`);
+  });
+
+  return [...rowKeys].map((key) => {
+    const contestRows = contestByIg.get(key) ?? [];
+    const firstContest = contestRows[0];
+    const user = usersById.get(String(firstContest?.user_id || '')) || usersByIg.get(key) || result.userRows.find((item) => `user:${item.user_id}` === key) || null;
+    const tickets = user?.user_id ? (ticketsByUserId.get(String(user.user_id)) ?? []) : [];
+    const concepts = [...new Set(contestRows.map((row) => row.concepto).filter(Boolean))];
+    const hasCourtesy = concepts.some((concept) => String(concept).toLowerCase().includes('cortes'));
+    const hasAuth = user?.has_auth === true;
+    const status = hasAuth ? 'Registrado' : user ? 'Perfil sin auth' : 'No registrado';
+    let note = 'OK';
+
+    if (!user) note = 'No hay coincidencia en public.users.';
+    else if (firstContest && !firstContest.user_id) note = 'Existe usuario por IG, pero el registro no tiene user_id.';
+    else if (hasCourtesy && !tickets.length && hasAuth) note = 'Tiene cortesía en ig_contest, pero no se ve ticket materializado.';
+    else if (hasCourtesy && !hasAuth) note = 'La cortesía queda pendiente hasta registro/auth.';
+
+    const lastDates = [
+      ...contestRows.map((row) => row.created_at),
+      ...tickets.map((ticket) => ticket.created_at),
+      ...tickets.map((ticket) => ticket.used_at),
+    ].filter(Boolean).sort().reverse();
+
+    return {
+      key,
+      ig_username: normalizeIgAuditUsername(firstContest?.ig_username || user?.ig_username || ''),
+      user,
+      status,
+      concepts,
+      contestRows,
+      tickets,
+      note,
+      lastDate: lastDates[0] || null,
+    };
+  }).sort((a, b) => {
+    const rank = (row) => row.status === 'No registrado' ? 0 : row.note === 'OK' ? 2 : 1;
+    return rank(a) - rank(b) || String(a.ig_username || a.user?.display_name || '').localeCompare(String(b.ig_username || b.user?.display_name || ''));
+  });
+}
+
+function renderErpIgBenefitsAuditTable(rows) {
+  if (!rows.length) return '<p class="db-empty">Sin coincidencias para cotejar.</p>';
+
+  return `
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="db-table hr-table hr-table-readable" aria-label="Cotejo IG Beneficios">
+        <thead>
+          <tr>
+            <th scope="col">Instagram</th>
+            <th scope="col">Registro</th>
+            <th scope="col">Usuario</th>
+            <th scope="col">User ID</th>
+            <th scope="col">Recompensas</th>
+            <th scope="col">Tickets</th>
+            <th scope="col">Último mov.</th>
+            <th scope="col">Revisión</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((row) => {
+            const user = row.user;
+            const concepts = row.concepts.length ? row.concepts.join(', ') : '-';
+            const ticketLabels = row.tickets.length
+              ? row.tickets.map((ticket) => `${ticket.folio || ticket.event_key || 'Ticket'} (${ticket.status || '-'})`).join(', ')
+              : '-';
+            return `
+              <tr>
+                <td>${row.ig_username ? `@${escapeHTML(row.ig_username)}` : '-'}</td>
+                <td>${escapeHTML(row.status)}</td>
+                <td>${escapeHTML(user?.display_name || user?.username || user?.email || '-')}</td>
+                <td><code>${escapeHTML(user?.user_id || '-')}</code></td>
+                <td>${escapeHTML(concepts)}</td>
+                <td>${escapeHTML(ticketLabels)}</td>
+                <td>${escapeHTML(formatDateTime(row.lastDate))}</td>
+                <td>${escapeHTML(row.note)}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function renderErpIgBenefitsAudit() {
+  const query = state.data.erpIgBenefitsAuditQuery || '';
+  let result;
+
+  try {
+    result = await fetchErpIgBenefitsAudit(query);
+  } catch (error) {
+    console.error('[HR] renderErpIgBenefitsAudit:', error);
+    return sectionShell('ERP', 'IG Beneficios', 'title-erp-ig-benefits-audit', `
+      <p class="db-empty db-empty--error">No se pudo cargar el cotejo. Revisa permisos o RLS.</p>
+    `);
+  }
+
+  const rows = buildErpIgBenefitsAuditRows(result);
+  const registeredCount = rows.filter((row) => row.status === 'Registrado').length;
+  const historicCount = rows.filter((row) => row.status === 'Perfil sin auth').length;
+  const missingCount = rows.filter((row) => row.status === 'No registrado').length;
+  const reviewCount = rows.filter((row) => row.note !== 'OK').length;
+
+  return sectionShell('ERP', 'IG Beneficios', 'title-erp-ig-benefits-audit', `
+    <p class="db-section__summary">Busca recompensas de IG CONTEST y cortesías HRCDMX-17-21 para cotejar si el usuario ya tiene perfil/auth y ticket vinculado.</p>
+    <form class="db-form" data-form="erp-ig-benefits-search">
+      <div class="db-form__row">
+        <label class="db-field"><span>Buscar</span><input name="query" value="${escapeAttr(query)}" placeholder="@usuario, nombre, email, User ID, concepto o folio" autocomplete="off" /></label>
+      </div>
+      <div class="db-form__actions">
+        <button class="btn-primary" type="submit">Buscar</button>
+        <button class="db-btn-secondary" type="submit" name="query" value="" data-operation-action="clear">Limpiar</button>
+      </div>
+    </form>
+    <div class="db-grid db-grid--4col">
+      ${renderStatCard('Filas cotejadas', rows.length)}
+      ${renderStatCard('Registrados', registeredCount)}
+      ${renderStatCard('Perfil sin auth', historicCount)}
+      ${renderStatCard('No registrados', missingCount)}
+    </div>
+    ${reviewCount ? `<p class="db-note">Hay ${escapeHTML(reviewCount)} fila(s) para revisar: registros sin user_id, sin perfil o cortesías sin ticket visible.</p>` : '<p class="db-note">Sin alertas en las coincidencias mostradas.</p>'}
+    ${renderErpIgBenefitsAuditTable(rows)}
+  `);
+}
+
+function handleErpIgBenefitsSearch(form) {
+  const action = form.dataset.operationAction;
+  const values = formValues(form);
+  state.data.erpIgBenefitsAuditQuery = action === 'clear' ? '' : String(values.query || '').trim();
+  renderSection('erp-ig-benefits-audit');
+}
 function renderErpInstagramScraper() {
   const scraper = state.instagramScraper;
   const comments = instagramScraperComments();
@@ -5781,7 +6154,7 @@ function eventAccessFor(event, adminDefault = hasRole('admin')) {
   return {
     can_view: adminDefault || Boolean(event?.can_view),
     can_add_finance: adminDefault || Boolean(event?.can_add_finance),
-    can_edit_finance: adminDefault || Boolean(event?.can_edit_finance),
+    can_edit_finance: adminDefault,
     can_view_scrum: adminDefault || Boolean(event?.can_view_scrum),
     can_edit_scrum: adminDefault || Boolean(event?.can_edit_scrum),
   };
@@ -6163,36 +6536,89 @@ function renderEventFinanceTransactionsTable(transactions, options = {}) {
     ['created_by_user_id', 'Creado por'],
     ['notes', 'Notas'],
   ];
+  const canEdit = Boolean(options.canEdit && hasRole('admin'));
   const rows = sortedTransactions.length
-    ? sortedTransactions.map((tx) => `
-      <tr>
-        <td>${escapeHTML(tx.concept ?? '-')}</td>
-        <td>${escapeHTML(movementTypeLabel(tx.movement_type) || tx.type || '-')}</td>
-        <td>${money(Number(tx.amount ?? 0))}</td>
-        <td>${money(Number(tx.hidden_room_share ?? eventFinanceAmount(tx) ?? 0))}</td>
-        <td>${escapeHTML(participantName(tx.from_user_id))}</td>
-        <td>${escapeHTML(participantName(tx.to_user_id))}</td>
-        <td>${escapeHTML(financeEntityName(tx.owner_entity_id, tx.owner_user_id))}</td>
-        <td>${escapeHTML(formatDisplayDateOnly(tx.movement_date ?? tx.date))}</td>
-        <td>${escapeHTML(tx.payment_method ?? tx.via ?? '-')}</td>
-        <td>${escapeHTML(tx.created_by_user_id ?? '-')}</td>
-        <td>${escapeHTML(tx.notes ?? '-')}</td>
-        ${options.canEdit ? `<td><button class="db-btn-secondary" type="button" data-action="event-movement-edit" data-event-movement="${escapeAttr(encodeURIComponent(JSON.stringify(tx)))}">Editar</button></td>` : ''}
-      </tr>
-    `).join('')
-    : `<tr class="db-table__empty-row hr-table-empty"><td colspan="${headers.length + (options.canEdit ? 1 : 0)}" class="db-empty hr-table-empty">Sin transacciones en el periodo.</td></tr>`;
+    ? sortedTransactions.map((tx, index) => canEdit
+      ? renderEventFinanceTransactionEditorRow(tx, index, headers)
+      : renderEventFinanceTransactionReadableRow(tx)).join('')
+    : `<tr class="db-table__empty-row hr-table-empty"><td colspan="${headers.length + (canEdit ? 1 : 0)}" class="db-empty hr-table-empty">Sin transacciones en el periodo.</td></tr>`;
+  const tableClass = canEdit
+    ? 'db-table hr-table hr-table-editable db-table--editor'
+    : 'db-table hr-table hr-table-readable';
 
   return `
     <div class="db-table-wrap hr-table-wrap">
-      <table class="db-table hr-table hr-table-readable" aria-label="Desglose financiero de eventos">
+      <table class="${tableClass}" aria-label="Desglose financiero de eventos">
         <thead><tr>
           ${headers.map(([field, label]) => renderSortableHeader(tableId, field, label, activeSort)).join('')}
-          ${options.canEdit ? '<th scope="col">Acciones</th>' : ''}
+          ${canEdit ? '<th scope="col">Acciones</th>' : ''}
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
   `;
+}
+
+function renderEventFinanceTransactionReadableRow(tx) {
+  return `
+    <tr>
+      <td>${escapeHTML(tx.concept ?? '-')}</td>
+      <td>${escapeHTML(movementTypeLabel(tx.movement_type) || tx.type || '-')}</td>
+      <td>${money(Number(tx.amount ?? 0))}</td>
+      <td>${money(Number(tx.hidden_room_share ?? eventFinanceAmount(tx) ?? 0))}</td>
+      <td>${escapeHTML(participantName(tx.from_user_id))}</td>
+      <td>${escapeHTML(participantName(tx.to_user_id))}</td>
+      <td>${escapeHTML(financeEntityName(tx.owner_entity_id, tx.owner_user_id))}</td>
+      <td>${escapeHTML(formatDisplayDateOnly(tx.movement_date ?? tx.date))}</td>
+      <td>${escapeHTML(tx.payment_method ?? tx.via ?? '-')}</td>
+      <td>${escapeHTML(tx.created_by_user_id ?? '-')}</td>
+      <td>${escapeHTML(tx.notes ?? '-')}</td>
+    </tr>
+  `;
+}
+
+function renderEventFinanceTransactionEditorRow(tx, index, headers) {
+  const config = TABLE_EDITOR_CONFIG.hr_transactions;
+  const original = encodeURIComponent(JSON.stringify(tx));
+  const formId = `event-finance-table-form-${index}`;
+
+  return `
+    <tr>
+      ${headers.map(([field]) => {
+        const value = eventFinanceEditorCellValue(field, tx);
+        const isEditable = config.editableFields.includes(field);
+        if (!isEditable) {
+          return `<td class="db-table-cell--readonly"><code>${escapeHTML(String(value || '-'))}</code></td>`;
+        }
+
+        return `
+          <td class="db-table-cell--editable hr-cell-editable">
+            <input
+              class="db-table-input hr-input"
+              form="${escapeAttr(formId)}"
+              name="${escapeAttr(field)}"
+              value="${escapeAttr(value)}"
+            />
+          </td>
+        `;
+      }).join('')}
+      <td class="db-table-cell--actions">
+        <form class="db-inline-form" id="${escapeAttr(formId)}" data-form="event-finance-table-update">
+          <input type="hidden" name="table_name" value="hr_transactions" />
+          <input type="hidden" name="original" value="${escapeAttr(original)}" />
+          <button class="db-btn-secondary" type="submit">Guardar</button>
+        </form>
+      </td>
+    </tr>
+  `;
+}
+
+function eventFinanceEditorCellValue(field, tx) {
+  if (field === 'movement_type') return tx.movement_type ?? tx.type ?? '';
+  if (field === 'hidden_room_share') return tx.hidden_room_share ?? eventFinanceAmount(tx) ?? '';
+  if (field === 'movement_date') return tx.movement_date ?? tx.date ?? '';
+  if (field === 'payment_method') return tx.payment_method ?? tx.via ?? '';
+  return tx[field] ?? '';
 }
 
 async function renderErpPermissions() {
@@ -9154,6 +9580,67 @@ async function handleEventMovementEdit(encodedTx) {
   navigate(state.activeSection);
 }
 
+async function handleEventFinanceTableUpdate(form) {
+  if (!requireAdminMutation()) return;
+
+  const values = formValues(form);
+  const config = TABLE_EDITOR_CONFIG.hr_transactions;
+  let original;
+  try {
+    original = JSON.parse(decodeURIComponent(values.original));
+  } catch (err) {
+    console.error('[HR] event finance table original parse:', err);
+    showToast('No se pudo leer la fila original.', 'error');
+    return;
+  }
+
+  const payload = {};
+  config.editableFields.forEach((field) => {
+    if (field in values) payload[field] = values[field];
+  });
+
+  if ('amount' in payload) {
+    const amount = Number(payload.amount);
+    if (!Number.isFinite(amount)) {
+      showToast('Monto invalido.', 'error');
+      return;
+    }
+    payload.amount = amount;
+  }
+
+  if ('hidden_room_share' in payload) {
+    const hiddenRoomShare = Number(payload.hidden_room_share);
+    if (!Number.isFinite(hiddenRoomShare)) {
+      showToast('M.A.I. invalido.', 'error');
+      return;
+    }
+    payload.hidden_room_share = hiddenRoomShare;
+    payload['M.A.I.'] = hiddenRoomShare;
+  }
+
+  if ('movement_type' in payload) {
+    payload.type = movementTypeConfig(payload.movement_type).legacyType;
+  }
+  if ('payment_method' in payload) {
+    payload.payment_method = payload.payment_method?.trim() || null;
+    payload.via = payload.payment_method;
+  }
+  if ('movement_date' in payload) {
+    payload.movement_date = payload.movement_date ? formatDateOnly(payload.movement_date) : null;
+    payload.date = payload.movement_date;
+  }
+  ['concept', 'from_user_id', 'to_user_id', 'owner_entity_id', 'notes'].forEach((field) => {
+    if (field in payload) payload[field] = payload[field]?.trim() || null;
+  });
+
+  const ok = await saveAdminTableRow('hr_transactions', config, original, payload, { confirmUserId: false });
+  if (ok) {
+    state.data.financeEvents = null;
+    state.data.collabFinanceEvents = null;
+    showToast('Movimiento actualizado.', 'success');
+    navigate(state.activeSection);
+  }
+}
 function operationReceiptTitle(formType) {
   const labels = {
     'transaction-create': 'Comprobante de transaccion',
@@ -9307,7 +9794,8 @@ async function handleAdminUserCreate(values) {
 
     if (error) {
       console.error('[HR] admin-create-user function:', error);
-      showToast(error.message || 'No se pudo crear el usuario.', 'error');
+      const detail = await getFunctionErrorMessage(error);
+      showToast(detail || 'No se pudo crear el usuario.', 'error');
       return false;
     }
 
@@ -9322,6 +9810,18 @@ async function handleAdminUserCreate(values) {
   }
 }
 
+async function getFunctionErrorMessage(error) {
+  const fallback = error?.message || '';
+  const response = error?.context;
+  if (!response || typeof response.clone !== 'function') return fallback;
+
+  try {
+    const payload = await response.clone().json();
+    return payload?.error || payload?.message || fallback;
+  } catch {
+    return fallback;
+  }
+}
 function showAdminCreatedUserResult(values, result) {
   const holder = document.querySelector('[data-admin-create-user-result]');
   const tempPassword = result?.temp_password;
@@ -10929,11 +11429,13 @@ function attachMainDelegation() {
     if (form.dataset.form === 'account-update') handleAccountUpdate(form);
     if (form.dataset.form === 'permission-add') handlePermissionAdd(form);
     if (form.dataset.form === 'admin-table-update') handleAdminTableUpdate(form);
+    if (form.dataset.form === 'event-finance-table-update') handleEventFinanceTableUpdate(form);
     if (form.dataset.form === 'user-merge') handleErpForm(form);
     if (form.dataset.form === 'membership-cancel') handleErpForm(form);
     if (form.dataset.form === 'membership-delivery') handleErpForm(form);
     if (form.dataset.form === 'membership-session-notes') handleErpForm(form);
     if (form.dataset.form === 'ig-list-media') handleIgListMedia(form);
+    if (form.dataset.form === 'erp-ig-benefits-search') handleErpIgBenefitsSearch(form);
     if (form.dataset.form === 'instagram-scrape') handleInstagramScraper(form);
     if (form.dataset.form?.endsWith('-create') && !form.dataset.form.startsWith('task-')) {
       handleErpForm(form);
