@@ -113,8 +113,10 @@
             <div class="legend">
               <span><i class="artist-dot"></i>Artista</span>
               <span><i class="community-dot"></i>Comunidad</span>
-              <span><i class="ambassador-dot"></i>Embajador</span>
-              <span><i class="bridge-dot"></i>Puente</span>
+              <span><i class="superfan-dot"></i>Super Fan</span>
+              <span><i class="ambassador-dot"></i>Ambassador</span>
+              <span><i class="bridge-dot"></i>Bridge</span>
+              <span><i class="leader-dot"></i>Leader</span>
             </div>
           </div>
           <div id="cy" role="img" aria-label="Grafo interactivo de comunidad y artistas"></div>
@@ -122,40 +124,49 @@
             <strong>Sin conexiones visibles</strong>
             <span>Ajusta los filtros o carga otro archivo.</span>
           </div>
-          <div class="graph-hint">Scroll: zoom · Arrastrar: navegar · Nodo: detalles</div>
+          <div class="graph-hint">Scroll: zoom / Arrastrar: navegar / Nodo: detalles</div>
           <div class="tooltip" id="tooltip" hidden></div>
         </section>
 
         <section class="tables-section">
           <div class="section-title">
-            <div><span>Data intelligence</span><h2>Lecturas de la órbita</h2></div>
-            <p>Rankings calculados sobre el dataset completo.</p>
+            <div><span>Data intelligence</span><h2>Lecturas de la orbita</h2></div>
+            <p>Perfiles calculados por dimension sobre el dataset valido completo.</p>
           </div>
-          <div class="table-grid">
-            <article class="data-card">
-              <header><span>01</span><h3>Top Artists</h3></header>
+          <div class="table-grid role-table-grid">
+            <article class="data-card role-card role-superfan-card">
+              <header><span>01</span><h3>Top Super Fans</h3></header>
               <div class="table-scroll">
                 <table>
-                  <thead><tr><th>Handle</th><th>Menciones</th><th>Únicos</th><th>Conv.</th><th>Score</th></tr></thead>
-                  <tbody id="artistsTable"></tbody>
+                  <thead><tr><th>Handle</th><th>Score</th><th>Comentarios</th></tr></thead>
+                  <tbody id="superFansTable"></tbody>
                 </table>
               </div>
             </article>
-            <article class="data-card">
+            <article class="data-card role-card role-ambassador-card">
               <header><span>02</span><h3>Top Ambassadors</h3></header>
               <div class="table-scroll">
                 <table>
-                  <thead><tr><th>Handle</th><th>Artistas</th><th>Bridge</th><th>Spam</th><th>Amb.</th></tr></thead>
+                  <thead><tr><th>Handle</th><th>Artistas</th><th>Score</th></tr></thead>
                   <tbody id="ambassadorsTable"></tbody>
                 </table>
               </div>
             </article>
-            <article class="data-card">
-              <header><span>03</span><h3>Strongest Connections</h3></header>
+            <article class="data-card role-card role-bridge-card">
+              <header><span>03</span><h3>Top Bridges</h3></header>
               <div class="table-scroll">
                 <table>
-                  <thead><tr><th>Autor</th><th>Artista</th><th>Peso</th></tr></thead>
-                  <tbody id="connectionsTable"></tbody>
+                  <thead><tr><th>Handle</th><th>Bridge score</th><th>Artistas conectados</th></tr></thead>
+                  <tbody id="bridgesTable"></tbody>
+                </table>
+              </div>
+            </article>
+            <article class="data-card role-card role-leader-card">
+              <header><span>04</span><h3>Top Community Leaders</h3></header>
+              <div class="table-scroll">
+                <table>
+                  <thead><tr><th>Dimension</th><th>Estado</th></tr></thead>
+                  <tbody id="communityLeadersTable"></tbody>
                 </table>
               </div>
             </article>

@@ -35,6 +35,14 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
     return clean ? `@${clean.replace(/^@/, "")}` : "";
   };
 
+  const COMMUNITY_ROLE_DIMENSIONS = [
+    { key: "superfan", label: "Super Fan", scoreKey: "superfan_score", starsKey: "superfan_stars", color: "#f02c27", priority: 2 },
+    { key: "ambassador", label: "Ambassador", scoreKey: "ambassador_score", starsKey: "ambassador_stars", color: "#38bdf8", priority: 3 },
+    { key: "bridge", label: "Bridge", scoreKey: "bridge_score", starsKey: "bridge_stars", color: "#42e879", priority: 4 },
+    { key: "community_leader", label: "Community Leader", scoreKey: "community_leader_score", starsKey: "community_leader_stars", color: "#f5c451", priority: 1, unavailable: true }
+  ];
+
+  const futureRoleDimensions = ["commerce", "attendance", "studio", "media", "trust", "influence"];
   function rolesIncludeAdmin(rawRoles) {
     return String(rawRoles || "").split(",").map(role => role.trim().toLowerCase()).includes("admin");
   }
@@ -97,6 +105,52 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
     });
   }
 
+  function scoreToStars(score, scores) {
+    if (!Number.isFinite(score) || score <= 0) return 0;
+    const positiveScores = scores.filter(value => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+    if (!positiveScores.length) return 0;
+    const lowerOrEqual = positiveScores.filter(value => value <= score).length;
+    return Math.max(1, Math.min(5, Math.ceil((lowerOrEqual / positiveScores.length) * 5)));
+  }
+
+  function starLabel(stars) {
+    if (stars === null || stars === undefined) return "N/D";
+    const filled = Math.max(0, Math.min(5, Number(stars) || 0));
+    return `${String.fromCharCode(9733).repeat(filled)}${String.fromCharCode(9734).repeat(5 - filled)}`;
+  }
+
+  function decorateCommunityRoles(authors) {
+    COMMUNITY_ROLE_DIMENSIONS.forEach(dimension => {
+      const scores = authors.map(author => author[dimension.scoreKey]);
+      authors.forEach(author => {
+        const score = dimension.unavailable ? null : author[dimension.scoreKey];
+        const stars = dimension.unavailable ? null : scoreToStars(score, scores);
+        author[dimension.starsKey] = stars;
+        author.roles = author.roles || {};
+        author.roles[dimension.key] = {
+          key: dimension.key,
+          label: dimension.label,
+          color: dimension.color,
+          score,
+          stars,
+          display: dimension.unavailable ? "N/D" : starLabel(stars)
+        };
+      });
+    });
+
+    authors.forEach(author => {
+      const availableRoles = COMMUNITY_ROLE_DIMENSIONS
+        .filter(dimension => !dimension.unavailable)
+        .map(dimension => author.roles[dimension.key]);
+      const dominant = availableRoles.sort((a, b) =>
+        b.stars - a.stars ||
+        COMMUNITY_ROLE_DIMENSIONS.find(dimension => dimension.key === b.key).priority - COMMUNITY_ROLE_DIMENSIONS.find(dimension => dimension.key === a.key).priority ||
+        b.score - a.score
+      )[0];
+      author.dominant_role = dominant?.key || "superfan";
+      author.role_color = dominant?.color || "#326ee8";
+    });
+  }
   function buildModel(comments) {
     const artistsMap = new Map();
     const authorsMap = new Map();
@@ -154,8 +208,37 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
     artists.sort((a, b) => b.combined_score - a.combined_score || b.total_mentions - a.total_mentions);
     artists.forEach((item, index) => { item.combined_rank = index + 1; });
 
+    const pairSupport = new Map();
+    authorsMap.forEach(author => {
+      const supportedArtists = [...author.artistSet].sort();
+      supportedArtists.forEach((source, sourceIndex) => {
+        supportedArtists.slice(sourceIndex + 1).forEach(target => {
+          const key = `${source}::${target}`;
+          pairSupport.set(key, (pairSupport.get(key) || 0) + 1);
+        });
+      });
+    });
+
+    function artistPairBridgeValue(source, target) {
+      const [left, right] = [source, target].sort();
+      const sharedSupporters = pairSupport.get(`${left}::${right}`) || 0;
+      const sourceSupporters = artistsMap.get(source)?.authorSet.size || 1;
+      const targetSupporters = artistsMap.get(target)?.authorSet.size || 1;
+      const maxShared = Math.max(1, Math.min(sourceSupporters, targetSupporters));
+      const separation = Math.max(0, 1 - sharedSupporters / maxShared);
+      const differentCluster = fullPartition[`artist:${source}`] !== fullPartition[`artist:${target}`];
+      return separation * (differentCluster ? 135 : 100);
+    }
+
     const authors = [...authorsMap.values()].map(item => {
-      const artistClusters = new Set([...item.artistSet]
+      const supportedArtists = [...item.artistSet].sort();
+      let bridgeScore = 0;
+      supportedArtists.forEach((source, sourceIndex) => {
+        supportedArtists.slice(sourceIndex + 1).forEach(target => {
+          bridgeScore += artistPairBridgeValue(source, target);
+        });
+      });
+      const artistClusters = new Set(supportedArtists
         .map(handle => fullPartition[`artist:${handle}`])
         .filter(cluster => cluster !== undefined));
       const artistsSupported = item.artistSet.size;
@@ -164,15 +247,19 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
         comment_count: item.comment_count,
         artists_supported: artistsSupported,
         total_mentions_made: item.total_mentions_made,
-        ambassador_score: artistsSupported * 10 + item.total_mentions_made,
-        unique_artist_clusters: artistClusters.size,
-        bridge_score: artistsSupported * Math.max(1, artistClusters.size),
-        spam_score: Number((item.total_mentions_made / Math.max(1, artistsSupported)).toFixed(2))
+        connected_artist_clusters: artistClusters.size,
+        superfan_score: item.total_mentions_made,
+        ambassador_score: artistsSupported * 100 + item.total_mentions_made,
+        bridge_score: Math.round(bridgeScore),
+        community_leader_score: null
       };
-    }).sort((a, b) => b.ambassador_score - a.ambassador_score || b.bridge_score - a.bridge_score || a.handle.localeCompare(b.handle));
+    });
+
+    decorateCommunityRoles(authors);
+    authors.sort((a, b) => b.roles.bridge.score - a.roles.bridge.score || b.roles.ambassador.score - a.roles.ambassador.score || a.handle.localeCompare(b.handle));
 
     const edges = [...edgesMap.values()].sort((a, b) => b.weight - a.weight || a.author.localeCompare(b.author));
-    return { comments, artists, authors, edges };
+    return { comments, artists, authors, edges, roleDimensions: COMMUNITY_ROLE_DIMENSIONS, futureRoleDimensions };
   }
 
   function graphElements() {
@@ -240,9 +327,9 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
 
     visibleAuthors.forEach(handle => {
       const author = authorByHandle.get(handle);
-      const ambassador = author.artists_supported >= 3;
-      const visibleSceneCount = authorScenes.get(handle).size;
-      const bridge = visibleSceneCount >= 2 || author.unique_artist_clusters >= 2;
+      const visibleSceneCount = (authorScenes.get(handle) || new Set()).size;
+      const bridge = visibleSceneCount >= 2 || author.roles.bridge.score > 0;
+      const ambassador = author.roles.ambassador.stars >= 4;
       const community = partition[`author:${handle}`];
       elements.push({
         group: "nodes",
@@ -250,12 +337,16 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
           id: `author:${handle}`, type: "author", label: handle, parent: `scene:${community}`,
           community: communityIndex.get(community), comment_count: author.comment_count,
           artists_supported: author.artists_supported, total_mentions_made: author.total_mentions_made,
-          ambassador_score: author.ambassador_score, bridge_score: author.bridge_score, spam_score: author.spam_score,
-          unique_artist_clusters: author.unique_artist_clusters, is_bridge: bridge, connected_scenes: visibleSceneCount,
-          size: Math.min(42, 12 + Math.sqrt(author.ambassador_score + author.bridge_score * 3) * 2),
-          color: bridge ? "#42e879" : ambassador ? "#38bdf8" : "#326ee8"
+          connected_artist_clusters: author.connected_artist_clusters, connected_scenes: visibleSceneCount,
+          superfan_score: author.roles.superfan.score, superfan_display: author.roles.superfan.display,
+          ambassador_score: author.roles.ambassador.score, ambassador_display: author.roles.ambassador.display,
+          bridge_score: author.roles.bridge.score, bridge_display: author.roles.bridge.display,
+          community_leader_display: author.roles.community_leader.display,
+          dominant_role: author.dominant_role, is_bridge: bridge,
+          size: Math.min(42, 12 + Math.sqrt(author.total_mentions_made + author.artists_supported * 8) * 2.4),
+          color: author.role_color
         },
-        classes: ["author", ambassador ? "ambassador" : "", bridge ? "bridge" : ""].filter(Boolean).join(" ")
+        classes: ["author", `role-${author.dominant_role}`, ambassador ? "ambassador" : "", bridge ? "bridge" : ""].filter(Boolean).join(" ")
       });
     });
 
@@ -268,7 +359,7 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
           width: Math.min(14, .8 + Math.sqrt(edge.weight) * 3),
           opacity: Math.min(.92, .18 + Math.log2(edge.weight + 1) * .2)
         },
-        classes: (authorScenes.get(edge.author).size >= 2 || authorByHandle.get(edge.author)?.unique_artist_clusters >= 2) ? "bridge-edge" : ""
+        classes: ((authorScenes.get(edge.author) || new Set()).size >= 2 || authorByHandle.get(edge.author)?.roles.bridge.score > 0) ? "bridge-edge" : ""
       });
     });
     return elements;
@@ -376,19 +467,33 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
       : "Sin datos visibles";
   }
 
+  function roleProfileHtml(data) {
+    return `<div class="role-profile">
+      <div class="role-row role-superfan"><span>Super Fan</span><strong>${data.superfan_display}</strong><small>${data.superfan_score}</small></div>
+      <div class="role-row role-ambassador"><span>Ambassador</span><strong>${data.ambassador_display}</strong><small>${data.ambassador_score}</small></div>
+      <div class="role-row role-bridge"><span>Bridge</span><strong>${data.bridge_display}</strong><small>${data.bridge_score}</small></div>
+      <div class="role-row role-community-leader"><span>Community Leader</span><strong>${data.community_leader_display}</strong><small>N/D</small></div>
+    </div>`;
+  }
+
+  function showAuthorProfile(data, event) {
+    showTooltip(`<strong>${escapeHtml(data.label)}</strong>${roleProfileHtml(data)}<dl><dt>Comentarios</dt><dd>${data.comment_count}</dd><dt>Artistas apoyados</dt><dd>${data.artists_supported}</dd><dt>Clusters conectados</dt><dd>${data.connected_artist_clusters}</dd><dt>Rol dominante visual</dt><dd>${escapeHtml(data.dominant_role)}</dd></dl>`, event);
+  }
+
   function bindGraphEvents() {
     cy.on("mouseover", "node, edge", event => {
       const data = event.target.data();
       if (data.type === "artist") {
-        showTooltip(`<strong>${escapeHtml(data.label)}</strong><dl><dt>Menciones totales</dt><dd>${data.total_mentions}</dd><dt>Usuarios únicos</dt><dd>${data.unique_authors}</dd><dt>Conversion potential</dt><dd>${data.conversion_potential}</dd><dt>Ranking combinado</dt><dd>#${data.rank}</dd><dt>Score</dt><dd>${data.combined_score}</dd></dl>`, event.originalEvent);
+        showTooltip(`<strong>${escapeHtml(data.label)}</strong><dl><dt>Menciones totales</dt><dd>${data.total_mentions}</dd><dt>Usuarios unicos</dt><dd>${data.unique_authors}</dd><dt>Conversion potential</dt><dd>${data.conversion_potential}</dd><dt>Ranking combinado</dt><dd>#${data.rank}</dd><dt>Score</dt><dd>${data.combined_score}</dd></dl>`, event.originalEvent);
       } else if (data.type === "scene") {
         showTooltip(`<strong>${escapeHtml(data.label)}</strong><dl><dt>Comunidad Louvain</dt><dd>${data.label.replace("ESCENA ", "#")}</dd></dl>`, event.originalEvent);
       } else if (data.type === "author") {
-        showTooltip(`<strong>${escapeHtml(data.label)}</strong><dl><dt>Comentarios</dt><dd>${data.comment_count}</dd><dt>Artistas apoyados</dt><dd>${data.artists_supported}</dd><dt>Menciones hechas</dt><dd>${data.total_mentions_made}</dd><dt>Ambassador score</dt><dd>${data.ambassador_score}</dd><dt>Bridge score</dt><dd>${data.bridge_score}</dd><dt>Spam score</dt><dd>${data.spam_score}</dd><dt>Clusters únicos</dt><dd>${data.unique_artist_clusters}</dd><dt>Puente</dt><dd>${data.is_bridge ? "Sí" : "No"}</dd></dl>`, event.originalEvent);
+        showAuthorProfile(data, event.originalEvent);
       } else {
-        showTooltip(`<strong>Conexión</strong><dl><dt>Autor</dt><dd>${escapeHtml(data.author)}</dd><dt>Artista</dt><dd>${escapeHtml(data.artist)}</dd><dt>Menciones</dt><dd>${data.weight}</dd></dl>`, event.originalEvent);
+        showTooltip(`<strong>Conexion</strong><dl><dt>Autor</dt><dd>${escapeHtml(data.author)}</dd><dt>Artista</dt><dd>${escapeHtml(data.artist)}</dd><dt>Menciones</dt><dd>${data.weight}</dd></dl>`, event.originalEvent);
       }
     });
+    cy.on("tap", "node.author", event => showAuthorProfile(event.target.data(), event.originalEvent));
     cy.on("mousemove", "node, edge", event => positionTooltip(event.originalEvent));
     cy.on("mouseout", "node, edge", hideTooltip);
   }
@@ -437,7 +542,7 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
       const handle = document.createElement("strong");
       handle.textContent = author.handle;
       const detail = document.createElement("span");
-      detail.textContent = `${author.artists_supported} artistas · bridge ${author.bridge_score} · spam ${author.spam_score}`;
+      detail.textContent = `${author.roles.superfan.display} fan / ${author.roles.ambassador.display} amb / ${author.roles.bridge.display} bridge`;
       button.append(handle, detail);
       fragment.append(button);
     });
@@ -460,7 +565,7 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
     authorNode.addClass("search-origin");
     cy.fit(neighborhood, 95);
     els.clearUserFocus.hidden = false;
-    document.querySelector("#graphStatus").textContent = `${handle} · ${neighborhood.nodes(".artist").length} artistas conectados`;
+    document.querySelector("#graphStatus").textContent = `${handle} / ${neighborhood.nodes(".artist").length} artistas conectados`;
   }
 
   function focusAuthor(handle) {
@@ -494,16 +599,26 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
     els.clearUserFocus.hidden = true;
   }
 
+  function renderRoleTable(selector, rows, columns, emptyColspan) {
+    document.querySelector(selector).innerHTML = rows.slice(0, 20).map((item, index) =>
+      `<tr><td><span class="rank">${String(index + 1).padStart(2, "0")}</span>${escapeHtml(item.handle)}</td>${columns.map(column => `<td>${column(item)}</td>`).join("")}</tr>`
+    ).join("") || `<tr><td colspan="${emptyColspan}">Sin datos</td></tr>`;
+  }
+
   function renderTables() {
-    document.querySelector("#artistsTable").innerHTML = model.artists.slice(0, 20).map((item, index) =>
-      `<tr><td><span class="rank">${String(index + 1).padStart(2, "0")}</span>${escapeHtml(item.handle)}</td><td>${item.total_mentions}</td><td>${item.unique_authors}</td><td>${item.conversion_potential}</td><td>${item.combined_score}</td></tr>`
-    ).join("") || `<tr><td colspan="5">Sin datos</td></tr>`;
-    document.querySelector("#ambassadorsTable").innerHTML = model.authors.slice(0, 20).map((item, index) =>
-      `<tr><td><span class="rank">${String(index + 1).padStart(2, "0")}</span>${escapeHtml(item.handle)}</td><td>${item.artists_supported}</td><td>${item.bridge_score}</td><td>${item.spam_score}</td><td>${item.ambassador_score}</td></tr>`
-    ).join("") || `<tr><td colspan="5">Sin datos</td></tr>`;
-    document.querySelector("#connectionsTable").innerHTML = model.edges.slice(0, 20).map((item, index) =>
-      `<tr><td><span class="rank">${String(index + 1).padStart(2, "0")}</span>${escapeHtml(item.author)}</td><td>${escapeHtml(item.artist)}</td><td>${item.weight}</td></tr>`
-    ).join("") || `<tr><td colspan="3">Sin datos</td></tr>`;
+    renderRoleTable("#superFansTable", [...model.authors].sort((a, b) => b.roles.superfan.score - a.roles.superfan.score || a.handle.localeCompare(b.handle)), [
+      item => item.roles.superfan.display,
+      item => item.comment_count
+    ], 3);
+    renderRoleTable("#ambassadorsTable", [...model.authors].sort((a, b) => b.roles.ambassador.score - a.roles.ambassador.score || a.handle.localeCompare(b.handle)), [
+      item => item.artists_supported,
+      item => item.roles.ambassador.score
+    ], 3);
+    renderRoleTable("#bridgesTable", [...model.authors].sort((a, b) => b.roles.bridge.score - a.roles.bridge.score || a.handle.localeCompare(b.handle)), [
+      item => item.roles.bridge.score,
+      item => item.artists_supported
+    ], 3);
+    document.querySelector("#communityLeadersTable").innerHTML = `<tr><td>Community Leader</td><td>N/D</td></tr>`;
   }
 
   function renderStats() {
@@ -573,7 +688,7 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
       els.datasetName.textContent = validFiles.length === 1 ? validFiles[0].name : `${validFiles.length} archivos .md`;
       processDataset({ resetTopN: true });
       const ignoredCount = files.length - validFiles.length;
-      const ignoredText = ignoredCount ? ` · ${ignoredCount} archivo${ignoredCount === 1 ? "" : "s"} ignorado${ignoredCount === 1 ? "" : "s"}` : "";
+      const ignoredText = ignoredCount ? ` / ${ignoredCount} archivo${ignoredCount === 1 ? "" : "s"} ignorado${ignoredCount === 1 ? "" : "s"}` : "";
       notify(`${model.comments.length} comentarios de ${validFiles.length} archivo${validFiles.length === 1 ? "" : "s"}${ignoredText}.`);
     } catch (error) {
       console.error(error);
@@ -606,13 +721,13 @@ import louvain from "https://esm.sh/graphology-communities-louvain@2.0.2";
       ctx.fillText("Mysauth ORBIT / Hidden Room Scene Graph", padding + 42, 64);
       ctx.fillStyle = "#858995";
       ctx.font = "16px monospace";
-      ctx.fillText(`${model.comments.length} comentarios · ${cy.nodes(".artist").length} artistas · ${cy.nodes(".author").length} autores`, padding, 98);
+      ctx.fillText(`${model.comments.length} comentarios / ${cy.nodes(".artist").length} artistas / ${cy.nodes(".author").length} autores`, padding, 98);
       ctx.drawImage(image, padding, titleHeight);
       const link = document.createElement("a");
       link.download = "orbit-hidden-room-graph.png";
       link.href = canvas.toDataURL("image/png");
       link.click();
-      notify("PNG exportado en alta resolución.");
+      notify("PNG exportado en alta resolucion.");
     };
     image.onerror = () => notify("No fue posible generar la imagen.");
     image.src = graphDataUrl;

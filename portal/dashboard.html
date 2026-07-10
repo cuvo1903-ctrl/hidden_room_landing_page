@@ -232,46 +232,52 @@
           </li>
         </ul>
 
-        <ul class="db-sidebar__group" role="list" data-role-gate="admin" hidden>
+        <ul class="db-sidebar__group" role="list" data-permission-any-gate="erp.finance.input,erp.ops.input" hidden>
           <li class="db-sidebar__label" aria-hidden="true">ERP â€” Operaciones</li>
 
-          <li>
+          <li data-role-gate="admin">
             <button class="db-sidebar__item" data-section="erp-finance">
               <span class="db-icon db-icon--chart" aria-hidden="true"></span>
               <span class="db-sidebar__item-text">Finanzas</span>
             </button>
           </li>
-          <li>
+          <li data-role-gate="admin">
             <button class="db-sidebar__item" data-section="erp-ops">
               <span class="db-icon db-icon--settings" aria-hidden="true"></span>
               <span class="db-sidebar__item-text">Operaciones</span>
             </button>
           </li>
           <li>
+            <button class="db-sidebar__item" data-section="erp-csv-upload">
+              <span class="db-icon db-icon--doc" aria-hidden="true"></span>
+              <span class="db-sidebar__item-text">Subir CSV</span>
+            </button>
+          </li>
+          <li data-role-gate="admin">
             <button class="db-sidebar__item" data-section="erp-permissions">
               <span class="db-icon db-icon--users" aria-hidden="true"></span>
               <span class="db-sidebar__item-text">Permisos</span>
             </button>
           </li>
-          <li>
+          <li data-role-gate="admin">
             <button class="db-sidebar__item" data-section="erp-auth-audit">
               <span class="db-icon db-icon--activity" aria-hidden="true"></span>
               <span class="db-sidebar__item-text">Auth / Registros</span>
             </button>
           </li>
-          <li>
+          <li data-role-gate="admin">
             <button class="db-sidebar__item" data-section="erp-ig-mention-rank">
               <span class="db-icon db-icon--chart" aria-hidden="true"></span>
               <span class="db-sidebar__item-text">Instagram Mention Rank</span>
             </button>
           </li>
-          <li>
+          <li data-role-gate="admin">
             <button class="db-sidebar__item" data-section="erp-instagram-scraper">
               <span class="db-icon db-icon--activity" aria-hidden="true"></span>
               <span class="db-sidebar__item-text">Instagram Comments Scraper</span>
             </button>
           </li>
-          <li>
+          <li data-role-gate="admin">
             <a class="db-sidebar__item" href="../tickets/">
               <span class="db-icon db-icon--gift" aria-hidden="true"></span>
               <span class="db-sidebar__item-text">Boletera</span>

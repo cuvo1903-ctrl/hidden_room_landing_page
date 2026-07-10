@@ -603,6 +603,15 @@ function applyRoleGates() {
     const requiredPermission = group.dataset.permissionGate;
     group.hidden = !hasPermission(requiredPermission);
   });
+
+  const permissionAnyGroups = document.querySelectorAll('[data-permission-any-gate]');
+  permissionAnyGroups.forEach((group) => {
+    const requiredPermissions = String(group.dataset.permissionAnyGate || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    group.hidden = !hasAnyPermission(requiredPermissions);
+  });
 }
 
 
@@ -738,6 +747,11 @@ const SECTIONS = {
     roleRequired: 'admin',
     render: renderErpOps,
   },
+  'erp-csv-upload': {
+    label: 'Subir CSV',
+    permissionAnyRequired: ['erp.finance.input', 'erp.ops.input'],
+    render: renderErpCsvUpload,
+  },
   'erp-permissions': {
     label: 'Permisos',
     roleRequired: 'admin',
@@ -837,10 +851,11 @@ const PORTAL_NAV_GROUPS = [
   {
     key: 'erp',
     title: 'ERP / Operaciones',
-    role: 'admin',
+    permissionAny: ['erp.finance.input', 'erp.ops.input'],
     items: [
       { label: 'Finanzas', section: 'erp-finance', icon: 'chart' },
       { label: 'Operaciones', section: 'erp-ops', icon: 'settings' },
+      { label: 'Subir CSV', section: 'erp-csv-upload', icon: 'doc' },
       { label: 'Permisos', section: 'erp-permissions', icon: 'users' },
       { label: 'Auth / Registros', section: 'erp-auth-audit', icon: 'activity' },
       { label: 'Servidor Mysauth', section: 'erp-infrastructure', icon: 'server' },
@@ -1851,6 +1866,7 @@ function updateSidebarActiveState(activeKey) {
 function canShowPortalGroup(group) {
   if (group.role && !hasRole(group.role)) return false;
   if (group.permission && !hasPermission(group.permission)) return false;
+  if (group.permissionAny && !hasAnyPermission(group.permissionAny)) return false;
   return true;
 }
 
@@ -4554,6 +4570,420 @@ async function handleIgAnalyzeMedia(mediaId) {
     showToast(igState.error, 'error');
     renderSection('erp-ig-mention-rank');
   }
+}
+function canImportPasslineTickets() {
+  return hasRole('admin') || hasAnyPermission(['erp.finance.input', 'erp.ops.input']);
+}
+
+function passlineImportState() {
+  return state.data.passlineImport ?? {
+    sourceType: 'passline_tickets',
+    sourceLabel: 'Passline Tickets',
+    fileName: '',
+    rawRows: [],
+    rows: [],
+    summary: null,
+    importSummary: null,
+    error: '',
+  };
+}
+
+async function renderErpCsvUpload() {
+  if (!canImportPasslineTickets()) {
+    return sectionShell('ERP', 'Subir CSV', 'title-erp-csv-upload', `
+      <p class="db-empty db-empty--error">No tienes permiso para importar CSV en ERP.</p>
+    `);
+  }
+
+  const importState = passlineImportState();
+  return sectionShell('ERP', 'Subir CSV', 'title-erp-csv-upload', `
+    <div class="db-admin-grid db-admin-grid--single">
+      <article class="db-card">
+        <div class="db-card__inner">
+          <div class="db-form__row">
+            <label class="db-field">
+              <span>Tipo de CSV</span>
+              <select id="js-passline-source-type" aria-label="Tipo de CSV">
+                ${optionHTML('passline_tickets', 'Passline Tickets', importState.sourceType)}
+              </select>
+            </label>
+            <label class="db-field">
+              <span>Archivos CSV</span>
+              <input id="js-passline-csv-file" type="file" accept=".csv,text/csv" multiple />
+            </label>
+          </div>
+          ${importState.fileName ? `<p class="db-field__hint">${escapeHTML(importState.fileName)}</p>` : ''}
+          <div class="db-form__actions">
+            <button class="db-btn-secondary" type="button" data-action="passline-preview"${importState.isImporting ? ' disabled' : ''}>Previsualizar</button>
+            <button class="btn-primary" type="button" data-action="passline-import"${importState.rows.length && !importState.isImporting ? '' : ' disabled'}>${importState.isImporting ? 'Subiendo...' : 'Importar a Supabase'}</button>
+          </div>
+          ${importState.error ? `<p class="db-empty db-empty--error">${escapeHTML(importState.error)}</p>` : ''}
+        </div>
+      </article>
+      ${renderPasslineImportSummary(importState.summary, 'Preview')}
+      ${renderPasslineImportSummary(importState.importSummary, 'Importacion')}
+      ${renderPasslinePreviewTable(importState.rows)}
+    </div>
+  `);
+}
+
+function renderPasslineImportSummary(summary, label) {
+  if (!summary) return '';
+  return `
+    <div class="db-grid db-grid--4col db-finance-summary" aria-label="${escapeAttr(label)} Passline">
+      ${renderStatCard('Filas', String(summary.totalRows ?? 0))}
+      ${renderStatCard('Tickets nuevos', String(summary.newTickets ?? 0))}
+      ${renderStatCard('Actualizados', String(summary.updatedTickets ?? 0))}
+      ${renderStatCard('Anulados', String(summary.cancelledTickets ?? 0))}
+      ${renderStatCard('Vigentes', String(summary.activeTickets ?? 0))}
+      ${renderStatCard('Validados', String(summary.validatedTickets ?? 0))}
+      ${renderStatCard('Cortesias', String(summary.courtesyTickets ?? 0))}
+      ${renderStatCard('Total vendido', money(summary.totalSold ?? 0))}
+    </div>
+  `;
+}
+
+function renderPasslinePreviewTable(rows = []) {
+  const previewRows = rows.slice(0, 20);
+  const body = previewRows.length
+    ? previewRows.map((row) => `
+      <tr>
+        <td>${escapeHTML(row.ticket_id ?? '-')}</td>
+        <td>${escapeHTML(row.buyer_name ?? '-')}</td>
+        <td>${escapeHTML(row.buyer_email ?? '-')}</td>
+        <td>${escapeHTML(row.buyer_phone ?? '-')}</td>
+        <td>${escapeHTML(row.event_key ?? '-')}</td>
+        <td>${escapeHTML(row.ticket_type ?? '-')}</td>
+        <td>${escapeHTML(row.purchase_status ?? '-')}</td>
+        <td>${escapeHTML(row.ticket_status ?? '-')}</td>
+        <td>${money(row.total ?? 0)}</td>
+      </tr>
+    `).join('')
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="9" class="db-empty hr-table-empty">Carga un CSV para ver las primeras 20 filas.</td></tr>';
+
+  return `
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="db-table hr-table hr-table-readable" aria-label="Preview Passline Tickets">
+        <thead>
+          <tr>
+            <th scope="col">ID ticket</th>
+            <th scope="col">Nombre</th>
+            <th scope="col">Email</th>
+            <th scope="col">Telefono</th>
+            <th scope="col">Llave Evento</th>
+            <th scope="col">Tipo</th>
+            <th scope="col">Estado</th>
+            <th scope="col">Estado eticket</th>
+            <th scope="col">Total</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function parsePasslineCsv(file) {
+  if (!file) throw new Error('Selecciona un archivo CSV.');
+  const buffer = await file.arrayBuffer();
+  const text = new TextDecoder('utf-8').decode(buffer).replace(/^\uFEFF/, '');
+  const table = parseSemicolonCsv(text);
+  if (!table.length) return [];
+
+  const headers = table[0].map((header, index) => normalizePasslineHeader(header, index));
+  const seen = new Map();
+  const uniqueHeaders = headers.map((header) => {
+    const count = seen.get(header) ?? 0;
+    seen.set(header, count + 1);
+    return count ? `${header}.${count}` : header;
+  });
+
+  return table.slice(1)
+    .map((cells) => {
+      const row = {};
+      uniqueHeaders.forEach((header, index) => {
+        row[header] = cells[index] ?? '';
+      });
+      row.__source_file = file.name || '';
+      return row;
+    })
+    .filter((row) => Object.entries(row).some(([key, value]) => key !== '__source_file' && String(value ?? '').trim() !== ''));
+}
+
+function parseSemicolonCsv(text) {
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        cell += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ';' && !inQuotes) {
+      row.push(cell);
+      cell = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') index += 1;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = '';
+      continue;
+    }
+
+    cell += char;
+  }
+
+  if (cell.length || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function normalizePasslineHeader(header, index) {
+  const value = String(header ?? '').trim().replace(/^\uFEFF/, '');
+  return value || `Unnamed${index ? `.${index}` : ''}`;
+}
+
+function passlineColumnKey(label) {
+  return String(label ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function passlineValue(row, label) {
+  const target = passlineColumnKey(label);
+  const matches = Object.keys(row ?? {}).filter((key) => {
+    const base = String(key).replace(/\.\d+$/, '');
+    return passlineColumnKey(base) === target;
+  });
+
+  for (const key of matches) {
+    const value = String(row[key] ?? '').trim();
+    if (value) return value;
+  }
+  return '';
+}
+
+function passlineNumber(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return 0;
+  let normalized = raw.replace(/[^0-9,.-]/g, '');
+  if (normalized.includes(',') && normalized.includes('.')) {
+    normalized = normalized.replace(/\./g, '').replace(',', '.');
+  } else if (normalized.includes(',')) {
+    normalized = normalized.replace(',', '.');
+  } else {
+    normalized = normalized.replace(/,/g, '');
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function passlineBoolean(value) {
+  const normalized = passlineColumnKey(value);
+  if (['si', 's', 'yes', 'true', '1'].includes(normalized)) return true;
+  if (['no', 'n', 'false', '0'].includes(normalized)) return false;
+  return null;
+}
+
+function passlineDateTime(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+
+  const match = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!match) return null;
+  const year = Number(match[3].length === 2 ? `20${match[3]}` : match[3]);
+  const date = new Date(year, Number(match[2]) - 1, Number(match[1]), Number(match[4] ?? 0), Number(match[5] ?? 0), Number(match[6] ?? 0));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function normalizePasslineRow(row, fileName = '') {
+  const ticketId = passlineValue(row, 'ID ticket');
+  const { __source_file: sourceFile, ...rawRow } = row ?? {};
+  return {
+    event_key: passlineValue(row, 'Llave Evento') || null,
+    event_date: passlineDateTime(passlineValue(row, 'Fecha Evento')),
+    purchase_id: passlineValue(row, 'ID Compra') || null,
+    ticket_id: ticketId,
+    buyer_name: passlineValue(row, 'Nombre') || null,
+    buyer_email: passlineValue(row, 'Email') || null,
+    buyer_phone: passlineValue(row, 'Telefono') || null,
+    ticket_type: passlineValue(row, 'Tipo') || null,
+    purchase_status: passlineValue(row, 'Estado') || null,
+    ticket_status: passlineValue(row, 'Estado del eticket') || null,
+    is_courtesy: passlineBoolean(passlineValue(row, 'Cortesia')),
+    rrpp: passlineValue(row, 'RRPP') || null,
+    rrpp_email: passlineValue(row, 'Email RRPP') || null,
+    rrpp_name: passlineValue(row, 'Nombre RRPP') || null,
+    total: passlineNumber(passlineValue(row, 'Total')),
+    service_fee: passlineNumber(passlineValue(row, 'Cargo por Servicio')),
+    discount_code: passlineValue(row, 'Codigo descuento') || null,
+    discount_amount: passlineNumber(passlineValue(row, 'Monto descuento')),
+    validation_datetime: passlineDateTime(passlineValue(row, 'Fecha/Hora Validacion')),
+    activation_code: passlineValue(row, 'Codigo Activacion') || null,
+    raw_row: rawRow,
+    source_file: fileName || sourceFile || null,
+  };
+}
+
+async function previewPasslineImport(rows) {
+  const importState = passlineImportState();
+  const normalizedRows = rows
+    .map((row) => normalizePasslineRow(row, row.__source_file || importState.fileName))
+    .filter((row) => row.ticket_id);
+  const existingIds = await fetchExistingPasslineTicketIds(normalizedRows.map((row) => row.ticket_id));
+  const summary = buildPasslineSummary(normalizedRows, existingIds);
+  state.data.passlineImport = {
+    ...importState,
+    rawRows: rows,
+    rows: normalizedRows,
+    summary,
+    importSummary: null,
+    error: state.data.passlineSchemaMissing ? 'La tabla passline_tickets todavia no existe en Supabase. Ya puedes revisar el preview; aplica la migracion antes de importar.' : '',
+  };
+  return state.data.passlineImport;
+}
+
+async function fetchExistingPasslineTicketIds(ticketIds = []) {
+  const ids = [...new Set(ticketIds.filter(Boolean))];
+  const existing = new Set();
+  for (let index = 0; index < ids.length; index += 500) {
+    const chunk = ids.slice(index, index + 500);
+    const { data, error } = await supabase
+      .from('passline_tickets')
+      .select('ticket_id')
+      .in('ticket_id', chunk);
+    if (error) {
+      if (isMissingSupabaseRelationError(error)) {
+        state.data.passlineSchemaMissing = true;
+        return existing;
+      }
+      throw error;
+    }
+    state.data.passlineSchemaMissing = false;
+    (data ?? []).forEach((row) => existing.add(row.ticket_id));
+  }
+  return existing;
+}
+
+function buildPasslineSummary(rows = [], existingIds = new Set()) {
+  return rows.reduce((summary, row) => {
+    const statusText = passlineColumnKey(`${row.purchase_status ?? ''} ${row.ticket_status ?? ''}`);
+    const validated = Boolean(row.validation_datetime) || statusText.includes('validado');
+    const cancelled = /anulad|cancel|devuelt|refund/.test(statusText);
+    summary.totalRows += 1;
+    summary.totalSold += Number(row.total ?? 0);
+    if (existingIds.has(row.ticket_id)) summary.updatedTickets += 1;
+    else summary.newTickets += 1;
+    if (cancelled) summary.cancelledTickets += 1;
+    if (!cancelled) summary.activeTickets += 1;
+    if (validated) summary.validatedTickets += 1;
+    if (row.is_courtesy) summary.courtesyTickets += 1;
+    return summary;
+  }, {
+    totalRows: 0,
+    newTickets: 0,
+    updatedTickets: 0,
+    cancelledTickets: 0,
+    activeTickets: 0,
+    validatedTickets: 0,
+    courtesyTickets: 0,
+    totalSold: 0,
+  });
+}
+
+async function importPasslineTickets(rows) {
+  if (!canImportPasslineTickets()) throw new Error('No tienes permiso para importar Passline Tickets.');
+  const validRows = rows.filter((row) => row.ticket_id);
+  if (!validRows.length) throw new Error('No hay tickets validos para importar.');
+  if (state.data.passlineSchemaMissing) throw new Error('Falta aplicar la migracion que crea public.passline_tickets en Supabase.');
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) throw new Error('Sesion de Supabase no disponible.');
+
+  const existingIds = await fetchExistingPasslineTicketIds(validRows.map((row) => row.ticket_id));
+  const summary = buildPasslineSummary(validRows, existingIds);
+  const importedAt = new Date().toISOString();
+  for (let index = 0; index < validRows.length; index += 500) {
+    const chunk = validRows.slice(index, index + 500).map((row) => ({
+      ...row,
+      imported_by: user.id,
+      imported_at: importedAt,
+    }));
+    const { error } = await supabase
+      .from('passline_tickets')
+      .upsert(chunk, { onConflict: 'ticket_id' });
+    if (error) throw error;
+  }
+
+  return summary;
+}
+
+async function handlePasslinePreview() {
+  const fileInput = document.getElementById('js-passline-csv-file');
+  const files = [...(fileInput?.files ?? [])];
+  const importState = passlineImportState();
+  try {
+    if (!files.length) throw new Error('Selecciona al menos un archivo CSV.');
+    const parsedFiles = await Promise.all(files.map((file) => parsePasslineCsv(file)));
+    const rawRows = parsedFiles.flat();
+    const fileLabel = files.length === 1
+      ? files[0].name
+      : `${files.length} archivos: ${files.map((file) => file.name).join(', ')}`;
+    state.data.passlineImport = {
+      ...importState,
+      fileName: fileLabel,
+      rawRows,
+      error: '',
+    };
+    await previewPasslineImport(rawRows);
+    showToast('Preview de Passline listo.', 'success');
+  } catch (error) {
+    console.error('[HR] passline preview:', error);
+    state.data.passlineImport = { ...importState, error: error?.message || 'No se pudo leer el CSV.' };
+    showToast(state.data.passlineImport.error, 'error');
+  }
+  renderSection('erp-csv-upload');
+}
+
+async function handlePasslineImport() {
+  const importState = passlineImportState();
+  if (importState.isImporting) return;
+  state.data.passlineImport = { ...importState, isImporting: true, error: '' };
+  renderSection('erp-csv-upload');
+
+  try {
+    const importSummary = await importPasslineTickets(importState.rows ?? []);
+    state.data.passlineImport = { ...state.data.passlineImport, importSummary, isImporting: false, error: '' };
+    showToast('Tickets Passline importados.', 'success');
+  } catch (error) {
+    console.error('[HR] passline import:', error);
+    state.data.passlineImport = { ...state.data.passlineImport, isImporting: false, error: error?.message || 'No se pudo importar el CSV.' };
+    showToast(state.data.passlineImport.error, 'error');
+  }
+  renderSection('erp-csv-upload');
 }
 async function renderErpOps() {
   await ensureUsersLoaded();
@@ -10108,6 +10538,16 @@ function attachMainDelegation() {
 
     if (action === 'export-finance-pdf') {
       handleFinancePdfExport();
+    }
+
+    if (action === 'passline-preview') {
+      handlePasslinePreview();
+      return;
+    }
+
+    if (action === 'passline-import') {
+      handlePasslineImport();
+      return;
     }
 
     if (action === 'event-movement-edit') {
