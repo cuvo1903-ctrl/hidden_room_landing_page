@@ -78,6 +78,7 @@ const TRANSACTION_CONCEPT_OPTIONS = [
   'RENTA DE ESTUDIO',
   'PERSONALIZADO',
 ];
+const EVENT_FINANCE_CONCEPT_OPTIONS = ['VENUE APARTADO', 'VENUE LIQUIDACIÓN', 'FLYER', 'OTRO'];
 const CLOUD_HIDDENROOM_URL = 'https://cloud.hiddenroom.mx/';
 const CLOUD_FUNCTION_BASE = `${SUPABASE_URL}/functions/v1`;
 const CLOUD_STAGING_BUCKET = 'cloud-staging';
@@ -2464,6 +2465,7 @@ function renderOverview() {
 
 function renderAccountSettings() {
   const email = state.user?.email ?? '';
+  const igUsername = state.user?.ig_username ?? '';
 
   return sectionShell('Cuenta', 'Ajustes de Cuenta', 'title-account-settings', `
     <div class="db-admin-grid">
@@ -2478,12 +2480,16 @@ function renderAccountSettings() {
               <input type="email" name="email" autocomplete="email" value="${escapeAttr(email)}" required />
             </label>
             <label class="db-field">
+              <span>Usuario de Instagram</span>
+              <input type="text" name="ig_username" autocomplete="off" autocapitalize="off" spellcheck="false" value="${escapeAttr(igUsername)}" placeholder="tu_usuario" />
+            </label>
+            <label class="db-field">
               <span>Nueva contraseña</span>
-              <input type="password" name="password" autocomplete="new-password" minlength="6" placeholder="Nueva contraseña" />
+              <input type="password" name="password" autocomplete="new-password" minlength="8" placeholder="Nueva contraseña" />
             </label>
             <label class="db-field">
               <span>Confirmar contraseña</span>
-              <input type="password" name="password_confirm" autocomplete="new-password" minlength="6" placeholder="Confirmar contraseña" />
+              <input type="password" name="password_confirm" autocomplete="new-password" minlength="8" placeholder="Confirmar contraseña" />
             </label>
             <button class="btn-primary" type="submit">Guardar cuenta</button>
           </form>
@@ -2496,6 +2502,15 @@ function renderAccountSettings() {
   `);
 }
 
+function cleanInstagramUsername(value) {
+  return String(value ?? '')
+    .trim()
+    .replace(/^https?:\/\/(www\.)?instagram\.com\//i, '')
+    .replace(/^@+/, '')
+    .split(/[/?#\s]/)[0]
+    .replace(/[^a-zA-Z0-9._]/g, '')
+    .slice(0, 30);
+}
 /** @param {string[]} roles */
 function buildQuickActions(roles) {
   const actions = [];
@@ -3206,6 +3221,7 @@ async function renderCollabFinance() {
 
   const filters = getEventFinanceFilters();
   const events = await ensureCollabFinanceEventsLoaded();
+  const paymentMethods = await fetchPaymentMethods();
   if (!events.length) {
     return sectionShell('Colaborador', 'Financiero', 'title-collab-finance', `
       <p class="db-empty">No tienes eventos asignados todavía.</p>
@@ -3241,7 +3257,7 @@ async function renderCollabFinance() {
     ${renderEventInfo(selectedEvent)}
     ${renderEventSummaryCards(eventSummaryFor(selectedEvent, data ?? []))}
     ${renderEventRightsChart(selectedEvent, data ?? [])}
-    ${permissions.can_add_finance ? renderEventMovementForm(selectedEvent, 'collab-event-movement-create', participants, financeEntities) : ''}
+    ${permissions.can_add_finance ? renderEventMovementForm(selectedEvent, 'collab-event-movement-create', participants, financeEntities, paymentMethods) : ''}
     ${renderEventFinanceTransactionsTable(data ?? [], { canEdit: permissions.can_edit_finance })}
   `);
 }
@@ -5543,13 +5559,14 @@ async function renderErpOps() {
   const events = await ensureFinanceEventsLoaded();
   const participants = await fetchAllEventParticipants();
   const financeEntities = await fetchFinanceEntities();
+  const paymentMethods = await fetchPaymentMethods();
   const memberships = await fetchMembershipOptionsForOps();
   const activeForm = persistedDataValue('erpOpsForm', 'transaction');
   const mergeDuplicateMode = persistedDataValue('mergeDuplicateMode', 'email');
   const opsForms = {
     transaction: {
       label: 'Finanzas',
-      html: renderTransactionForm('transaction-create'),
+      html: renderTransactionForm('transaction-create', paymentMethods),
     },
     session: {
       label: 'Sesion',
@@ -5639,7 +5656,7 @@ async function renderErpOps() {
     },
     eventMovement: {
       label: 'Nuevo movimiento',
-      html: renderEventMovementOpsForm(events, participants, financeEntities),
+      html: renderEventMovementOpsForm(events, participants, financeEntities, paymentMethods),
     },
     eventParticipant: {
       label: 'Nuevo participante',
@@ -5936,7 +5953,7 @@ function renderOperationCreateActions(createLabel = 'CREAR') {
   `;
 }
 
-function renderTransactionForm(formName) {
+function renderTransactionForm(formName, paymentMethods = state.data.paymentMethods ?? []) {
   const today = todayDateInputValue();
   return `
     <form class="db-form" data-form="${escapeAttr(formName)}">
@@ -5953,7 +5970,7 @@ function renderTransactionForm(formName) {
       <label class="db-field" data-custom-concept-wrap hidden><span>Concepto personalizado</span><input name="concept_custom" data-custom-concept /></label>
       <label class="db-field"><span>Fecha</span><input name="date" type="date" value="${escapeAttr(today)}" required /></label>
       <div class="db-form__row">
-        <label class="db-field"><span>Via</span><select name="via">${['NU', 'NU CRED', 'EFECTIVO'].map((via) => optionHTML(via, via, '')).join('')}</select></label>
+        <label class="db-field"><span>Via</span><select name="via">${renderPaymentMethodOptions(paymentMethods)}</select></label>
         <label class="db-field"><span>ID transaccion</span><input name="id_trans" /></label>
       </div>
       <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
@@ -6197,6 +6214,25 @@ async function fetchFinanceEntities() {
   state.data.financeEntities = data ?? [];
   return state.data.financeEntities;
 }
+async function fetchPaymentMethods() {
+  if (Array.isArray(state.data.paymentMethods)) return state.data.paymentMethods;
+
+  const { data, error } = await supabase
+    .from('payment_methods')
+    .select('id, key, name, status, sort_order')
+    .eq('status', 'active')
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true });
+
+  if (error) {
+    console.info('[HR] payment methods unavailable:', error.message);
+    state.data.paymentMethods = [];
+    return [];
+  }
+
+  state.data.paymentMethods = data ?? [];
+  return state.data.paymentMethods;
+}
 
 function financeEntityLabel(entity) {
   if (!entity) return '-';
@@ -6211,6 +6247,69 @@ function renderFinanceEntityOptions(entities = [], selectedValue = '', placehold
   ].join('');
 }
 
+function renderPaymentMethodOptions(methods = [], selectedValue = '') {
+  const normalizedSelected = String(selectedValue ?? '');
+  const activeOptions = (methods ?? []).map((method) => optionHTML(method.name, method.name, normalizedSelected));
+  if (normalizedSelected && !(methods ?? []).some((method) => String(method.name) === normalizedSelected)) {
+    activeOptions.unshift(optionHTML(normalizedSelected, `${normalizedSelected} (existente)`, normalizedSelected));
+  }
+  return [optionHTML('', 'Seleccionar', normalizedSelected), ...activeOptions].join('');
+}
+
+function eventConceptOptionFor(value = '') {
+  const concept = String(value ?? '').trim();
+  return EVENT_FINANCE_CONCEPT_OPTIONS.includes(concept) && concept !== 'OTRO' ? concept : 'OTRO';
+}
+
+function renderEventConceptControl(selectedConcept = '', formId = '') {
+  const selectedOption = eventConceptOptionFor(selectedConcept);
+  const customValue = selectedOption === 'OTRO' ? selectedConcept : '';
+  const formAttr = formId ? ` form="${escapeAttr(formId)}"` : '';
+  return `
+    <div data-event-concept-scope>
+      <label class="db-field"><span>Concept</span><select name="concept_option" data-event-concept required${formAttr}>${EVENT_FINANCE_CONCEPT_OPTIONS.map((concept) => optionHTML(concept, concept, selectedOption)).join('')}</select></label>
+      <label class="db-field" data-event-concept-custom-wrap ${selectedOption === 'OTRO' ? '' : 'hidden'}><span>Concepto personalizado</span><input name="concept_custom" data-event-concept-custom value="${escapeAttr(customValue)}" ${selectedOption === 'OTRO' ? 'required' : 'disabled'}${formAttr} /></label>
+    </div>
+  `;
+}
+
+function renderAllocationRows(entities = [], allocations = [], formId = '') {
+  if (!entities.length) return '<p class="db-empty">Sin entidades financieras activas.</p>';
+  const formAttr = formId ? ` form="${escapeAttr(formId)}"` : '';
+  const rowFormAttr = formId ? ` data-allocation-form="${escapeAttr(formId)}"` : '';
+  const byEntity = new Map((allocations ?? []).map((allocation) => [String(allocation.entity_id), allocation]));
+
+  return `
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="db-table hr-table hr-table-readable" aria-label="Allocations del movimiento">
+        <thead><tr><th scope="col">Entidad</th><th scope="col">Usar</th><th scope="col">Monto</th><th scope="col">%</th></tr></thead>
+        <tbody>
+          ${entities.map((entity) => {
+            const allocation = byEntity.get(String(entity.id));
+            return `
+              <tr data-allocation-row${rowFormAttr}>
+                <td>${escapeHTML(financeEntityLabel(entity))}<input type="hidden" data-allocation-entity value="${escapeAttr(entity.id)}"${formAttr} /></td>
+                <td><input type="checkbox" data-allocation-enabled ${allocation ? 'checked' : ''}${formAttr} aria-label="Asignar ${escapeAttr(financeEntityLabel(entity))}" /></td>
+                <td><input class="db-table-input hr-input" data-allocation-amount type="number" step="0.01" min="0" value="${escapeAttr(allocation?.amount ?? '')}"${formAttr} /></td>
+                <td><input class="db-table-input hr-input" data-allocation-percentage type="number" step="0.01" min="0" max="100" value="${escapeAttr(allocation?.percentage ?? '')}"${formAttr} /></td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderAllocationFieldset(entities = [], allocations = [], formId = '') {
+  return `
+    <fieldset class="db-field" data-allocation-fieldset>
+      <span>CORRESPONDE A</span>
+      ${renderAllocationRows(entities, allocations, formId)}
+      <small class="db-field__hint">Selecciona una o varias entidades. Usa montos que sumen el total del movimiento o porcentajes que sumen 100%.</small>
+    </fieldset>
+  `;
+}
 function financeEntityName(entityId, legacyUserId = null) {
   if (entityId) {
     const entity = (state.data.financeEntities ?? []).find((item) => String(item.id) === String(entityId));
@@ -6412,7 +6511,7 @@ function eventSummaryFor(event, transactions = []) {
   };
 }
 
-function renderEventMovementForm(event, formName, participants = [], financeEntities = []) {
+function renderEventMovementForm(event, formName, participants = [], financeEntities = [], paymentMethods = state.data.paymentMethods ?? []) {
   const today = todayDateInputValue();
   return `
     <article class="db-card">
@@ -6426,15 +6525,15 @@ function renderEventMovementForm(event, formName, participants = [], financeEnti
             <label class="db-field"><span>Movement Type</span><select name="movement_type" required>${EVENT_MOVEMENT_TYPES.map((item) => optionHTML(item.value, item.label, '')).join('')}</select></label>
             <label class="db-field"><span>Amount</span><input name="amount" type="number" step="0.01" required /></label>
           </div>
-          <label class="db-field"><span>Concept</span><input name="concept" required /></label>
+          ${renderEventConceptControl()}
           <div class="db-form__row">
             <label class="db-field"><span>FROM</span><select name="from_user_id">${renderParticipantOptions(participants, '', 'Sin origen')}</select></label>
             <label class="db-field"><span>TO</span><select name="to_user_id">${renderParticipantOptions(participants, '', 'Sin destino')}</select></label>
           </div>
-          <label class="db-field"><span>CORRESPONDE A</span><select name="owner_entity_id">${renderFinanceEntityOptions(financeEntities, '', 'Sin asignar')}</select></label>
+          ${renderAllocationFieldset(financeEntities)}
           <div class="db-form__row">
             <label class="db-field"><span>Monto Absorbido Internamente (M.A.I.)</span><input name="hidden_room_share" type="number" step="0.01" value="0" /></label>
-            <label class="db-field"><span>Payment Method</span><input name="payment_method" /></label>
+            <label class="db-field"><span>Payment Method</span><select name="payment_method">${renderPaymentMethodOptions(paymentMethods)}</select></label>
           </div>
           <label class="db-field"><span>Date</span><input name="movement_date" type="date" value="${escapeAttr(today)}" required /></label>
           <label class="db-field"><span>Notes</span><textarea name="notes" rows="3"></textarea></label>
@@ -6445,7 +6544,7 @@ function renderEventMovementForm(event, formName, participants = [], financeEnti
   `;
 }
 
-function renderEventMovementOpsForm(events = [], participants = [], financeEntities = []) {
+function renderEventMovementOpsForm(events = [], participants = [], financeEntities = [], paymentMethods = state.data.paymentMethods ?? []) {
   const today = todayDateInputValue();
   const availableEvents = events.filter((event) => event.id || event.event_id);
 
@@ -6465,15 +6564,15 @@ function renderEventMovementOpsForm(events = [], participants = [], financeEntit
         <label class="db-field"><span>Movement Type</span><select name="movement_type" required>${EVENT_MOVEMENT_TYPES.map((item) => optionHTML(item.value, item.label, '')).join('')}</select></label>
         <label class="db-field"><span>Amount</span><input name="amount" type="number" step="0.01" required /></label>
       </div>
-      <label class="db-field"><span>Concept</span><input name="concept" required /></label>
+      ${renderEventConceptControl()}
       <div class="db-form__row">
         <label class="db-field"><span>FROM</span><select name="from_user_id">${renderParticipantOptions(participants, '', 'Sin origen')}</select></label>
         <label class="db-field"><span>TO</span><select name="to_user_id">${renderParticipantOptions(participants, '', 'Sin destino')}</select></label>
       </div>
-      <label class="db-field"><span>CORRESPONDE A</span><select name="owner_entity_id">${renderFinanceEntityOptions(financeEntities, '', 'Sin asignar')}</select></label>
+      ${renderAllocationFieldset(financeEntities)}
       <div class="db-form__row">
         <label class="db-field"><span>Monto Absorbido Internamente (M.A.I.)</span><input name="hidden_room_share" type="number" step="0.01" value="0" /></label>
-        <label class="db-field"><span>Payment Method</span><input name="payment_method" /></label>
+        <label class="db-field"><span>Payment Method</span><select name="payment_method">${renderPaymentMethodOptions(paymentMethods)}</select></label>
       </div>
       <label class="db-field"><span>Date</span><input name="movement_date" type="date" value="${escapeAttr(today)}" required /></label>
       <label class="db-field"><span>Notes</span><textarea name="notes" rows="3"></textarea></label>
@@ -7164,7 +7263,7 @@ function getAdminTableSummaryColumns(visibleColumns = [], config = {}) {
 
   return selected.length ? selected : visibleColumns.slice(0, 5);
 }
-
+
 function renderAdminTableEditorRow(tableName, config, row, index, options = {}) {
   const columns = [...config.lockedFields, ...config.editableFields]
     .filter((field, fieldIndex, arr) => arr.indexOf(field) === fieldIndex);
@@ -9879,6 +9978,11 @@ async function handleAccountUpdate(form) {
   const email = values.email?.trim();
   const password = values.password;
   const passwordConfirm = values.password_confirm;
+  const rawIgUsername = values.ig_username ?? '';
+  const igUsername = cleanInstagramUsername(rawIgUsername);
+  const currentIgUsername = cleanInstagramUsername(state.user?.ig_username);
+  const emailChanged = email !== (state.user?.email ?? '');
+  const igChanged = igUsername !== currentIgUsername;
 
   if (!email) {
     showToast('Ingresa un email valido.', 'error');
@@ -9887,6 +9991,16 @@ async function handleAccountUpdate(form) {
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     showToast('El formato del email no es valido.', 'error');
+    return;
+  }
+
+  if (rawIgUsername.trim() && igUsername.length < 2) {
+    showToast('Escribe un usuario de Instagram valido.', 'error');
+    return;
+  }
+
+  if (currentIgUsername && !rawIgUsername.trim()) {
+    showToast('El usuario de Instagram no puede quedar vacio.', 'error');
     return;
   }
 
@@ -9902,25 +10016,46 @@ async function handleAccountUpdate(form) {
     }
   }
 
-  const authPayload = { email };
-  if (password) authPayload.password = password;
+  let authUser = null;
+  let confirmedImmediately = true;
 
-  const { data, error } = await supabase.auth.updateUser(authPayload);
+  if (emailChanged || password) {
+    const authPayload = {};
+    if (emailChanged) authPayload.email = email;
+    if (password) authPayload.password = password;
 
-  if (error) {
-    console.error('[HR] account update:', error);
-    showToast(error.message || 'No se pudo actualizar la cuenta.', 'error');
-    return;
+    const { data, error } = await supabase.auth.updateUser(authPayload);
+
+    if (error) {
+      console.error('[HR] account update:', error);
+      showToast(error.message || 'No se pudo actualizar la cuenta.', 'error');
+      return;
+    }
+
+    authUser = data?.user ?? null;
+    // NOTE: public.users.email is intentionally NOT updated here.
+    // A database trigger syncs auth.users.email → public.users.email automatically.
+    confirmedImmediately = !emailChanged || authUser?.email === email;
   }
 
-  // NOTE: public.users.email is intentionally NOT updated here.
-  // A database trigger syncs auth.users.email → public.users.email automatically.
-  const confirmedImmediately = data?.user?.email === email;
+  if (igChanged) {
+    const { error: profileError } = await supabase
+      .from('users')
+      .update({ ig_username: igUsername })
+      .eq('id', state.user.id);
+
+    if (profileError) {
+      console.error('[HR] account instagram update:', profileError);
+      showToast(profileError.message || 'No se pudo actualizar tu Instagram.', 'error');
+      return;
+    }
+  }
 
   const nextUser = {
     ...state.user,
-    ...(data?.user ?? {}),
+    ...(authUser ?? {}),
     email: confirmedImmediately ? email : (state.user.email ?? email),
+    ig_username: igChanged ? igUsername : state.user?.ig_username,
   };
 
   setState({ user: nextUser });
