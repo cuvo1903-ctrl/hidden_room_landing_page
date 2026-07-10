@@ -31,31 +31,31 @@
 <body class="db-body hr-page" data-hr-chrome data-hr-context="portal" data-hr-footer="false">
   <div id="hr-global-nav"></div>
 
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  <!-- ═══════════════════════════════════════════════════
        CUSTOM CURSOR  (inherited from global site.js)
-  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+  ═══════════════════════════════════════════════════ -->
   <div id="cursor"     class="cursor"      aria-hidden="true"></div>
   <div id="cursorRing" class="cursor-ring" aria-hidden="true"></div>
 
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  <!-- ═══════════════════════════════════════════════════
        TOPBAR
        Role context + global actions
-  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  ═══════════════════════════════════════════════════ -->
+  <!-- ═══════════════════════════════════════════════════
        LAYOUT SHELL
-  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+  ═══════════════════════════════════════════════════ -->
   <div class="db-layout">
 
-    <!-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    <!-- ─────────────────────────────────────────────
          SIDEBAR NAVIGATION
          Visibility of each nav item is toggled by JS
          based on the user's roles array.
-    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
-    <aside class="db-sidebar" id="js-sidebar" aria-label="NavegaciÃ³n del portal">
+    ──────────────────────────────────────────────── -->
+    <aside class="db-sidebar" id="js-sidebar" aria-label="Navegación del portal">
 
-      <nav class="db-sidebar__nav" aria-label="MÃ³dulos">
+      <nav class="db-sidebar__nav" aria-label="Módulos">
 
-        <!-- â”€â”€ ALWAYS VISIBLE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+        <!-- ── ALWAYS VISIBLE ─────────────────────── -->
         <ul class="db-sidebar__group" role="list" data-group="core">
           <li class="db-sidebar__label" aria-hidden="true">Sistema</li>
 
@@ -71,7 +71,7 @@
           </li>
         </ul>
 
-        <!-- â”€â”€ ROLE: client â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+        <!-- ── ROLE: client ───────────────────────── -->
         <ul class="db-sidebar__group" role="list" data-role-gate="client" hidden>
           <li class="db-sidebar__label" aria-hidden="true">Cliente</li>
 
@@ -102,7 +102,7 @@
           <li>
             <button class="db-sidebar__item" data-section="client-membership">
               <span class="db-icon db-icon--star" aria-hidden="true"></span>
-              <span class="db-sidebar__item-text">MembresÃ­a</span>
+              <span class="db-sidebar__item-text">Membresía</span>
             </button>
           </li>
           <li>
@@ -131,7 +131,7 @@
           </li>
         </ul>
 
-        <!-- â”€â”€ ROLE: collaborator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+        <!-- ── ROLE: collaborator ─────────────────── -->
         <ul class="db-sidebar__group" role="list" data-role-gate="collaborator" hidden>
           <li class="db-sidebar__label" aria-hidden="true">Colaborador</li>
 
@@ -167,7 +167,7 @@
           </li>
         </ul>
 
-        <!-- â”€â”€ ROLE: rrpp â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+        <!-- ── ROLE: rrpp ─────────────────────────── -->
         <ul class="db-sidebar__group" role="list" data-role-gate="pr" hidden>
           <li class="db-sidebar__label" aria-hidden="true">Embajador</li>
 
@@ -186,7 +186,7 @@
           <li>
             <button class="db-sidebar__item" data-section="rrpp-campaigns">
               <span class="db-icon db-icon--broadcast" aria-hidden="true"></span>
-              <span class="db-sidebar__item-text">CampaÃ±as</span>
+              <span class="db-sidebar__item-text">Campañas</span>
             </button>
           </li>
           <li>
@@ -209,7 +209,7 @@
           </li>
         </ul>
 
-        <!-- â”€â”€ ROLE: admin (future) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+        <!-- ── ROLE: admin (future) ───────────────── -->
         <ul class="db-sidebar__group" role="list" data-permission-gate="media.posts" hidden>
           <li class="db-sidebar__label" aria-hidden="true">Media</li>
           <li>
@@ -221,7 +221,7 @@
           <li>
             <a class="db-sidebar__item" href="../media/admin.html?view=editor">
               <span class="db-icon db-icon--activity" aria-hidden="true"></span>
-              <span class="db-sidebar__item-text">Crear publicaciÃ³n</span>
+              <span class="db-sidebar__item-text">Crear publicación</span>
             </a>
           </li>
           <li>
@@ -233,7 +233,7 @@
         </ul>
 
         <ul class="db-sidebar__group" role="list" data-permission-any-gate="erp.finance.input,erp.ops.input" hidden>
-          <li class="db-sidebar__label" aria-hidden="true">ERP â€” Operaciones</li>
+          <li class="db-sidebar__label" aria-hidden="true">ERP — Operaciones</li>
 
           <li data-role-gate="admin">
             <button class="db-sidebar__item" data-section="erp-finance">
@@ -308,7 +308,7 @@
           <li>
             <button class="db-sidebar__item db-sidebar__item--danger" data-sidebar-action="logout">
               <span class="db-icon db-icon--settings" aria-hidden="true"></span>
-              <span class="db-sidebar__item-text">Cerrar sesiÃ³n</span>
+              <span class="db-sidebar__item-text">Cerrar sesión</span>
             </button>
           </li>
         </ul>
@@ -323,14 +323,14 @@
     </aside>
 
 
-    <!-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    <!-- ─────────────────────────────────────────────
          MAIN CONTENT AREA
          All sections are injected here by dashboard.js.
          Only one section is visible at a time.
-    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
-    <main class="db-main" id="js-main" aria-live="polite" aria-label="Contenido del mÃ³dulo activo">
+    ──────────────────────────────────────────────── -->
+    <main class="db-main" id="js-main" aria-live="polite" aria-label="Contenido del módulo activo">
 
-      <!-- â”€â”€ SECTION CONTAINER â”€â”€
+      <!-- ── SECTION CONTAINER ──
            Each section panel is rendered here.
            JS injects content; transitions handled by CSS classes.
       -->
@@ -338,7 +338,7 @@
         <!-- Content injected by dashboard.js -->
 
         <!-- Loading skeleton (shown before first render) -->
-        <div class="db-skeleton hr-panel" id="js-skeleton" aria-label="Cargando mÃ³dulo" role="status">
+        <div class="db-skeleton hr-panel" id="js-skeleton" aria-label="Cargando módulo" role="status">
           <span class="db-skeleton__line db-skeleton__line--wide"></span>
           <span class="db-skeleton__line db-skeleton__line--mid"></span>
           <span class="db-skeleton__line db-skeleton__line--narrow"></span>
@@ -347,7 +347,7 @@
 
     </main>
 
-    <!-- â”€â”€ NOTIFICATIONS PANEL â”€â”€
+    <!-- ── NOTIFICATIONS PANEL ──
          Flex sibling of main inside .db-layout.
          Width animates open/closed via CSS; JS toggles [hidden].
     -->
@@ -359,7 +359,7 @@
     >
       <header class="db-notifications__header">
         <span class="section-label">Notificaciones</span>
-        <button class="db-icon-btn hr-icon-btn" id="js-notif-close" aria-label="Cerrar panel">âœ•</button>
+        <button class="db-icon-btn hr-icon-btn" id="js-notif-close" aria-label="Cerrar panel">✕</button>
       </header>
       <ul class="db-notifications__list" id="js-notif-list" role="list">
         <!-- Injected by JS -->
@@ -369,16 +369,16 @@
   </div><!-- /.db-layout -->
 
 
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  <!-- ═══════════════════════════════════════════════════
        TOAST SYSTEM  (global, fixed position)
-  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+  ═══════════════════════════════════════════════════ -->
   <div class="db-toast-region" id="js-toast-region" aria-live="assertive" aria-atomic="true"></div>
 
 
-  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  <!-- ═══════════════════════════════════════════════════
        SCRIPTS
-       Load order matters â€” router last.
-  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+       Load order matters — router last.
+  ═══════════════════════════════════════════════════ -->
   <!-- Global behavior (cursor, reveal, etc.) -->
   <script src="../site.js?v=20260701-beatstore-nav" defer></script>
 
@@ -386,7 +386,7 @@
   <script src="dashboard.js?v=20260709-instagram-scraper-rank-ui" type="module"></script>
 
   <!--
-    Cursor hover patch â€” site.js binds mouseenter/mouseleave with querySelectorAll
+    Cursor hover patch — site.js binds mouseenter/mouseleave with querySelectorAll
     which only catches elements present at load time. The dashboard is a SPA so
     sections are replaced via innerHTML. This delegation re-implements the hover
     effect on document so it survives every re-render.
