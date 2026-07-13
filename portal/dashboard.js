@@ -6629,7 +6629,7 @@ function renderEventFinanceTransactionsTable(transactions, options = {}) {
     ['hidden_room_share', 'M.A.I.'],
     ['from_user_id', 'FROM'],
     ['to_user_id', 'TO'],
-    ['owner_entity_id', 'Corresponde a'],
+    ['allocations', 'Corresponde a'],
     ['movement_date', 'Fecha'],
     ['payment_method', 'Metodo'],
     ['created_by_user_id', 'Creado por'],
@@ -6667,7 +6667,7 @@ function renderEventFinanceTransactionReadableRow(tx) {
       <td>${money(Number(tx.hidden_room_share ?? eventFinanceAmount(tx) ?? 0))}</td>
       <td>${escapeHTML(participantName(tx.from_user_id))}</td>
       <td>${escapeHTML(participantName(tx.to_user_id))}</td>
-      <td>${escapeHTML(financeEntityName(tx.owner_entity_id, tx.owner_user_id))}</td>
+      <td>${escapeHTML(transactionAllocationSummary(tx))}</td>
       <td>${escapeHTML(formatDisplayDateOnly(tx.movement_date ?? tx.date))}</td>
       <td>${escapeHTML(tx.payment_method ?? tx.via ?? '-')}</td>
       <td>${escapeHTML(tx.created_by_user_id ?? '-')}</td>
@@ -6680,11 +6680,23 @@ function renderEventFinanceTransactionEditorRow(tx, index, headers) {
   const config = TABLE_EDITOR_CONFIG.hr_transactions;
   const original = encodeURIComponent(JSON.stringify(tx));
   const formId = `event-finance-table-form-${index}`;
+  const paymentMethods = state.data.paymentMethods ?? [];
+  const financeEntities = state.data.financeEntities ?? [];
 
   return `
     <tr>
       ${headers.map(([field]) => {
         const value = eventFinanceEditorCellValue(field, tx);
+        if (field === 'concept') {
+          return `<td class="db-table-cell--editable hr-cell-editable">${renderEventConceptControl(value, formId)}</td>`;
+        }
+        if (field === 'payment_method') {
+          return `<td class="db-table-cell--editable hr-cell-editable"><select class="db-table-input hr-input" form="${escapeAttr(formId)}" name="payment_method">${renderPaymentMethodOptions(paymentMethods, value)}</select></td>`;
+        }
+        if (field === 'allocations') {
+          return `<td class="db-table-cell--editable hr-cell-editable">${renderAllocationFieldset(financeEntities, transactionAllocations(tx), formId)}</td>`;
+        }
+
         const isEditable = config.editableFields.includes(field);
         if (!isEditable) {
           return `<td class="db-table-cell--readonly"><code>${escapeHTML(String(value || '-'))}</code></td>`;
@@ -6718,6 +6730,20 @@ function eventFinanceEditorCellValue(field, tx) {
   if (field === 'movement_date') return tx.movement_date ?? tx.date ?? '';
   if (field === 'payment_method') return tx.payment_method ?? tx.via ?? '';
   return tx[field] ?? '';
+}
+function transactionAllocations(tx = {}) {
+  return Array.isArray(tx.hr_transaction_allocations) ? tx.hr_transaction_allocations : [];
+}
+
+function transactionAllocationSummary(tx = {}) {
+  const allocations = transactionAllocations(tx);
+  if (!allocations.length) return financeEntityName(tx.owner_entity_id, tx.owner_user_id);
+  return allocations.map((allocation) => {
+    const label = financeEntityName(allocation.entity_id);
+    if (allocation.percentage !== null && allocation.percentage !== undefined) return `${label} ${Number(allocation.percentage).toFixed(2).replace(/\.00$/, '')}%`;
+    if (allocation.amount !== null && allocation.amount !== undefined) return `${label} ${money(allocation.amount)}`;
+    return label;
+  }).join(' · ');
 }
 
 async function renderErpPermissions() {
@@ -8375,6 +8401,8 @@ function membershipMaterialDeliveries(rows = []) {
     cycles.set(cycleNumber, current);
   });
 
+  let accumulatedLateWeeks = 0;
+
   return [...cycles.values()]
     .sort((a, b) => a.cycleNumber - b.cycleNumber)
     .map((cycle) => {
@@ -8385,9 +8413,11 @@ function membershipMaterialDeliveries(rows = []) {
       const periodEnd = periodStart ? addDaysToDateOnly(periodStart, 27) : null;
       const deliveryBase = periodEnd ? addDaysToDateOnly(periodEnd, 28) : null;
       const lateWeeks = rowList.filter((row) => row.estado === 'ATRASADO' && row.fecha_de_saldo).length;
+      accumulatedLateWeeks += lateWeeks;
+      const deliveryDelayWeeks = accumulatedLateWeeks;
       const overdueWeeks = rowList.filter((row) => row.saldo_tipo === 'adeudo').length;
       const currentPendingWeeks = rowList.filter((row) => row.saldo_tipo === 'pendiente').length;
-      const estimatedDelivery = deliveryBase ? addDaysToDateOnly(deliveryBase, lateWeeks * 7) : null;
+      const estimatedDelivery = deliveryBase ? addDaysToDateOnly(deliveryBase, deliveryDelayWeeks * 7) : null;
       const deliveredRow = rowList.find((row) => row.material_delivered_at);
       const deliveredAt = deliveredRow?.material_delivered_at ?? null;
       const deliveryNotes = deliveredRow?.material_delivery_notes ?? null;
@@ -8405,16 +8435,16 @@ function membershipMaterialDeliveries(rows = []) {
       } else if (!membershipActive) {
         status = 'BLOQUEADA POR MEMBRESÍA INACTIVA';
         reason = `Membresía ${latest.estado_operativo || '-'}`;
-      } else if (lateWeeks > 0 && compareDateOnly(today, estimatedDelivery) < 0) {
+      } else if (deliveryDelayWeeks > 0 && compareDateOnly(today, estimatedDelivery) < 0) {
         status = 'DIFERIDA POR ATRASO';
-        reason = `${lateWeeks} semana${lateWeeks === 1 ? '' : 's'} ${lateWeeks === 1 ? 'fue saldada' : 'fueron saldadas'} con atraso`;
-      } else if (lateWeeks === 0 && compareDateOnly(today, deliveryBase) < 0) {
+        reason = `${deliveryDelayWeeks} semana${deliveryDelayWeeks === 1 ? '' : 's'} de atraso acumulado`;
+      } else if (deliveryDelayWeeks === 0 && compareDateOnly(today, deliveryBase) < 0) {
         status = 'PROGRAMADA';
         reason = 'Sin atrasos; entrega programada al cierre del siguiente ciclo';
       } else {
         status = 'DISPONIBLE';
-        reason = lateWeeks > 0
-          ? `${lateWeeks} semana${lateWeeks === 1 ? '' : 's'} de atraso aplicada${lateWeeks === 1 ? '' : 's'}`
+        reason = deliveryDelayWeeks > 0
+          ? `${deliveryDelayWeeks} semana${deliveryDelayWeeks === 1 ? '' : 's'} de atraso acumulado aplicada${deliveryDelayWeeks === 1 ? '' : 's'}`
           : 'Fecha de entrega alcanzada';
       }
 
@@ -8426,7 +8456,8 @@ function membershipMaterialDeliveries(rows = []) {
         workedPeriod: `${formatDisplayDateOnly(periodStart)} a ${formatDisplayDateOnly(periodEnd)}`,
         deliveryBase,
         lateWeeks,
-        delayApplied: lateWeeks ? `${lateWeeks} semana${lateWeeks === 1 ? '' : 's'}` : 'Sin atraso',
+        deliveryDelayWeeks,
+        delayApplied: deliveryDelayWeeks ? `${deliveryDelayWeeks} semana${deliveryDelayWeeks === 1 ? '' : 's'}` : 'Sin atraso',
         estimatedDelivery,
         deliveredAt,
         deliveryNotes,
