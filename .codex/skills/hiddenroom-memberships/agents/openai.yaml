@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hidden Room Memberships"
+  short_description: "Membership weeks, balances, deliveries"
+  default_prompt: "Use $hiddenroom-memberships to update or audit Hidden Room membership dashboard logic."

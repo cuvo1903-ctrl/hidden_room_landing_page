@@ -414,6 +414,9 @@ const state = {
 
   /** Session may be stale when UI role and API/RLS responses disagree */
   sessionStale: false,
+
+  /** Active timer for live infrastructure metrics */
+  infrastructureRefreshTimer: null,
   erpCloud: {
     currentPath: '/',
   },
@@ -1764,9 +1767,32 @@ function navigate(sectionKey) {
   persistActiveSection(sectionKey);
   updateSidebarActiveState(sectionKey);
   updateTopbarTitle(section.label);
+  syncInfrastructureRefresh(sectionKey);
 
   // Fire-and-forget: renderSection is async but navigate stays sync
   renderSection(sectionKey);
+}
+
+function syncInfrastructureRefresh(sectionKey) {
+  if (state.infrastructureRefreshTimer && sectionKey !== 'erp-infrastructure') {
+    clearInterval(state.infrastructureRefreshTimer);
+    setState({ infrastructureRefreshTimer: null });
+    return;
+  }
+
+  if (sectionKey !== 'erp-infrastructure' || state.infrastructureRefreshTimer) return;
+
+  const timer = setInterval(() => {
+    if (state.activeSection !== 'erp-infrastructure') {
+      clearInterval(timer);
+      if (state.infrastructureRefreshTimer === timer) setState({ infrastructureRefreshTimer: null });
+      return;
+    }
+    if (state.data?.serverStatus) delete state.data.serverStatus;
+    renderSection('erp-infrastructure');
+  }, 20_000);
+
+  setState({ infrastructureRefreshTimer: timer });
 }
 
 function persistActiveSection(sectionKey) {
@@ -8379,7 +8405,6 @@ function membershipMaterialDeliveries(rows = []) {
     .slice()
     .sort((a, b) => Number(a.semana ?? 0) - Number(b.semana ?? 0));
   const cycles = new Map();
-  const currentOverdueBalance = membershipCurrentOverdueValue(rows);
   const today = todayDateInputValue();
   const latest = sortedRows[sortedRows.length - 1] ?? {};
   const membershipActive = latest.estado_operativo === 'ACTIVE';
@@ -8402,6 +8427,7 @@ function membershipMaterialDeliveries(rows = []) {
   });
 
   let accumulatedLateWeeks = 0;
+  let accumulatedOpenOverdueWeeks = 0;
 
   return [...cycles.values()]
     .sort((a, b) => a.cycleNumber - b.cycleNumber)
@@ -8413,9 +8439,10 @@ function membershipMaterialDeliveries(rows = []) {
       const periodEnd = periodStart ? addDaysToDateOnly(periodStart, 27) : null;
       const deliveryBase = periodEnd ? addDaysToDateOnly(periodEnd, 28) : null;
       const lateWeeks = rowList.filter((row) => row.estado === 'ATRASADO' && row.fecha_de_saldo).length;
-      accumulatedLateWeeks += lateWeeks;
-      const deliveryDelayWeeks = accumulatedLateWeeks;
       const overdueWeeks = rowList.filter((row) => row.saldo_tipo === 'adeudo').length;
+      accumulatedLateWeeks += lateWeeks;
+      accumulatedOpenOverdueWeeks += overdueWeeks;
+      const deliveryDelayWeeks = accumulatedLateWeeks;
       const currentPendingWeeks = rowList.filter((row) => row.saldo_tipo === 'pendiente').length;
       const estimatedDelivery = deliveryBase ? addDaysToDateOnly(deliveryBase, deliveryDelayWeeks * 7) : null;
       const deliveredRow = rowList.find((row) => row.material_delivered_at);
@@ -8427,11 +8454,11 @@ function membershipMaterialDeliveries(rows = []) {
       if (deliveredAt) {
         status = 'ENTREGADA';
         reason = deliveryNotes || `Material entregado el ${formatDisplayDateOnly(deliveredAt)}`;
-      } else if (overdueWeeks > 0 || currentOverdueBalance < 0) {
+      } else if (accumulatedOpenOverdueWeeks > 0) {
         status = 'BLOQUEADA POR ADEUDO';
         reason = overdueWeeks > 0
           ? `${overdueWeeks} semana${overdueWeeks === 1 ? '' : 's'} vencida${overdueWeeks === 1 ? '' : 's'} sin pagar`
-          : 'Existe saldo vencido';
+          : 'Existe saldo vencido de un ciclo anterior';
       } else if (!membershipActive) {
         status = 'BLOQUEADA POR MEMBRESÍA INACTIVA';
         reason = `Membresía ${latest.estado_operativo || '-'}`;
@@ -8668,11 +8695,12 @@ function renderServerPieChart(percent, label, tone) {
 
 function renderServerSparkline(history, unit = '%', max = 100) {
   const values = (history ?? []).map(numberOrNull).filter((value) => value !== null).slice(-30);
-  if (values.length < 2) return '<div class="db-server-sparkline db-server-sparkline--empty">Esperando mas muestras</div>';
+  if (!values.length) return '<div class="db-server-sparkline db-server-sparkline--empty">Sin datos</div>';
   const width = 120;
   const height = 34;
-  const points = values.map((value, index) => {
-    const x = values.length === 1 ? 0 : (index / (values.length - 1)) * width;
+  const chartValues = values.length === 1 ? [values[0], values[0]] : values;
+  const points = chartValues.map((value, index) => {
+    const x = (index / (chartValues.length - 1)) * width;
     const normalized = Math.max(0, Math.min(1, value / max));
     const y = height - normalized * height;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
@@ -8748,8 +8776,7 @@ async function fetchServerStatus() {
     label: 'supabase-fallback',
     url: `${CLOUD_FUNCTION_BASE}/server-status`,
   };
-  const isLocalDev = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-  const statusSources = isLocalDev ? [supabaseStatusSource] : [
+  const statusSources = [
     cloudStatusSource,
     supabaseStatusSource,
   ];
