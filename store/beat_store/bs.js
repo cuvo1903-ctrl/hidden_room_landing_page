@@ -5,9 +5,10 @@ const SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
 const CART_STORAGE_KEY = "hidden_room_store_cart";
 const CLOUD_ORIGIN = "https://cloud.hiddenroom.mx";
 const BEAT_STORE_ENDPOINT = `${CLOUD_ORIGIN}/api/beat-store`;
+const BEAT_STORE_CLOUD_PATH = "/beats_store";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const state = { products: [], beats: [], items: [] };
+const state = { products: [], adminProducts: [], beats: [], items: [], isAdmin: false };
 
 const grid = document.getElementById("beat-grid");
 const searchInput = document.getElementById("beat-search");
@@ -15,6 +16,14 @@ const sortSelect = document.getElementById("beat-sort");
 const audio = document.getElementById("beat-audio");
 const playerTitle = document.getElementById("player-title");
 const playerDetail = document.getElementById("player-detail");
+const adminPanel = document.getElementById("beat-admin-panel");
+const adminForm = document.getElementById("beat-admin-form");
+const adminList = document.getElementById("beat-admin-products");
+const adminStatus = document.getElementById("beat-admin-status");
+const adminError = document.getElementById("beat-admin-error");
+const cancelEditButton = document.getElementById("beat-cancel-edit");
+const beatUploadInput = document.getElementById("beat-upload-file");
+const beatUploadStatus = document.getElementById("beat-upload-status");
 
 initBeatStore().catch((error) => {
   grid.innerHTML = errorState(error.message || "No se pudo cargar Beat Store.");
@@ -22,25 +31,51 @@ initBeatStore().catch((error) => {
 
 async function initBeatStore() {
   updateCartCount();
-  const [products, beats] = await Promise.all([fetchBeatProducts(), fetchCloudBeats()]);
+  state.isAdmin = await currentUserIsAdmin();
+  const [products, beats] = await Promise.all([fetchBeatProducts(state.isAdmin), fetchCloudBeats()]);
   state.products = products;
+  state.adminProducts = state.isAdmin ? products : [];
   state.beats = beats;
   state.items = mergeProductsAndBeats(products, beats);
   renderBeats();
+  initializeAdminPanel();
 
   searchInput?.addEventListener("input", renderBeats);
   sortSelect?.addEventListener("change", renderBeats);
   grid?.addEventListener("click", handleGridClick);
+  adminForm?.addEventListener("submit", handleAdminSubmit);
+  adminList?.addEventListener("click", handleAdminListClick);
+  cancelEditButton?.addEventListener("click", resetAdminForm);
 }
 
-async function fetchBeatProducts() {
-  const { data, error } = await supabase
+async function currentUserIsAdmin() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) return false;
+
+  const { data: profile, error } = await supabase
+    .from("users")
+    .select("roles")
+    .eq("id", session.user.id)
+    .maybeSingle();
+
+  if (error) return false;
+  return String(profile?.roles ?? "")
+    .split(",")
+    .map((role) => role.trim().toLowerCase())
+    .includes("admin");
+}
+
+async function fetchBeatProducts(includeInactive = false) {
+  let query = supabase
     .from("store_products")
-    .select("id, slug, name, description, category, price, currency, image_url, file_url, stock, is_digital, featured")
-    .eq("is_active", true)
+    .select("id, slug, name, description, category, price, currency, image_url, file_url, stock, is_digital, featured, is_active, created_at")
     .eq("category", "beats")
     .order("featured", { ascending: false })
     .order("created_at", { ascending: false });
+
+  if (!includeInactive) query = query.eq("is_active", true);
+
+  const { data, error } = await query;
 
   if (error) throw new Error(`No se pudieron cargar productos: ${error.message}`);
   return data ?? [];
@@ -122,7 +157,7 @@ function beatCardMarkup(item) {
   const status = [
     product?.featured ? "Featured" : null,
     canPreview ? "Preview" : "Sin preview",
-    canBuy ? "Compra activa" : product ? "No disponible" : "No vinculado",
+    canBuy ? "Compra activa" : product?.is_active === false ? "Inactivo" : product ? "No disponible" : "No vinculado",
   ].filter(Boolean).join(" / ");
 
   return `
@@ -184,6 +219,192 @@ function addBeatToCart(itemId) {
   showNotice("Beat agregado al carrito");
 }
 
+function initializeAdminPanel() {
+  if (!state.isAdmin || !adminPanel) return;
+  adminPanel.hidden = false;
+  resetAdminForm();
+  renderAdminProducts();
+}
+
+function renderAdminProducts() {
+  if (!adminList || !adminStatus) return;
+  adminStatus.textContent = `${state.adminProducts.length} beat${state.adminProducts.length === 1 ? "" : "s"} en productos de tienda.`;
+
+  if (!state.adminProducts.length) {
+    adminList.innerHTML = '<div class="empty-state beat-empty"><h2>Sin productos beat</h2><p>Crea el primer beat desde el formulario.</p></div>';
+    return;
+  }
+
+  adminList.innerHTML = state.adminProducts.map((product) => `
+    <article class="admin-product-row beat-admin-row">
+      <div>
+        <span class="product-category">${escapeHtml(product.is_active ? "Activo" : "Inactivo")}${product.featured ? " / Featured" : ""}</span>
+        <h3>${escapeHtml(product.name)}</h3>
+        <p>${escapeHtml(product.slug)} / ${formatPrice(product.price, product.currency)} / stock ${escapeHtml(product.stock ?? "ilimitado")}</p>
+      </div>
+      <div class="admin-actions">
+        <button class="secondary-button" type="button" data-edit-beat="${escapeHtml(product.id)}">Editar</button>
+        <button class="secondary-button" type="button" data-toggle-beat="${escapeHtml(product.id)}" data-active="${product.is_active}">${product.is_active ? "Desactivar" : "Activar"}</button>
+        <button class="secondary-button" type="button" data-feature-beat="${escapeHtml(product.id)}" data-featured="${product.featured}">${product.featured ? "Quitar featured" : "Featured"}</button>
+        <button class="remove-button" type="button" data-delete-beat="${escapeHtml(product.id)}">Eliminar</button>
+      </div>
+    </article>`).join("");
+}
+
+async function handleAdminSubmit(event) {
+  event.preventDefault();
+  if (!state.isAdmin) return;
+  adminError.textContent = "";
+
+  const id = document.getElementById("beat-product-id").value;
+  const stockValue = document.getElementById("beat-stock").value;
+  let uploadedFileUrl = "";
+  try {
+    uploadedFileUrl = await uploadSelectedBeatFile();
+  } catch (error) {
+    adminError.textContent = error.message || "No se pudo subir el audio.";
+    setUploadStatus(adminError.textContent, true);
+    return;
+  }
+
+  const payload = {
+    name: document.getElementById("beat-name").value.trim(),
+    slug: document.getElementById("beat-slug").value.trim().toLowerCase(),
+    description: document.getElementById("beat-description").value.trim() || null,
+    category: "beats",
+    price: Number(document.getElementById("beat-price").value),
+    currency: "MXN",
+    image_url: null,
+    file_url: uploadedFileUrl || document.getElementById("beat-file-url").value.trim() || null,
+    stock: stockValue === "" ? null : Number(stockValue),
+    is_digital: document.getElementById("beat-digital").checked,
+    featured: document.getElementById("beat-featured").checked,
+    is_active: document.getElementById("beat-active").checked,
+  };
+
+  const query = id
+    ? supabase.from("store_products").update(payload).eq("id", id)
+    : supabase.from("store_products").insert(payload);
+  const { error } = await query;
+
+  if (error) {
+    adminError.textContent = error.message;
+    return;
+  }
+
+  showNotice(id ? "Beat actualizado" : "Beat creado");
+  resetAdminForm();
+  await reloadBeatStore({ refreshBeats: Boolean(uploadedFileUrl) });
+}
+
+async function uploadSelectedBeatFile() {
+  const file = beatUploadInput?.files?.[0];
+  if (!file) return "";
+  if (!file.type.startsWith("audio/") && !/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name)) {
+    throw new Error("Selecciona un archivo de audio valido.");
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("Sesion requerida para subir archivos.");
+
+  setUploadStatus(`Subiendo ${file.name}...`);
+  const response = await fetch(`${CLOUD_ORIGIN}/api/upload?path=${encodeURIComponent(BEAT_STORE_CLOUD_PATH)}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      "X-File-Name": encodeURIComponent(file.name),
+      "Content-Type": file.type || "application/octet-stream",
+    },
+    body: file,
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "No se pudo subir el audio a MysAuth Cloud.");
+
+  setUploadStatus(`Audio subido: ${file.name}`);
+  return `${BEAT_STORE_CLOUD_PATH}/${file.name}`;
+}
+
+function setUploadStatus(message, isError = false) {
+  if (!beatUploadStatus) return;
+  beatUploadStatus.textContent = message || "";
+  beatUploadStatus.classList.toggle("is-error", Boolean(isError));
+}
+
+async function handleAdminListClick(event) {
+  const editButton = event.target.closest("[data-edit-beat]");
+  const toggleButton = event.target.closest("[data-toggle-beat]");
+  const featuredButton = event.target.closest("[data-feature-beat]");
+  const deleteButton = event.target.closest("[data-delete-beat]");
+
+  if (editButton) {
+    editAdminProduct(editButton.dataset.editBeat);
+    return;
+  }
+  if (toggleButton) {
+    await updateAdminProduct(toggleButton.dataset.toggleBeat, { is_active: toggleButton.dataset.active !== "true" });
+    return;
+  }
+  if (featuredButton) {
+    await updateAdminProduct(featuredButton.dataset.featureBeat, { featured: featuredButton.dataset.featured !== "true" });
+    return;
+  }
+  if (deleteButton && window.confirm("Eliminar este beat de productos? Esta accion no borra archivos del Cloud.")) {
+    const { error } = await supabase.from("store_products").delete().eq("id", deleteButton.dataset.deleteBeat);
+    if (error) adminStatus.textContent = error.message;
+    else {
+      showNotice("Beat eliminado");
+      await reloadBeatStore();
+    }
+  }
+}
+
+async function updateAdminProduct(id, patch) {
+  const { error } = await supabase.from("store_products").update(patch).eq("id", id);
+  if (error) adminStatus.textContent = error.message;
+  else await reloadBeatStore();
+}
+
+function editAdminProduct(id) {
+  const product = state.adminProducts.find((candidate) => candidate.id === id);
+  if (!product) return;
+
+  document.getElementById("beat-product-id").value = product.id;
+  document.getElementById("beat-name").value = product.name;
+  document.getElementById("beat-slug").value = product.slug;
+  document.getElementById("beat-description").value = product.description ?? "";
+  document.getElementById("beat-price").value = product.price;
+  document.getElementById("beat-file-url").value = product.file_url ?? "";
+  document.getElementById("beat-stock").value = product.stock ?? "";
+  document.getElementById("beat-featured").checked = Boolean(product.featured);
+  document.getElementById("beat-active").checked = Boolean(product.is_active);
+  document.getElementById("beat-digital").checked = Boolean(product.is_digital);
+  document.getElementById("beat-form-title").textContent = "Editar beat";
+  cancelEditButton.hidden = false;
+  adminForm.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function resetAdminForm() {
+  if (!adminForm) return;
+  adminForm.reset();
+  document.getElementById("beat-product-id").value = "";
+  document.getElementById("beat-active").checked = true;
+  document.getElementById("beat-digital").checked = true;
+  document.getElementById("beat-form-title").textContent = "Nuevo beat";
+  cancelEditButton.hidden = true;
+  adminError.textContent = "";
+}
+
+async function reloadBeatStore(options = {}) {
+  if (options.refreshBeats) state.beats = await fetchCloudBeats();
+  const products = await fetchBeatProducts(state.isAdmin);
+  state.products = products;
+  state.adminProducts = state.isAdmin ? products : [];
+  state.items = mergeProductsAndBeats(products, state.beats);
+  renderBeats();
+  renderAdminProducts();
+}
+
 function getCart() {
   try {
     const stored = JSON.parse(localStorage.getItem(CART_STORAGE_KEY) || "[]");
@@ -217,6 +438,7 @@ function productPrice(item) {
 }
 
 function productCanBePurchased(product) {
+  if (product.is_active === false) return false;
   return product.stock === null || Number(product.stock) > 0;
 }
 

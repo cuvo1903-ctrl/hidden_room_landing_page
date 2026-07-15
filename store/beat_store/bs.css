@@ -73,3 +73,41 @@
   .beat-card__actions { display: grid; }
   .beat-card__actions .primary-button, .beat-card__actions .secondary-button { width: 100%; }
 }
+
+.beat-admin {
+  border-top: 1px solid var(--hr-border);
+  background: rgba(17, 17, 17, .58);
+}
+
+.beat-admin__form h3 {
+  margin: 0;
+  font: 700 20px/1.1 var(--hr-font-display);
+  text-transform: uppercase;
+}
+
+.beat-admin__list .empty-state {
+  text-align: left;
+}
+
+.beat-admin-row h3 {
+  margin: 8px 0;
+  font: 700 16px/1.2 var(--hr-font-display);
+  text-transform: uppercase;
+}
+
+.beat-admin-row .remove-button {
+  min-height: 36px;
+  margin-top: 0;
+}
+
+.beat-upload-status {
+  min-height: 1.4em;
+  margin: -12px 0 0;
+  color: var(--hr-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.beat-upload-status.is-error {
+  color: #ff6b6b;
+}

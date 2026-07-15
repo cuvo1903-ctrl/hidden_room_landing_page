@@ -1075,7 +1075,7 @@ const TABLE_EDITOR_CONFIG = {
     primaryKey: null,
     select: 'user_id, username, semana, fecha_de_sesion, estado, fecha_de_saldo, saldo, notas',
     defaultSort: { field: 'fecha_esperada', direction: 'desc' },
-    lockedFields: ['user_id', 'username', 'display_name', 'email', 'semana', 'periodo', 'fecha_esperada', 'fecha_de_sesion', 'sesiones_usadas', 'estado', 'estado_operativo', 'fecha_de_saldo', 'saldo', 'notas'],
+    lockedFields: ['user_id', 'username', 'display_name', 'email', 'semana', 'periodo', 'fecha_esperada', 'week_end', 'fecha_de_sesion', 'sesiones_usadas', 'estado', 'estado_operativo', 'fecha_de_saldo', 'saldo', 'notas', 'material_estimated_delivery', 'material_delivery_delay_weeks', 'material_delivery_delay_label', 'material_delivery_status'],
     editableFields: [],
     hiddenColumns: ['membership_id', 'display_name', 'email'],
     readOnly: true,
@@ -1085,6 +1085,7 @@ const TABLE_EDITOR_CONFIG = {
       semana: 'Semana',
       periodo: 'Periodo',
       fecha_esperada: 'Fecha esperada',
+      week_end: 'Corte de pago',
       fecha_de_sesion: 'Fecha de sesion',
       sesiones_usadas: 'Sesiones usadas',
       estado: 'Estado',
@@ -1092,6 +1093,10 @@ const TABLE_EDITOR_CONFIG = {
       fecha_de_saldo: 'Fecha de saldo',
       saldo: 'Adeudo / crédito',
       notas: 'Notas',
+      material_estimated_delivery: 'Entrega programada',
+      material_delivery_delay_weeks: 'Atraso entrega',
+      material_delivery_delay_label: 'Atraso entrega',
+      material_delivery_status: 'Estado entrega',
     },
   },
   memberships: {
@@ -7557,8 +7562,14 @@ function renderMembershipDashboardRow(row, delivery = null, options = {}) {
   const deliveryFormId = membershipDeliveryFormId(row);
   const sessionNotesFormId = membershipSessionNotesFormId(row);
   const cycleNumber = Math.floor((Number(row.semana ?? 1) - 1) / 4) + 1;
-  const deliveredAtText = delivery?.deliveredAt
-    ? formatDisplayDateOnly(delivery.deliveredAt)
+  const computedDelivery = delivery ?? (row.material_estimated_delivery ? {
+    estimatedDelivery: row.material_estimated_delivery,
+    deliveryDelayWeeks: row.material_delivery_delay_weeks,
+    delayApplied: row.material_delivery_delay_label,
+    deliveredAt: row.material_delivered_at,
+  } : null);
+  const deliveredAtText = computedDelivery?.deliveredAt
+    ? formatDisplayDateOnly(computedDelivery.deliveredAt)
     : 'No entregado';
 
   return `
@@ -7568,8 +7579,8 @@ function renderMembershipDashboardRow(row, delivery = null, options = {}) {
       <td class="${escapeAttr(membershipCellClass('estado', row).trim())}">${escapeHTML(row.estado ?? '-')}</td>
       <td class="${escapeAttr(membershipCellClass('saldo', row).trim())}">${formatMembershipRowBalance(row)}</td>
       <td>${escapeHTML(formatDisplayDateOnly(row.fecha_de_saldo))}</td>
-      <td>${escapeHTML(formatDisplayDateOnly(delivery?.estimatedDelivery))}</td>
-      <td>${options.canEditMaterialDelivery ? renderMembershipDeliveryDateInput(row, delivery, deliveryFormId, cycleNumber, deliveredAtText) : escapeHTML(deliveredAtText)}</td>
+      <td>${escapeHTML(formatDisplayDateOnly(computedDelivery?.estimatedDelivery))}<br><small>${escapeHTML(computedDelivery ? (computedDelivery.delayApplied || `${computedDelivery.deliveryDelayWeeks ?? 0} semanas`) : 'Sin entrega calculada')}</small></td>
+      <td>${options.canEditMaterialDelivery ? renderMembershipDeliveryDateInput(row, computedDelivery, deliveryFormId, cycleNumber, deliveredAtText) : escapeHTML(deliveredAtText)}</td>
       <td>${options.canEditMaterialDelivery ? renderMembershipSessionNotesInput(row, sessionNotesFormId) : escapeHTML(displayNotes || '-')}</td>
     </tr>
   `;
@@ -8259,6 +8270,7 @@ function buildMembershipRows(memberships = [], sessions = [], transactions = [],
           semana: week.semana,
           periodo: `${formatDateOnly(week.fecha_esperada)} a ${formatDateOnly(week.week_end)}`,
           fecha_esperada: week.fecha_esperada,
+          week_end: week.week_end,
           obligacion: weekObligation,
           session_id: firstSession?.id ?? null,
           session_notes: firstSession?.notes ?? '',
@@ -8275,7 +8287,7 @@ function buildMembershipRows(memberships = [], sessions = [], transactions = [],
       });
     });
 
-  return applyMembershipMaterialDeliveries(rows, materialDeliveries);
+  return applyMembershipComputedDeliveries(applyMembershipMaterialDeliveries(rows, materialDeliveries));
 }
 
 function materialDeliveryKey({ membershipId = null, userId = null, cycleNumber = null }) {
@@ -8472,8 +8484,18 @@ function endOfNextMonth(monthKey) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+function membershipRowIsLate(row) {
+  const estado = normalizeCatalogValue(row?.estado);
+  const saldoTipo = normalizeCatalogValue(row?.saldo_tipo);
+  const balanceDate = formatDateOnly(row?.fecha_de_saldo);
+  const cutoffDate = formatDateOnly(row?.week_end);
+  return estado.includes('ATRASADO')
+    || saldoTipo === 'ADEUDO'
+    || (balanceDate && balanceDate !== '-' && cutoffDate && cutoffDate !== '-' && compareDateOnly(balanceDate, cutoffDate) > 0);
+}
+
 function rowHasOpenMembershipDebt(row) {
-  return row?.saldo_tipo === 'adeudo' || (row?.estado === 'ATRASADO' && !row?.fecha_de_saldo);
+  return normalizeCatalogValue(row?.saldo_tipo) === 'ADEUDO' || (membershipRowIsLate(row) && !row?.fecha_de_saldo);
 }
 
 function membershipCurrentOverdueValue(rows = []) {
@@ -8492,11 +8514,11 @@ function membershipIsActiveAndCurrent(rows = []) {
 
 function membershipDeliveryDelayCutoffs(rows = []) {
   return rows
-    .filter((row) => row.estado === 'ATRASADO' || row.saldo_tipo === 'adeudo')
+    .filter((row) => membershipRowIsLate(row))
     .map((row) => ({
       week: Number(row.semana ?? 0),
       cutoff: formatDateOnly(row.week_end),
-      isOpen: row.saldo_tipo === 'adeudo',
+      isOpen: normalizeCatalogValue(row.saldo_tipo) === 'ADEUDO',
     }))
     .filter((item) => Number.isFinite(item.week) && item.week > 0 && item.cutoff && item.cutoff !== '-')
     .sort((a, b) => compareDateOnly(a.cutoff, b.cutoff) || a.week - b.week);
@@ -8535,7 +8557,6 @@ function membershipMaterialDeliveries(rows = []) {
   const today = todayDateInputValue();
   const latest = sortedRows[sortedRows.length - 1] ?? {};
   const membershipActive = latest.estado_operativo === 'ACTIVE';
-  const allDelayCutoffs = membershipDeliveryDelayCutoffs(sortedRows);
 
   sortedRows.forEach((row) => {
     const weekNumber = Number(row.semana ?? 0);
@@ -8554,6 +8575,7 @@ function membershipMaterialDeliveries(rows = []) {
     cycles.set(cycleNumber, current);
   });
 
+  let accumulatedDeliveryDelayWeeks = 0;
   let accumulatedOpenOverdueWeeks = 0;
 
   return [...cycles.values()]
@@ -8565,14 +8587,16 @@ function membershipMaterialDeliveries(rows = []) {
       const periodStart = rowList[0]?.fecha_esperada ?? null;
       const periodEnd = periodStart ? addDaysToDateOnly(periodStart, 27) : null;
       const deliveryBase = periodEnd ? addDaysToDateOnly(periodEnd, 28) : null;
-      const deliverySchedule = resolveMembershipEstimatedDelivery(deliveryBase, allDelayCutoffs);
-      const delayCutoffs = deliverySchedule.appliedCutoffs;
+      const cycleDelayCutoffs = membershipDeliveryDelayCutoffs(rowList);
+      const cycleDelayWeeks = cycleDelayCutoffs.length;
+      accumulatedDeliveryDelayWeeks = cycleDelayWeeks > 0 ? accumulatedDeliveryDelayWeeks + cycleDelayWeeks : 0;
+      const delayCutoffs = cycleDelayCutoffs;
       const lateWeeks = delayCutoffs.filter((item) => !item.isOpen).length;
       const overdueWeeks = delayCutoffs.filter((item) => item.isOpen).length;
-      accumulatedOpenOverdueWeeks += overdueWeeks;
+      accumulatedOpenOverdueWeeks = overdueWeeks > 0 ? accumulatedOpenOverdueWeeks + overdueWeeks : 0;
       const currentPendingWeeks = rowList.filter((row) => row.saldo_tipo === 'pendiente').length;
-      const estimatedDelivery = deliverySchedule.estimatedDelivery;
-      const deliveryDelayWeeks = deliverySchedule.appliedCutoffs.length;
+      const deliveryDelayWeeks = accumulatedDeliveryDelayWeeks;
+      const estimatedDelivery = deliveryBase ? addDaysToDateOnly(deliveryBase, deliveryDelayWeeks * 7) : null;
       const deliveredRow = rowList.find((row) => row.material_delivered_at);
       const deliveredAt = deliveredRow?.material_delivered_at ?? null;
       const deliveryNotes = deliveredRow?.material_delivery_notes ?? null;
@@ -8636,6 +8660,25 @@ function membershipDeliveryByWeek(rows = []) {
   });
 
   return byWeek;
+}
+
+function applyMembershipComputedDeliveries(rows = []) {
+  if (!rows.length) return rows;
+  const deliveryByWeek = membershipDeliveryByWeek(rows);
+
+  return rows.map((row) => {
+    const delivery = deliveryByWeek.get(Number(row.semana ?? 0));
+    if (!delivery) return row;
+    return {
+      ...row,
+      material_estimated_delivery: delivery.estimatedDelivery,
+      material_delivery_base: delivery.deliveryBase,
+      material_delivery_delay_weeks: delivery.deliveryDelayWeeks,
+      material_delivery_delay_label: delivery.delayApplied,
+      material_delivery_status: delivery.status,
+      material_delivery_reason: delivery.reason,
+    };
+  });
 }
 
 function nextMembershipDeliveryText(rows = []) {

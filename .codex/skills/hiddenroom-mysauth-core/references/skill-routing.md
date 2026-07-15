@@ -6,6 +6,7 @@ Use this file after core orientation to pick the implementation Skill.
 
 - Architecture overview or cross-system reasoning: stay with `hiddenroom-mysauth-core`.
 - Updating the Skills themselves: `hiddenroom-skill-maintenance`.
+- Local Windows workstation setup, Git/Node/Python/Docker/WSL/Supabase CLI/Playwright/Tailscale client readiness: `hiddenroom-workstation`.
 - HTML, static JS, navigation, module routes: `hiddenroom-frontend`.
 - Visual tokens, `styles.css`, `hr-*`, responsive UI: `hiddenroom-design-system`.
 - Portal dashboard, section router, admin views: `hiddenroom-dashboard`.
@@ -32,4 +33,5 @@ For security-sensitive implementation:
 1. Start with the area Skill.
 2. Also use `hiddenroom-security`.
 3. Verify with `hiddenroom-testing`.
+
 

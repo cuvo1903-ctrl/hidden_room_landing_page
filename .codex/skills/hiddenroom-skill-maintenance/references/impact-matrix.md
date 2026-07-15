@@ -89,6 +89,34 @@ Update:
 - `hiddenroom-documentation` when runbooks or install docs must mirror production facts.
 - `hiddenroom-testing` when remote smoke checks or service-health QA changes.
 
+## Local Workstation
+
+Changed facts or files:
+
+- Windows, PowerShell, PATH, Git safe.directory, Node, npm, Python, Docker Desktop, WSL 2, Supabase CLI, Playwright, or Tailscale client setup.
+- `package.json` or `package-lock.json` dependency changes that affect local development tooling.
+- New local validation commands, install procedures, or repeated setup failures.
+
+Update:
+
+- `hiddenroom-workstation`
+- `hiddenroom-testing` when validation commands change.
+- `hiddenroom-documentation` when user-facing setup docs need to mirror the workstation flow.
+- `hiddenroom-debian-server` only when Tailscale/server access facts or production procedures change.
+## Local Workstation
+
+Changed facts or files:
+
+- Windows, PowerShell, PATH, Git safe.directory, Node, npm, Python, Docker Desktop, WSL 2, Supabase CLI, Playwright, or Tailscale client setup.
+- `package.json` or `package-lock.json` dependency changes that affect local development tooling.
+- New local validation commands, install procedures, or repeated setup failures.
+
+Update:
+
+- `hiddenroom-workstation`
+- `hiddenroom-testing` when validation commands change.
+- `hiddenroom-documentation` when user-facing setup docs need to mirror the workstation flow.
+- `hiddenroom-debian-server` only when Tailscale/server access facts or production procedures change.
 ## Cloud Agent
 
 Changed files:
@@ -125,3 +153,4 @@ Always update `agents/openai.yaml` when:
 - The default prompt no longer describes the Skill.
 
 Always run `quick_validate.py` after edits.
+

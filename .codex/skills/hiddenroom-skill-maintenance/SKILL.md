@@ -40,6 +40,7 @@ foreach ($skill in $skills) {
 - `hiddenroom-documentation`
 - `hiddenroom-performance`
 - `hiddenroom-testing`
+- `hiddenroom-workstation`
 - `hiddenroom-skill-maintenance`
 
 ## Editing Rules
@@ -54,4 +55,5 @@ foreach ($skill in $skills) {
 ## References
 
 Read `references/impact-matrix.md` when deciding which Skills must change after a repo or architecture update.
+
 

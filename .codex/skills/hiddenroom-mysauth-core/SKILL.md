@@ -27,6 +27,7 @@ Use this Skill to understand the whole project before using a specialized Skill 
    - `hiddenroom-documentation`
    - `hiddenroom-performance`
    - `hiddenroom-testing`
+   - `hiddenroom-workstation`
    - `hiddenroom-skill-maintenance`
 
 ## Known Project Identity
@@ -59,4 +60,5 @@ Read these based on the question:
 - `references/ecosystem-map.md`: complete repo module map and known infrastructure.
 - `references/operational-context.md`: remaining business/ops items that must be asked instead of inferred.
 - `references/skill-routing.md`: which specialized Skill to invoke after core orientation.
+
 

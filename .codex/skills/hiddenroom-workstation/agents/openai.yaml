@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hidden Room Workstation"
+  short_description: "Local setup checks for MysAuth work"
+  default_prompt: "Use $hiddenroom-workstation to verify and update the local MysAuth workstation setup."

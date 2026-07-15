@@ -6,7 +6,27 @@ const SUPABASE_BOOT_TIMEOUT_MS = 8000;
 const SUPABASE_REST_TIMEOUT_MS = 9000;
 const LOGIN_RETURN_KEY = "hr_return_after_login";
 const DRAFTS_KEY = "hr_kien_gana_prediction_drafts";
-const PAST_STAGE_SLUGS = new Set(["octavos"]);
+const STAGE_TABS = [
+  {
+    slug: "cuartos",
+    listId: "quarterMatchesList",
+    emptyTitle: "No hay partidos de cuartos",
+    emptyCopy: "Los partidos de cuartos de final apareceran aqui.",
+  },
+  {
+    slug: "semifinal",
+    listId: "semifinalMatchesList",
+    emptyTitle: "No hay partidos de semifinal",
+    emptyCopy: "Los partidos de semifinal apareceran aqui.",
+  },
+  {
+    slug: "final",
+    listId: "finalMatchesList",
+    emptyTitle: "No hay partido final",
+    emptyCopy: "La final aparecera aqui.",
+  },
+];
+const PREDICTION_STAGE_SLUGS = new Set(["semifinal"]);
 
 function bootTimeout(label, ms = SUPABASE_BOOT_TIMEOUT_MS) {
   return new Promise((_resolve, reject) => {
@@ -107,8 +127,12 @@ function normalizeStageName(stage) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-function isPastMatch(match) {
-  return PAST_STAGE_SLUGS.has(normalizeStageName(match?.stage));
+function stageMatchesSlug(match, slug) {
+  return normalizeStageName(match?.stage) === slug;
+}
+
+function isPredictionMatch(match) {
+  return PREDICTION_STAGE_SLUGS.has(normalizeStageName(match?.stage));
 }
 
 function setSessionLoading(isLoading) {
@@ -356,7 +380,9 @@ function bindUI() {
   });
   $("logoutBtn").addEventListener("click", logout);
   $("refreshBtn").addEventListener("click", loadGame);
-  $("pastRefreshBtn")?.addEventListener("click", loadGame);
+  document.querySelectorAll("[data-refresh-matches]").forEach((button) => {
+    button.addEventListener("click", loadGame);
+  });
   $("saveAllPredictionsBtn")?.addEventListener("click", saveAllPredictions);
   $("createMatchBtn").addEventListener("click", createMatch);
   $("finalizeMatchBtn").addEventListener("click", finalizeMatch);
@@ -589,11 +615,10 @@ async function loadAdminPredictions() {
 
 function renderMatches() {
   const activeList = $("matchesList");
-  const pastList = $("pastMatchesList");
   const template = $("matchTemplate");
 
   activeList?.replaceChildren();
-  pastList?.replaceChildren();
+  STAGE_TABS.forEach(({ listId }) => $(listId)?.replaceChildren());
 
   if (state.isLoadingGame) {
     const loading = document.createElement("div");
@@ -612,23 +637,23 @@ function renderMatches() {
     return;
   }
 
-  const pastMatches = state.matches.filter(isPastMatch);
-  const activeMatches = state.matches.filter((match) => !isPastMatch(match));
-
   renderMatchList(
     activeList,
     template,
-    activeMatches,
-    "No hay partidos abiertos",
-    "Los octavos de final estan en Octavos. Un admin puede crear mas partidos desde esta misma pantalla.",
+    state.matches.filter(isPredictionMatch),
+    "No hay semifinales abiertas",
+    "Las semifinales apareceran aqui cuando esten registradas.",
   );
-  renderMatchList(
-    pastList,
-    template,
-    pastMatches,
-    "No hay partidos de octavos",
-    "Los partidos de octavos de final apareceran aqui.",
-  );
+
+  STAGE_TABS.forEach(({ slug, listId, emptyTitle, emptyCopy }) => {
+    renderMatchList(
+      $(listId),
+      template,
+      state.matches.filter((match) => stageMatchesSlug(match, slug)),
+      emptyTitle,
+      emptyCopy,
+    );
+  });
 }
 
 function renderMatchList(list, template, matches, emptyTitle, emptyCopy) {
@@ -867,7 +892,8 @@ async function savePrediction(match, homeScoreRaw, awayScoreRaw, options = {}) {
 }
 
 async function saveAllPredictions() {
-  const cards = Array.from(document.querySelectorAll("#matchesList .match-card[data-match-id]"));
+  const cards = Array.from(document.querySelectorAll(".tab-panel .match-card[data-match-id]"))
+    .filter((card) => !card.closest("#adminTabPanel"));
   const editableCards = cards.filter((card) => {
     const match = state.matches.find((item) => item.id === card.dataset.matchId);
     const hasDraft = state.drafts.has(card.dataset.matchId);

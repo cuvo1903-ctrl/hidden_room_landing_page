@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
@@ -68,6 +68,47 @@
 
         <div id="beat-grid" class="beat-grid product-grid hr-card-grid" aria-live="polite">
           <p class="hr-table-loading">Cargando Beat Store...</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="beat-admin-panel" class="beat-admin hr-section" aria-labelledby="beat-admin-title" hidden>
+      <div class="hr-container hr-stack hr-stack-xl">
+        <div class="section-heading hr-grid hr-grid-2">
+          <div>
+            <p class="eyebrow hr-eyebrow">Admin</p>
+            <h2 id="beat-admin-title" class="hr-section-title">Editar beats</h2>
+          </div>
+          <p id="beat-admin-status">Panel disponible para cuentas admin.</p>
+        </div>
+
+        <div class="admin-layout hr-grid">
+          <form id="beat-admin-form" class="checkout-form admin-form beat-admin__form hr-card hr-panel hr-stack">
+            <input id="beat-product-id" type="hidden">
+            <h3 id="beat-form-title">Nuevo beat</h3>
+            <div class="field hr-field"><label class="hr-label" for="beat-name">Nombre</label><input class="hr-input" id="beat-name" required maxlength="160"></div>
+            <div class="field hr-field"><label class="hr-label" for="beat-slug">Slug</label><input class="hr-input" id="beat-slug" required pattern="[a-z0-9-]+" maxlength="160"></div>
+            <div class="field hr-field"><label class="hr-label" for="beat-description">Descripcion</label><textarea class="hr-textarea" id="beat-description" rows="4"></textarea></div>
+            <div class="field hr-field"><label class="hr-label" for="beat-price">Precio MXN</label><input class="hr-input" id="beat-price" type="number" min="0" step="0.01" required></div>
+            <div class="field hr-field"><label class="hr-label" for="beat-upload-file">Subir audio</label><input class="hr-input" id="beat-upload-file" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"></div>
+            <p id="beat-upload-status" class="beat-upload-status" aria-live="polite"></p>
+            <div class="field hr-field"><label class="hr-label" for="beat-file-url">URL de entrega</label><input class="hr-input" id="beat-file-url" placeholder="Archivo final o link privado"></div>
+            <div class="field hr-field"><label class="hr-label" for="beat-stock">Stock (vacio = ilimitado)</label><input class="hr-input" id="beat-stock" type="number" min="0" step="1"></div>
+            <div class="check-grid hr-grid hr-grid-3">
+              <label class="hr-chip"><input id="beat-featured" type="checkbox"> Featured</label>
+              <label class="hr-chip"><input id="beat-active" type="checkbox" checked> Activo</label>
+              <label class="hr-chip"><input id="beat-digital" type="checkbox" checked> Digital</label>
+            </div>
+            <p id="beat-admin-error" class="form-error hr-error" role="alert"></p>
+            <div class="product-actions hr-cluster">
+              <button class="primary-button hr-btn hr-btn-primary" type="submit">Guardar beat</button>
+              <button id="beat-cancel-edit" class="secondary-button hr-btn hr-btn-outline" type="button" hidden>Cancelar</button>
+            </div>
+          </form>
+
+          <section>
+            <div id="beat-admin-products" class="admin-products beat-admin__list" aria-live="polite"></div>
+          </section>
         </div>
       </div>
     </section>

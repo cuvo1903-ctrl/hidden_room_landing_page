@@ -90,7 +90,13 @@ function renderSubNav(module) {
   if (module === "store") {
     return [
       item("/store/", "Tienda", page === "catalog" || page === "product"),
-      item("/store/beat_store/", "Beat Store", path.includes("/store/beat_store/")),
+      item("/store/beat_store/", "Beat Store", path.includes("/store/beat_store/") && hash !== "beat-admin-panel"),
+      item(
+        "/store/beat_store/#beat-admin-panel",
+        "Admin beats",
+        path.includes("/store/beat_store/") && hash === "beat-admin-panel",
+        " data-admin-nav-link hidden",
+      ),
       item("/store/cart.html", 'Carrito <span class="cart-count">0</span>', page === "cart"),
       item(
         "/store/orders.html",

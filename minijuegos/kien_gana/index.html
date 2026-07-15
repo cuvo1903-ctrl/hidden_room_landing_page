@@ -37,7 +37,9 @@
     <main id="gameView" class="hidden">
       <nav class="tabs" aria-label="Vistas del juego">
         <button class="tab active" data-tab="predict" type="button">Predicciones</button>
-        <button class="tab" data-tab="past" type="button">Octavos</button>
+        <button class="tab" data-tab="quarters" type="button">Cuartos</button>
+        <button class="tab" data-tab="semifinal" type="button">Semifinal</button>
+        <button class="tab" data-tab="final" type="button">Final</button>
         <button class="tab hidden" id="rankingTabButton" data-tab="ranking" type="button">Ranking</button>
         <button class="tab" data-tab="profile" type="button">Perfil</button>
         <button class="tab hidden" id="adminTab" data-tab="admin" type="button">Admin</button>
@@ -46,7 +48,7 @@
       <section id="predictTab" class="tab-panel active">
         <div class="section-head">
           <div>
-            <p class="eyebrow hr-eyebrow">Partidos abiertos</p>
+            <p class="eyebrow hr-eyebrow">Semifinales</p>
             <h2>Haz tu prediccion</h2>
           </div>
           <div class="section-actions">
@@ -57,17 +59,43 @@
         <div id="matchesList" class="match-grid"></div>
       </section>
 
-      <section id="pastTab" class="tab-panel">
+      <section id="quartersTab" class="tab-panel">
         <div class="section-head">
           <div>
-            <p class="eyebrow hr-eyebrow">Octavos de final</p>
-            <h2>Partidos de octavos</h2>
+            <p class="eyebrow hr-eyebrow">Cuartos de final</p>
+            <h2>Partidos de cuartos</h2>
           </div>
           <div class="section-actions">
-            <button id="pastRefreshBtn" class="hr-btn hr-btn--ghost" type="button">Actualizar</button>
+            <button class="hr-btn hr-btn--ghost" data-refresh-matches type="button">Actualizar</button>
           </div>
         </div>
-        <div id="pastMatchesList" class="match-grid"></div>
+        <div id="quarterMatchesList" class="match-grid"></div>
+      </section>
+
+      <section id="semifinalTab" class="tab-panel">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow hr-eyebrow">Semifinal</p>
+            <h2>Partidos de semifinal</h2>
+          </div>
+          <div class="section-actions">
+            <button class="hr-btn hr-btn--ghost" data-refresh-matches type="button">Actualizar</button>
+          </div>
+        </div>
+        <div id="semifinalMatchesList" class="match-grid"></div>
+      </section>
+
+      <section id="finalTab" class="tab-panel">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow hr-eyebrow">Final</p>
+            <h2>Partido final</h2>
+          </div>
+          <div class="section-actions">
+            <button class="hr-btn hr-btn--ghost" data-refresh-matches type="button">Actualizar</button>
+          </div>
+        </div>
+        <div id="finalMatchesList" class="match-grid"></div>
       </section>
 
       <section id="rankingTab" class="tab-panel">
@@ -176,6 +204,6 @@
   </template>
 
   <script src="../../site.js?v=20260704-kiengana-auth"></script>
-  <script type="module" src="./app.js?v=20260708-kiengana-octavos-flags"></script>
+  <script type="module" src="./app.js?v=20260715-kiengana-semifinales"></script>
 </body>
 </html>
