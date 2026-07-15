@@ -949,7 +949,11 @@ const EVENT_MOVEMENT_TYPES = [
 
 const EVENT_STATUS_OPTIONS = ['draft', 'active', 'closed', 'cancelled'];
 
-const ADMIN_TABLE_FETCH_SIZE = 1000;
+const ADMIN_TABLE_FETCH_SIZE = 200;
+const ADMIN_TABLE_INITIAL_ROW_LIMIT = 200;
+const ADMIN_TABLE_RENDER_LIMIT = 200;
+const USER_PICKER_RENDER_LIMIT = 120;
+const ADMIN_TABLE_REMOTE_SEARCH_MIN_CHARS = 2;
 
 const ADMIN_TABLE_SUMMARY_COLUMN_GROUPS = [
   ['type', 'movement_type', 'category', 'entity_type', 'role', 'status', 'release_mode'],
@@ -1147,15 +1151,22 @@ const TABLE_EDITOR_CONFIG = {
   },
 };
 
-async function fetchAllTableEditorRows(tableName, select, defaultSort = null) {
+async function fetchAllTableEditorRows(tableName, select, defaultSort = null, options = {}) {
   const rows = [];
+  const maxRows = Number.isFinite(options.maxRows) ? Math.max(1, Number(options.maxRows)) : Infinity;
   let from = 0;
 
-  while (true) {
+  while (rows.length < maxRows) {
+    const remaining = maxRows - rows.length;
+    const pageSize = Math.min(ADMIN_TABLE_FETCH_SIZE, remaining);
     let query = supabase
       .from(tableName)
       .select(select)
-      .range(from, from + ADMIN_TABLE_FETCH_SIZE - 1);
+      .range(from, from + pageSize - 1);
+
+    if (options.searchQuery && options.config) {
+      query = applyAdminTableRemoteSearch(query, tableName, options.config, options.searchQuery);
+    }
 
     if (defaultSort?.field) {
       query = query.order(defaultSort.field, { ascending: defaultSort.direction !== 'desc' });
@@ -1167,38 +1178,73 @@ async function fetchAllTableEditorRows(tableName, select, defaultSort = null) {
 
     rows.push(...(data ?? []));
 
-    if (!data || data.length < ADMIN_TABLE_FETCH_SIZE) break;
-    from += ADMIN_TABLE_FETCH_SIZE;
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
   }
 
   return rows;
 }
 
-async function fetchComputedMembershipDashboardRows() {
-  const [usersResult, membershipsResult, sessionsResult, transactionsResult, materialDeliveriesResult] = await Promise.all([
-    fetchAllTableEditorRows('users', 'user_id, display_name, email, username', { field: 'display_name', direction: 'asc' }),
-    fetchAllTableEditorRows('memberships', 'id, user_id, username, status, start_date, end_date, weekly_price, sessions_per_week, notes', { field: 'start_date', direction: 'asc' }),
-    fetchAllTableEditorRows('sessions', '*', { field: 'session_date', direction: 'asc' }),
-    fetchAllTableEditorRows('transactions', '*', { field: 'date', direction: 'asc' }),
-    fetchMembershipMaterialDeliveries(),
+async function fetchComputedMembershipDashboardRows(selectedUserId = '') {
+  const usersResult = await fetchAllTableEditorRows(
+    'users',
+    'user_id, display_name, email, username',
+    { field: 'display_name', direction: 'asc' },
+    {
+      maxRows: ADMIN_TABLE_INITIAL_ROW_LIMIT,
+      searchQuery: selectedUserId,
+      config: TABLE_EDITOR_CONFIG.users,
+    }
+  );
+  const users = uniqueUsers(usersResult ?? []);
+  state.data.membershipDashboardUsers = users;
+  state.data.users = users;
+
+  const requestedUserId = String(selectedUserId || '').trim();
+  const selectedUser = users.find((user) => String(user.user_id ?? '') === requestedUserId);
+  const userId = selectedUser ? requestedUserId : '';
+  if (!userId) return [];
+
+  const [membershipsResult, sessionsResult, transactionsResult, materialDeliveriesResult] = await Promise.all([
+    supabase
+      .from('memberships')
+      .select('id, user_id, username, status, start_date, end_date, weekly_price, sessions_per_week, notes')
+      .eq('user_id', userId)
+      .order('start_date', { ascending: true }),
+    supabase
+      .from('sessions')
+      .select('id, user_id, username, session_date, concept, status, type, notes, hour, sc_end, cost, promo')
+      .eq('user_id', userId)
+      .order('session_date', { ascending: true }),
+    supabase
+      .from('transactions')
+      .select('id, user_id, type, concept, service, date, amount, via, username, id_trans, notes')
+      .eq('user_id', userId)
+      .order('date', { ascending: true }),
+    fetchMembershipMaterialDeliveries(userId),
   ]);
 
-  const usersByUserId = new Map((usersResult ?? [])
+  const loadError = membershipsResult.error || sessionsResult.error || transactionsResult.error;
+  if (loadError) throw loadError;
+
+  const usersByUserId = new Map(users
     .filter((user) => user.user_id)
     .map((user) => [String(user.user_id), user]));
-  state.data.membershipDashboardUsers = usersResult ?? [];
-  state.data.users = uniqueUsers(usersResult ?? []);
 
-  return buildMembershipRows(membershipsResult, sessionsResult, transactionsResult, materialDeliveriesResult)
-    .map((row) => {
-      const user = usersByUserId.get(String(row.user_id ?? ''));
-      return {
-        ...row,
-        display_name: user?.display_name ?? row.username ?? null,
-        email: user?.email ?? null,
-        username: row.username ?? user?.username ?? null,
-      };
-    });
+  return buildMembershipRows(
+    membershipsResult.data ?? [],
+    sessionsResult.data ?? [],
+    transactionsResult.data ?? [],
+    materialDeliveriesResult ?? []
+  ).map((row) => {
+    const user = usersByUserId.get(String(row.user_id ?? ''));
+    return {
+      ...row,
+      display_name: user?.display_name ?? row.username ?? null,
+      email: user?.email ?? null,
+      username: row.username ?? user?.username ?? null,
+    };
+  });
 }
 
 async function fetchMembershipMaterialDeliveries(userId = null) {
@@ -1396,6 +1442,39 @@ function rowMatchesSearch(row, columns, query) {
     .join(' ');
 
   return normalizeSearchText(searchable).includes(normalizedQuery);
+}
+
+function adminTableRemoteSearchColumns(tableName, config) {
+  const preferred = [
+    'display_name',
+    'username',
+    'email',
+    'user_id',
+    'concept',
+    'service',
+    'notes',
+    'name',
+    'event_key',
+    'storage_path',
+    'id_trans',
+  ];
+  const allowed = new Set([...(config.lockedFields ?? []), ...(config.editableFields ?? [])]);
+  return preferred.filter((field) => allowed.has(field));
+}
+
+function applyAdminTableRemoteSearch(query, tableName, config, searchQuery) {
+  const normalized = normalizeSearchText(searchQuery);
+  if (!normalized || normalized.length < ADMIN_TABLE_REMOTE_SEARCH_MIN_CHARS || tableName === 'membership_dashboard') {
+    return query;
+  }
+
+  const columns = adminTableRemoteSearchColumns(tableName, config);
+  if (!columns.length) return query;
+
+  const escaped = String(searchQuery).replace(/[%*]/g, '').trim();
+  if (!escaped) return query;
+
+  return query.or(columns.map((field) => `${field}.ilike.%${escaped}%`).join(','));
 }
 
 function renderSortableHeader(tableId, field, label, activeSort) {
@@ -3518,7 +3597,12 @@ function renderUserPicker(name, label, value = '', options = {}) {
     ? (options.displayValue?.(selected) ?? userLabel(selected.user_id))
     : '';
   const inputId = `user-picker-${escapeAttr(name)}-${Math.random().toString(36).slice(2, 8)}`;
-  const optionButtons = users.map((user) => {
+  const selectedUser = selected ? [selected] : [];
+  const menuUsers = uniqueUsers([...selectedUser, ...users]).slice(0, options.limit ?? USER_PICKER_RENDER_LIMIT);
+  const clippedNotice = users.length > menuUsers.length
+    ? `<div class="db-user-picker__empty">Mostrando ${menuUsers.length} usuarios. Escribe mas especifico si no ves a la persona.</div>`
+    : '';
+  const optionButtons = menuUsers.map((user) => {
     const optionValue = String(user?.[valueField] ?? '');
     const optionDisplay = options.displayValue?.(user) ?? userLabel(user.user_id);
     const searchText = [
@@ -3548,6 +3632,7 @@ function renderUserPicker(name, label, value = '', options = {}) {
       <input type="hidden" name="${escapeHTML(name)}" value="${escapeAttr(value)}" />
       <div class="db-user-picker__menu" hidden>
         ${optionButtons}
+        ${clippedNotice}
         <div class="db-user-picker__empty" data-user-picker-empty hidden>${escapeHTML(options.emptyLabel || 'Sin usuarios encontrados.')}</div>
       </div>
     </div>
@@ -7169,11 +7254,16 @@ async function renderAdminTableEditor() {
   const tableName = state.data.adminTableName || setAdminTableName(readStoredAdminTableName());
   const config = TABLE_EDITOR_CONFIG[tableName] || TABLE_EDITOR_CONFIG.users;
   let data = [];
+  const searchQuery = adminTableSearchFor(tableName);
 
   try {
     data = tableName === 'membership_dashboard'
-      ? await fetchComputedMembershipDashboardRows()
-      : await fetchAllTableEditorRows(tableName, config.select, config.defaultSort);
+      ? await fetchComputedMembershipDashboardRows(searchQuery)
+      : await fetchAllTableEditorRows(tableName, config.select, config.defaultSort, {
+        maxRows: ADMIN_TABLE_INITIAL_ROW_LIMIT,
+        searchQuery,
+        config,
+      });
   } catch (error) {
     console.error('[HR] renderAdminTableEditor:', error);
     if (isSessionStaleError(error)) markSessionStale(error.message || 'admin table fetch');
@@ -7200,7 +7290,6 @@ async function renderAdminTableEditor() {
   const activeSort = getTableSort(tableId, defaultSort.field, defaultSort.direction);
   const sortField = visibleColumns.includes(activeSort.field) ? activeSort.field : '';
   const sortedData = sortRowsByColumn(data ?? [], sortField, activeSort.direction);
-  const searchQuery = adminTableSearchFor(tableName);
   const visibleData = sortedData.filter((row) => rowMatchesSearch(row, columns, searchQuery));
   const membershipDashboardContext = tableName === 'membership_dashboard'
     ? renderAdminMembershipDashboardContext(visibleData, searchQuery)
@@ -7213,16 +7302,17 @@ async function renderAdminTableEditor() {
       <label class="db-field db-field--compact db-field--search">
         <span>Buscar</span>
         <input data-table-search data-admin-table-name="${escapeAttr(tableName)}" data-table-target="js-admin-table-body" data-table-count="js-admin-table-count" placeholder="Buscar por nombre, email, user_id..." value="${escapeAttr(searchQuery)}" />
-        <small id="js-admin-table-count" class="db-field__hint">${searchQuery ? `${visibleData.length} resultado${visibleData.length === 1 ? '' : 's'}` : `${visibleData.length} filas visibles`}</small>
+        <small id="js-admin-table-count" class="db-field__hint">${searchQuery ? `${visibleData.length} resultado${visibleData.length === 1 ? '' : 's'}` : `${visibleData.length} filas cargadas`}</small>
       </label>
     `;
 
   const suspiciousAdminEmpty = hasRole('admin') && tableName === 'users' && !searchQuery && (data ?? []).length === 0;
   if (suspiciousAdminEmpty) markSessionStale('admin users table returned 0 rows');
 
-  const rows = sortedData.length
-    ? sortedData.map((row, index) => renderAdminTableEditorRow(tableName, config, row, index, {
-      hidden: Boolean(searchQuery) && !rowMatchesSearch(row, columns, searchQuery),
+  const rowsToRender = (searchQuery ? visibleData : sortedData).slice(0, ADMIN_TABLE_RENDER_LIMIT);
+  const rows = rowsToRender.length
+    ? rowsToRender.map((row, index) => renderAdminTableEditorRow(tableName, config, row, index, {
+      hidden: false,
       visibleColumns: displayedColumns,
     })).join('')
     : `<tr class="db-table__empty-row hr-table-empty"><td colspan="99" class="db-empty hr-table-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin filas disponibles.'}</td></tr>`;
@@ -8400,6 +8490,43 @@ function membershipIsActiveAndCurrent(rows = []) {
   return latest?.estado_operativo === 'ACTIVE' && !rows.some(rowHasOpenMembershipDebt);
 }
 
+function membershipDeliveryDelayCutoffs(rows = []) {
+  return rows
+    .filter((row) => row.estado === 'ATRASADO' || row.saldo_tipo === 'adeudo')
+    .map((row) => ({
+      week: Number(row.semana ?? 0),
+      cutoff: formatDateOnly(row.week_end),
+      isOpen: row.saldo_tipo === 'adeudo',
+    }))
+    .filter((item) => Number.isFinite(item.week) && item.week > 0 && item.cutoff && item.cutoff !== '-')
+    .sort((a, b) => compareDateOnly(a.cutoff, b.cutoff) || a.week - b.week);
+}
+
+function resolveMembershipEstimatedDelivery(deliveryBase, cutoffs = [], options = {}) {
+  let estimatedDelivery = deliveryBase;
+  const appliedCutoffs = [];
+  const afterDate = options.afterDate ? formatDateOnly(options.afterDate) : null;
+
+  if (!estimatedDelivery) return { estimatedDelivery: null, appliedCutoffs };
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const cutoff of cutoffs) {
+      if (afterDate && compareDateOnly(cutoff.cutoff, afterDate) <= 0) continue;
+      if (appliedCutoffs.some((item) => `${item.week}|${item.cutoff}` === `${cutoff.week}|${cutoff.cutoff}`)) continue;
+      if (compareDateOnly(cutoff.cutoff, estimatedDelivery) < 0) {
+        appliedCutoffs.push(cutoff);
+        estimatedDelivery = addDaysToDateOnly(estimatedDelivery, 7);
+        changed = true;
+        break;
+      }
+    }
+  }
+
+  return { estimatedDelivery, appliedCutoffs };
+}
+
 function membershipMaterialDeliveries(rows = []) {
   const sortedRows = rows
     .slice()
@@ -8408,6 +8535,7 @@ function membershipMaterialDeliveries(rows = []) {
   const today = todayDateInputValue();
   const latest = sortedRows[sortedRows.length - 1] ?? {};
   const membershipActive = latest.estado_operativo === 'ACTIVE';
+  const allDelayCutoffs = membershipDeliveryDelayCutoffs(sortedRows);
 
   sortedRows.forEach((row) => {
     const weekNumber = Number(row.semana ?? 0);
@@ -8426,7 +8554,6 @@ function membershipMaterialDeliveries(rows = []) {
     cycles.set(cycleNumber, current);
   });
 
-  let accumulatedLateWeeks = 0;
   let accumulatedOpenOverdueWeeks = 0;
 
   return [...cycles.values()]
@@ -8438,13 +8565,14 @@ function membershipMaterialDeliveries(rows = []) {
       const periodStart = rowList[0]?.fecha_esperada ?? null;
       const periodEnd = periodStart ? addDaysToDateOnly(periodStart, 27) : null;
       const deliveryBase = periodEnd ? addDaysToDateOnly(periodEnd, 28) : null;
-      const lateWeeks = rowList.filter((row) => row.estado === 'ATRASADO' && row.fecha_de_saldo).length;
-      const overdueWeeks = rowList.filter((row) => row.saldo_tipo === 'adeudo').length;
-      accumulatedLateWeeks += lateWeeks;
+      const deliverySchedule = resolveMembershipEstimatedDelivery(deliveryBase, allDelayCutoffs);
+      const delayCutoffs = deliverySchedule.appliedCutoffs;
+      const lateWeeks = delayCutoffs.filter((item) => !item.isOpen).length;
+      const overdueWeeks = delayCutoffs.filter((item) => item.isOpen).length;
       accumulatedOpenOverdueWeeks += overdueWeeks;
-      const deliveryDelayWeeks = accumulatedLateWeeks;
       const currentPendingWeeks = rowList.filter((row) => row.saldo_tipo === 'pendiente').length;
-      const estimatedDelivery = deliveryBase ? addDaysToDateOnly(deliveryBase, deliveryDelayWeeks * 7) : null;
+      const estimatedDelivery = deliverySchedule.estimatedDelivery;
+      const deliveryDelayWeeks = deliverySchedule.appliedCutoffs.length;
       const deliveredRow = rowList.find((row) => row.material_delivered_at);
       const deliveredAt = deliveredRow?.material_delivered_at ?? null;
       const deliveryNotes = deliveredRow?.material_delivery_notes ?? null;
@@ -11569,7 +11697,14 @@ function attachMainDelegation() {
   main?.addEventListener('input', (e) => {
     const tableSearch = e.target.closest('[data-table-search]');
     if (tableSearch) {
-      filterTableRows(tableSearch);
+      const tableName = tableSearch.dataset.adminTableName;
+      if (tableName && state.activeSection === 'admin-table-editor') {
+        setAdminTableSearch(tableName, tableSearch.value.trim());
+        window.clearTimeout(filterTableRows.remoteTimer);
+        filterTableRows.remoteTimer = window.setTimeout(() => navigate('admin-table-editor'), 280);
+      } else {
+        filterTableRows(tableSearch);
+      }
       return;
     }
 
@@ -11587,6 +11722,13 @@ function attachMainDelegation() {
 
     const search = e.target.closest('[data-user-search]');
     if (!search) return;
+    const picker = search.closest('.db-user-picker');
+    if (picker?.dataset.membershipUserPicker === 'true') {
+      setAdminTableSearch('membership_dashboard', search.value.trim());
+      window.clearTimeout(filterTableRows.remoteUserTimer);
+      filterTableRows.remoteUserTimer = window.setTimeout(() => navigate('admin-table-editor'), 280);
+      return;
+    }
     filterUserPicker(search, { clearSelection: true });
   });
 
