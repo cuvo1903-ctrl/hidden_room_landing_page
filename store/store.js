@@ -1,8 +1,10 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+import { PaymentForm } from "./payment-form.js";
 
 export const SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 export const SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
 export const CART_STORAGE_KEY = "hidden_room_store_cart";
+export const MP_PUBLIC_KEY = window.VITE_MP_PUBLIC_KEY || "";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -305,8 +307,11 @@ async function initializeCheckout() {
   const errorElement = document.getElementById("checkout-error");
   const button = document.getElementById("checkout-button");
   const accountNotice = document.getElementById("checkout-account-notice");
+  const paymentPanel = document.getElementById("payment-panel");
+  const paymentStatus = document.getElementById("payment-status");
 
   let items = [];
+  let paymentForm = null;
   try {
     items = await validatedCart();
   } catch (error) {
@@ -346,17 +351,67 @@ async function initializeCheckout() {
       }
 
       button.disabled = true;
-      button.textContent = "Conectando con Stripe…";
-      const checkoutUrl = await createStripeCheckout(customerData, items);
-      window.location.assign(checkoutUrl);
+      button.textContent = "Preparando pago...";
+      paymentPanel.hidden = false;
+      paymentStatus.textContent = "Carga el formulario seguro para ingresar tu tarjeta.";
+
+      const total = items.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0);
+      paymentForm?.unmount();
+      paymentForm = new PaymentForm({
+        publicKey: MP_PUBLIC_KEY,
+        amount: Math.round(total * 100) / 100,
+        containerId: "cardPaymentBrick_container",
+        onReady: () => {
+          paymentStatus.textContent = "Formulario listo.";
+        },
+        onError: (error) => {
+          console.error("Mercado Pago Brick error", error);
+          paymentStatus.textContent = "Mercado Pago no pudo cargar el formulario.";
+        },
+        onSubmit: async (cardData) => {
+          paymentStatus.textContent = "Procesando pago...";
+          const result = await createMercadoPagoOrder(customerData, items, cardData);
+          if (["approved", "paid", "authorized"].includes(result.status)) {
+            clearCart();
+            window.location.assign(`success.html?provider=mercadopago&order_id=${encodeURIComponent(result.order_id)}`);
+            return;
+          }
+          paymentStatus.textContent = `Mercado Pago respondio: ${result.status || "pendiente"}.`;
+          throw new Error("El pago no fue aprobado.");
+        },
+      });
+      await paymentForm.mount();
     } catch (error) {
       errorElement.textContent = error.message || "No se pudo iniciar el pago.";
       button.disabled = false;
-      button.textContent = "Finalizar compra";
+      button.textContent = "Continuar al pago";
     }
   });
 }
 
+
+export async function createMercadoPagoOrder(customerData, cartItems, cardData) {
+  const { data } = await supabase.auth.getSession();
+  const accessToken = data.session?.access_token ?? SUPABASE_ANON_KEY;
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/create-order`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      apikey: SUPABASE_ANON_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      provider: "mercadopago",
+      customer: customerData,
+      items: cartItems.map((item) => ({ id: item.id, quantity: item.quantity })),
+      card: cardData,
+    }),
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Mercado Pago no esta disponible.");
+  return result;
+}
 export async function createStripeCheckout(customerData, cartItems) {
   const { data } = await supabase.auth.getSession();
   const accessToken = data.session?.access_token ?? SUPABASE_ANON_KEY;
@@ -383,7 +438,9 @@ export async function createStripeCheckout(customerData, cartItems) {
 
 function initializeSuccess() {
   clearCart();
-  const sessionId = new URLSearchParams(window.location.search).get("session_id");
+  const query = new URLSearchParams(window.location.search);
+  const sessionId = query.get("session_id");
+  const provider = query.get("provider");
   const detail = document.getElementById("success-detail");
   const accountAction = document.getElementById("success-account-action");
 
@@ -488,6 +545,10 @@ export function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-// Futuras pasarelas, aún no implementadas:
-// TODO: createMercadoPagoCheckout(customerData, cartItems)
+// Futuras pasarelas:
 // TODO: createPayPalCheckout(customerData, cartItems)
+
+
+
+
+

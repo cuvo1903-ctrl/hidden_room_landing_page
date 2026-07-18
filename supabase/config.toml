@@ -21,6 +21,17 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/stripe-webhook/index.ts"
 
+[functions.create-order]
+enabled = true
+# Checkout es publico; la funcion valida catalogo, cantidades y precios.
+verify_jwt = false
+entrypoint = "./functions/create-order/index.ts"
+
+[functions.mercadopago-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/mercadopago-webhook/index.ts"
+
 [functions.server-status]
 enabled = true
 verify_jwt = false
@@ -35,3 +46,4 @@ entrypoint = "./functions/ig-list-media/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/ig-analyze-comments/index.ts"
+

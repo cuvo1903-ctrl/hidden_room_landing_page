@@ -112,3 +112,342 @@ body.beat-admin-mode .beat-admin {
   padding-top: calc(var(--hr-nav-height, 78px) + 32px);
 }
 
+
+/* Beat Store polish */
+.beat-store-page .beat-hero {
+  min-height: auto;
+  padding-block: clamp(44px, 8vw, 92px) clamp(30px, 5vw, 64px);
+}
+
+.beat-store-page .catalog-section {
+  padding-block: clamp(34px, 6vw, 84px);
+}
+
+.beat-store-page .section-heading {
+  margin-bottom: clamp(18px, 4vw, 34px);
+}
+
+.beat-hero__grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.beat-hero h1 {
+  letter-spacing: 0;
+}
+
+.beat-tools {
+  grid-template-columns: minmax(220px, 1fr) minmax(150px, .26fr) minmax(170px, .3fr);
+  align-items: end;
+}
+
+.beat-card {
+  min-height: 0;
+  padding: clamp(16px, 2.6vw, 28px);
+  display: grid;
+  gap: 14px;
+}
+
+.beat-card__wave {
+  aspect-ratio: 16 / 6;
+  margin: 0;
+  padding: clamp(10px, 2vw, 16px);
+}
+
+.beat-card__body {
+  display: grid;
+  gap: 8px;
+}
+
+.beat-card h3 {
+  min-height: 0;
+  margin: 0;
+  font-size: clamp(16px, 2vw, 20px);
+}
+
+.beat-card__producer {
+  margin: 0;
+}
+
+.beat-card__music {
+  margin: 2px 0 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.beat-card__music div {
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(240, 236, 228, .14);
+}
+
+.beat-card__music dt {
+  color: var(--hr-muted);
+  font-size: 9px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.beat-card__music dd {
+  margin: 4px 0 0;
+  color: var(--white);
+  font: 700 12px/1.2 var(--hr-font-display);
+  text-transform: uppercase;
+}
+
+.beat-card__music--empty {
+  margin: 0;
+  color: var(--hr-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.beat-card__actions {
+  display: grid;
+  grid-template-columns: minmax(104px, .8fr) auto minmax(124px, .95fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.beat-preview-button {
+  min-height: 42px;
+  border: 1px solid var(--hr-border-strong, var(--hr-border));
+  background: rgba(240, 236, 228, .04);
+  color: var(--white);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: 700 11px/1 var(--hr-font-display);
+  text-transform: uppercase;
+}
+
+.beat-preview-button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.beat-card .product-price {
+  margin: 0;
+  white-space: nowrap;
+  font-size: clamp(16px, 2vw, 22px);
+}
+
+.beat-card .primary-button {
+  min-height: 42px;
+  padding-inline: 12px;
+  text-align: center;
+}
+
+.beat-admin__music-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.beat-store-footer {
+  padding-block: 16px;
+}
+
+@media (max-width: 880px) {
+  .beat-tools,
+  .beat-admin__music-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .beat-store-page main {
+    padding-bottom: 88px;
+  }
+
+  .beat-store-page .beat-hero {
+    padding-block: 30px 22px;
+  }
+
+  .beat-hero h1 {
+    font-size: clamp(42px, 14vw, 58px);
+    line-height: .96;
+  }
+
+  .beat-hero__actions {
+    margin-top: 2px;
+  }
+
+  .beat-store-page .catalog-section {
+    padding-block: 24px 36px;
+  }
+
+  .beat-store-page .hr-stack-xl {
+    --hr-stack-gap: 18px;
+  }
+
+  .beat-tools {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .beat-card {
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .beat-card__wave {
+    aspect-ratio: 16 / 5;
+  }
+
+  .beat-card__actions {
+    grid-template-columns: 1fr auto;
+  }
+
+  .beat-card__actions .primary-button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .beat-store-footer {
+    padding: 14px 18px;
+    flex-direction: row;
+    align-items: center;
+  }
+}
+
+/* Beat card cover layout */
+.beat-card {
+  grid-template-columns: clamp(96px, 11vw, 150px) minmax(0, 1fr);
+  align-items: stretch;
+  gap: clamp(14px, 2vw, 22px);
+}
+
+.beat-card__wave {
+  display: none;
+}
+
+.beat-card__cover {
+  width: 100%;
+  aspect-ratio: 1;
+  align-self: start;
+  border: 1px solid var(--hr-border);
+  background: linear-gradient(135deg, rgba(219, 1, 0, .2), rgba(0, 194, 198, .08)), #090909;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.beat-card__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.beat-card__cover--empty span {
+  color: rgba(240, 236, 228, .22);
+  font: 900 clamp(28px, 5vw, 54px)/1 var(--hr-font-display);
+  text-transform: uppercase;
+}
+
+.beat-card__body,
+.beat-card__actions {
+  grid-column: 2;
+}
+
+.beat-card__body {
+  align-self: start;
+}
+
+.beat-card__actions {
+  align-self: end;
+}
+
+.beat-admin-row__music {
+  margin-top: 8px !important;
+  color: var(--teal) !important;
+}
+
+@media (max-width: 620px) {
+  .beat-card {
+    grid-template-columns: 92px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .beat-card__cover {
+    position: sticky;
+    top: 0;
+  }
+
+  .beat-card__actions {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Cover play overlay */
+.beat-card__cover {
+  position: relative;
+  cursor: default;
+}
+
+.beat-card__cover[data-play-beat] {
+  cursor: pointer;
+}
+
+.beat-card__cover-play {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: clamp(42px, 6vw, 62px);
+  height: clamp(42px, 6vw, 62px);
+  border: 1px solid rgba(240, 236, 228, .34);
+  background: rgba(0, 0, 0, .46);
+  color: rgba(255, 255, 255, .82);
+  display: grid;
+  place-items: center;
+  padding-left: 4px;
+  font: 900 clamp(17px, 2.5vw, 25px)/1 var(--hr-font-display);
+  backdrop-filter: blur(8px);
+  transition: transform .18s ease, background .18s ease, color .18s ease;
+}
+
+.beat-card__cover[data-play-beat]:hover .beat-card__cover-play,
+.beat-card__cover[data-play-beat]:focus-visible .beat-card__cover-play {
+  transform: scale(1.06);
+  background: rgba(219, 1, 0, .64);
+  color: var(--white);
+}
+
+.beat-card__actions {
+  grid-template-columns: auto minmax(124px, .95fr);
+  justify-content: end;
+}
+
+@media (max-width: 620px) {
+  .beat-card__actions {
+    grid-template-columns: auto 1fr;
+  }
+
+  .beat-card__actions .primary-button {
+    grid-column: auto;
+  }
+}
+
+/* Bare play/pause overlay */
+.beat-card__cover-play {
+  width: auto;
+  height: auto;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, .78);
+  padding: 0;
+  font-size: clamp(34px, 6vw, 58px);
+  line-height: 1;
+  text-shadow: 0 3px 18px rgba(0, 0, 0, .85);
+  backdrop-filter: none;
+}
+
+.beat-card__cover[data-play-beat]:hover .beat-card__cover-play,
+.beat-card__cover[data-play-beat]:focus-visible .beat-card__cover-play,
+.beat-card__cover.is-playing .beat-card__cover-play {
+  transform: scale(1.04);
+  background: transparent;
+  color: var(--white);
+}

@@ -1,5 +1,5 @@
-const SITE_STATUS = "BETA Sitio en construcción";
-const SITE_VERSION = "V. 2.1.1";
+﻿const SITE_STATUS = "BETA Sitio en construcciÃ³n";
+const SITE_VERSION = "V. 2.2.0";
 const GA_MEASUREMENT_ID = "G-VNHC1Z3FXZ";
 const HR_SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 const HR_SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
@@ -78,7 +78,7 @@ function renderSubNav(module) {
   if (module === "media") {
     return [
       item("/media/", "Publicaciones", !path.includes("/admin")),
-      item("/media/#media-filters", "Categorías"),
+      item("/media/#media-filters", "CategorÃ­as"),
       item(
         "/media/admin.html",
         "CMS",
@@ -89,6 +89,16 @@ function renderSubNav(module) {
   }
 
   if (module === "store") {
+    const isBeatStore = path.startsWith("/store/beat_store/");
+    if (isBeatStore) {
+      const isBeatAdmin = searchParams.get("view") === "admin" || searchParams.get("admin") === "1";
+      return [
+        item("/store/beat_store/#beat-grid", "Explorar beats", !isBeatAdmin),
+        item("/store/cart.html", 'Carrito <span class="cart-count">0</span>', page === "cart"),
+        item("/store/beat_store/?view=admin", "Admin beats", isBeatAdmin, " data-admin-nav-link hidden data-beat-admin-entry"),
+      ].join("");
+    }
+
     const isAdminStore = path.endsWith("/store/admin.html");
     return [
       item("/store/", "Tienda", (page === "catalog" || page === "product") && !isAdminStore),
@@ -107,11 +117,10 @@ function renderSubNav(module) {
       ),
     ].join("");
   }
-
   if (module === "media" && document.body.classList.contains("media-admin")) {
     return `
       <a class="hr-nav__action" href="/media/" target="_blank" rel="noopener">Ver Media</a>
-      <button class="hr-nav__action" id="logout-button" type="button">Cerrar sesión</button>
+      <button class="hr-nav__action" id="logout-button" type="button">Cerrar sesiÃ³n</button>
     `;
   }
 
@@ -149,16 +158,16 @@ function renderNavActions(module) {
       </button>
       <button class="hr-nav__account hr-nav__account--button" id="js-user-menu-toggle"
         aria-haspopup="true" aria-expanded="false"
-        aria-controls="js-user-menu js-sidebar" aria-label="Abrir menú">
+        aria-controls="js-user-menu js-sidebar" aria-label="Abrir menÃº">
         <span class="hr-nav__avatar" id="js-user-avatar" aria-hidden="true"></span>
-        <span class="hr-nav__hello" id="js-user-display-name">—</span>
+        <span class="hr-nav__hello" id="js-user-display-name">â€”</span>
       </button>
-      <nav class="db-user-menu" id="js-user-menu" aria-label="Menú de usuario" hidden>
+      <nav class="db-user-menu" id="js-user-menu" aria-label="MenÃº de usuario" hidden>
         <ul class="db-user-menu__list" role="list">
           <li><a class="db-user-menu__item" href="/">Volver al sitio</a></li>
           <li><button class="db-user-menu__item" data-action="profile">Perfil</button></li>
           <li><button class="db-user-menu__item" data-action="settings">Ajustes</button></li>
-          <li><button class="db-user-menu__item db-user-menu__item--danger" data-action="logout">Cerrar sesión</button></li>
+          <li><button class="db-user-menu__item db-user-menu__item--danger" data-action="logout">Cerrar sesiÃ³n</button></li>
         </ul>
       </nav>
     `;
@@ -201,18 +210,18 @@ function renderGlobalDrawer(activeModule) {
 
   return `
     <button class="hr-global-drawer__backdrop" type="button"
-      data-global-drawer-close aria-label="Cerrar menú" hidden></button>
+      data-global-drawer-close aria-label="Cerrar menÃº" hidden></button>
     <aside class="hr-global-drawer" id="hr-global-drawer"
-      aria-label="Menú principal" aria-hidden="true" hidden>
+      aria-label="MenÃº principal" aria-hidden="true" hidden>
       <header class="hr-global-drawer__header">
         <a class="hr-global-drawer__brand" href="/" aria-label="Hidden Room, inicio">
           <img src="/assets/img/white_logo.webp" alt="Hidden Room">
         </a>
         <button class="hr-global-drawer__close" type="button"
-          data-global-drawer-close aria-label="Cerrar menú">×</button>
+          data-global-drawer-close aria-label="Cerrar menÃº">Ã—</button>
       </header>
       <p class="hr-global-drawer__label">Ecosistema</p>
-      <nav class="hr-global-drawer__links" aria-label="Navegación móvil">
+      <nav class="hr-global-drawer__links" aria-label="NavegaciÃ³n mÃ³vil">
         ${ECOSYSTEM_LINKS.map(([key, href, label, adminOnly]) => `
           <a href="${href}"${adminOnly ? ' data-admin-nav-link hidden' : ""}${(key === activeModule && !(activeModule === "store" && window.location.pathname.startsWith("/store/beat_store/"))) || (key === "beat-store" && window.location.pathname.startsWith("/store/beat_store/")) ? ' aria-current="page"' : ""}>
             <span>${label}</span>
@@ -432,7 +441,7 @@ function renderGlobalNotifications(items) {
     ? items.map((item) => `
         <li class="hr-notice hr-notice--${escapeNavText(item.type || "info")} hr-global-notifications__item${item.read ? " is-read" : ""}">
           <span class="hr-notice__dot hr-global-notifications__dot" aria-hidden="true"></span>
-          <span class="hr-notice__message hr-global-notifications__message">${escapeNavText(item.message || "Notificación")}</span>
+          <span class="hr-notice__message hr-global-notifications__message">${escapeNavText(item.message || "NotificaciÃ³n")}</span>
           <time class="hr-notice__time">${escapeNavText(globalNotificationTime(item.created_at))}</time>
         </li>
       `).join("")
@@ -537,7 +546,7 @@ async function hydrateGlobalSession() {
     renderGlobalNotifications(notifications);
     showGlobalInstagramUsernamePrompt(profile, user, supabase);
   } catch (error) {
-    console.info("[HR] No fue posible hidratar la sesión global:", error?.message || error);
+    console.info("[HR] No fue posible hidratar la sesiÃ³n global:", error?.message || error);
   }
 }
 
@@ -622,6 +631,13 @@ function toggleGlobalDrawer(forceOpen) {
 }
 
 const HR_BEAT_PLAYER_STORAGE_KEY = "hr_global_beat_player_clean";
+const HR_WAVESURFER_URL = "/assets/vendor/wavesurfer.esm.js";
+let hrWaveSurferModulePromise = null;
+let hrWaveSurfer = null;
+let hrWaveSurferSrc = "";
+let hrWaveSurferReady = false;
+let hrWaveSurferFailed = false;
+let hrCurrentBeatDetail = null;
 
 function shouldRenderGlobalBeatPlayer() {
   const module = document.body.dataset.hrContext || "home";
@@ -636,23 +652,80 @@ function renderGlobalBeatPlayer() {
   if (!shouldRenderGlobalBeatPlayer()) return "";
   document.body.classList.add("hr-has-beat-player");
   return `
-    <aside class="hr-beat-player" id="hr-beat-player" aria-label="Reproductor Beat Store">
+    <aside class="hr-beat-player" id="hr-beat-player" aria-label="Reproductor Beat Store" data-state="idle">
+      <button class="hr-beat-player__art" id="beat-player-art" type="button" data-beat-player-toggle aria-label="Reproducir preview" aria-pressed="false"><span>HR</span><span class="hr-beat-player__art-icon" aria-hidden="true">&#9658;</span></button>
       <div class="hr-beat-player__meta">
         <strong id="player-title">Selecciona un beat</strong>
         <span id="player-detail"></span>
       </div>
-      <audio id="beat-audio" controls controlsList="nodownload noplaybackrate" preload="none"></audio>
+      <button class="hr-beat-player__more" type="button" data-beat-player-more aria-label="Opciones del reproductor">...</button>
+      <div class="hr-beat-player__controls">
+        <div class="hr-beat-player__wave-wrap">
+          <div class="hr-beat-player__wave" id="beat-player-waveform" role="slider" aria-label="Progreso del preview" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-valuetext="0:00 de 0:00" tabindex="0"></div>
+          <input class="hr-beat-player__seek hr-beat-player__seek--fallback" id="beat-player-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Progreso del preview" disabled hidden>
+        </div>
+        <span class="hr-beat-player__time" id="beat-player-time">0:00 / 0:00</span>
+        <button class="hr-beat-player__mute" type="button" data-beat-player-mute aria-label="Silenciar preview" aria-pressed="false">VOL</button>
+        <input class="hr-beat-player__volume" id="beat-player-volume" type="range" min="0" max="1" value="1" step="0.01" aria-label="Volumen del preview">
+      </div>
+      <audio id="beat-audio" preload="none"></audio>
     </aside>
   `;
 }
 
 function hydrateGlobalBeatPlayer() {
   const player = document.getElementById("hr-beat-player");
-  const audio = document.getElementById("beat-audio");
-  if (!player || !audio) return;
+  const fallbackAudio = document.getElementById("beat-audio");
+  if (!player || !fallbackAudio) return;
 
-  audio.setAttribute("controlsList", "nodownload noplaybackrate");
-  audio.addEventListener("contextmenu", (event) => event.preventDefault());
+  const toggle = player.querySelector("[data-beat-player-toggle]");
+  const seek = document.getElementById("beat-player-seek");
+  const time = document.getElementById("beat-player-time");
+  const mute = player.querySelector("[data-beat-player-mute]");
+  const volume = document.getElementById("beat-player-volume");
+  const waveform = document.getElementById("beat-player-waveform");
+
+  fallbackAudio.removeAttribute("controls");
+  fallbackAudio.setAttribute("controlsList", "nodownload noplaybackrate");
+  fallbackAudio.addEventListener("contextmenu", (event) => event.preventDefault());
+
+  const sync = () => syncGlobalBeatPlayerControls(toggle, seek, time, mute, volume, waveform);
+  toggle?.addEventListener("click", () => {
+    if (hrWaveSurfer && hrWaveSurferSrc) {
+      hrWaveSurfer.playPause();
+      return;
+    }
+    if (!fallbackAudio.src) return;
+    if (fallbackAudio.paused) fallbackAudio.play().catch(() => {});
+    else fallbackAudio.pause();
+  });
+  seek?.addEventListener("input", () => {
+    if (!Number.isFinite(fallbackAudio.duration) || fallbackAudio.duration <= 0) return;
+    fallbackAudio.currentTime = (Number(seek.value) / 1000) * fallbackAudio.duration;
+    sync();
+  });
+  waveform?.addEventListener("keydown", (event) => {
+    if (!hrWaveSurfer || !hrWaveSurferReady) return;
+    const duration = hrWaveSurfer.getDuration() || 0;
+    if (!duration) return;
+    const step = event.key === "ArrowLeft" ? -5 : event.key === "ArrowRight" ? 5 : 0;
+    if (!step) return;
+    event.preventDefault();
+    const next = Math.max(0, Math.min(duration, hrWaveSurfer.getCurrentTime() + step));
+    hrWaveSurfer.seekTo(next / duration);
+  });
+  mute?.addEventListener("click", () => {
+    const muted = !getBeatPlayerMuted();
+    setBeatPlayerMuted(muted);
+    sync();
+    emitGlobalBeatPlayerState();
+  });
+  volume?.addEventListener("input", () => {
+    const next = Math.max(0, Math.min(1, Number(volume.value) || 0));
+    setBeatPlayerVolume(next);
+    setBeatPlayerMuted(next === 0);
+    sync();
+  });
 
   try {
     sessionStorage.removeItem("hr_global_beat_player");
@@ -662,9 +735,72 @@ function hydrateGlobalBeatPlayer() {
     sessionStorage.removeItem(HR_BEAT_PLAYER_STORAGE_KEY);
   }
 
-  audio.addEventListener("timeupdate", persistGlobalBeatPlayerState);
-  audio.addEventListener("pause", persistGlobalBeatPlayerState);
-  audio.addEventListener("play", persistGlobalBeatPlayerState);
+  ["loadedmetadata", "durationchange", "timeupdate", "pause", "play", "waiting", "canplay", "ended"].forEach((eventName) => {
+    fallbackAudio.addEventListener(eventName, () => {
+      if (hrWaveSurfer) return;
+      if (eventName === "waiting") player.dataset.state = "loading";
+      if (eventName === "canplay") player.dataset.state = fallbackAudio.paused ? "paused" : "playing";
+      if (eventName === "ended") {
+        fallbackAudio.currentTime = 0;
+        player.dataset.state = "ended";
+      }
+      sync();
+      persistGlobalBeatPlayerState();
+      emitGlobalBeatPlayerState();
+    });
+  });
+
+  const resize = () => document.documentElement.style.setProperty("--hr-beat-player-offset", `${Math.ceil(player.getBoundingClientRect().height + 32)}px`);
+  resize();
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(player);
+  window.addEventListener("resize", resize);
+  sync();
+  emitGlobalBeatPlayerState();
+}
+function syncGlobalBeatPlayerControls(toggle, seek, time, mute, volume, waveform) {
+  const fallbackAudio = document.getElementById("beat-audio");
+  const player = document.getElementById("hr-beat-player");
+  const duration = getBeatPlayerDuration();
+  const current = getBeatPlayerCurrentTime();
+  const isPlaying = isBeatPlayerPlaying();
+
+  if (player && player.dataset.state !== "loading" && player.dataset.state !== "ended") {
+    player.dataset.state = getBeatPlayerSrc() ? (isPlaying ? "playing" : "paused") : "idle";
+  }
+  if (toggle) {
+    const icon = toggle.querySelector(".hr-beat-player__art-icon");
+    if (icon) icon.innerHTML = isPlaying ? "&#10074;&#10074;" : "&#9658;";
+    toggle.setAttribute("aria-label", isPlaying ? "Pausar preview" : "Reproducir preview");
+    toggle.setAttribute("aria-pressed", String(isPlaying));
+  }
+  if (seek) {
+    seek.value = duration > 0 ? String(Math.round((current / duration) * 1000)) : "0";
+    seek.disabled = duration <= 0;
+    seek.style.setProperty("--hr-progress", `${duration > 0 ? (current / duration) * 100 : 0}%`);
+  }
+  if (waveform) {
+    waveform.setAttribute("aria-valuemax", String(Math.round(duration)));
+    waveform.setAttribute("aria-valuenow", String(Math.round(current)));
+    waveform.setAttribute("aria-valuetext", `${formatGlobalBeatTime(current)} de ${formatGlobalBeatTime(duration)}`);
+  }
+  if (time) time.textContent = `${formatGlobalBeatTime(current)} / ${formatGlobalBeatTime(duration)}`;
+  if (mute) {
+    mute.textContent = getBeatPlayerMuted() ? "MUTE" : "VOL";
+    mute.setAttribute("aria-pressed", String(getBeatPlayerMuted()));
+  }
+  if (volume && document.activeElement !== volume) volume.value = String(getBeatPlayerMuted() ? 0 : getBeatPlayerVolume());
+}
+function formatGlobalBeatTime(value) {
+  const seconds = Math.max(0, Math.floor(Number(value) || 0));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function emitGlobalBeatPlayerState() {
+  window.HiddenRoomBeatPlayer = {
+    src: getBeatPlayerSrc(),
+    isPlaying: isBeatPlayerPlaying(),
+  };
+  window.dispatchEvent(new CustomEvent("hr:beat-player-state", { detail: window.HiddenRoomBeatPlayer }));
 }
 
 function sanitizeBeatPlayerDetail(detail) {
@@ -675,48 +811,208 @@ function sanitizeBeatPlayerDetail(detail) {
 
 function setGlobalBeatPlayer(detail, options = {}) {
   detail = sanitizeBeatPlayerDetail(detail);
-  const audio = document.getElementById("beat-audio");
+  const player = document.getElementById("hr-beat-player");
+  const fallbackAudio = document.getElementById("beat-audio");
   const title = document.getElementById("player-title");
   const meta = document.getElementById("player-detail");
-  if (!audio || !detail?.src) return;
+  const art = document.getElementById("beat-player-art");
+  if (!detail?.src) return;
+  hrCurrentBeatDetail = detail;
 
-  audio.setAttribute("controlsList", "nodownload noplaybackrate");
-  audio.oncontextmenu = (event) => event.preventDefault();
-  const sameSource = audio.src === detail.src;
-  audio.src = detail.src;
-  audio.load();
-  if (options.restoreTime && Number.isFinite(Number(detail.currentTime))) {
-    const restoreTime = Math.max(0, Number(detail.currentTime));
-    audio.addEventListener("loadedmetadata", () => {
-      audio.currentTime = Math.min(restoreTime, Number.isFinite(audio.duration) ? audio.duration : restoreTime);
-    }, { once: true });
-  } else if (sameSource && Number.isFinite(Number(detail.currentTime))) {
-    audio.currentTime = Math.max(0, Number(detail.currentTime));
+  fallbackAudio?.pause();
+  if (fallbackAudio) {
+    fallbackAudio.removeAttribute("controls");
+    fallbackAudio.removeAttribute("src");
+    fallbackAudio.load();
   }
+  player?.classList.add("is-loaded");
+  if (player) player.dataset.state = "loading";
   if (title) title.textContent = detail.title || "Beat Store";
   if (meta) meta.textContent = detail.detail || "";
-
-  persistGlobalBeatPlayerState();
-
-  if (options.autoplay) {
-    audio.play().catch((error) => {
-      if (meta) meta.textContent = error?.message ? `No se pudo iniciar el audio: ${error.message}` : "No se pudo iniciar el audio.";
-    });
+  if (art) {
+    const cover = String(detail.cover || "").trim();
+    art.innerHTML = cover
+      ? `<img src="${escapeNavText(cover)}" alt=""><span class="hr-beat-player__art-icon" aria-hidden="true">&#9658;</span>`
+      : '<span>HR</span><span class="hr-beat-player__art-icon" aria-hidden="true">&#9658;</span>';
+    art.classList.toggle("has-image", Boolean(cover));
   }
+
+  loadBeatWaveform(detail.src, options).catch(() => {
+    loadBeatFallbackAudio(detail, options);
+  });
+}
+function getWaveSurferModule() {
+  if (!hrWaveSurferModulePromise) {
+    hrWaveSurferModulePromise = import(HR_WAVESURFER_URL).then((module) => module.default || module.WaveSurfer || module);
+  }
+  return hrWaveSurferModulePromise;
 }
 
-function persistGlobalBeatPlayerState() {
+async function loadBeatWaveform(src, options = {}) {
+  const player = document.getElementById("hr-beat-player");
+  const waveform = document.getElementById("beat-player-waveform");
+  const seek = document.getElementById("beat-player-seek");
+  if (!waveform) throw new Error("Waveform container missing");
+
+  destroyBeatWaveform();
+  hrWaveSurferFailed = false;
+  hrWaveSurferReady = false;
+  hrWaveSurferSrc = src;
+  waveform.hidden = false;
+  if (seek) seek.hidden = true;
+  if (player) player.dataset.state = "loading";
+
+  const WaveSurfer = await getWaveSurferModule();
+  hrWaveSurfer = WaveSurfer.create({
+    container: waveform,
+    url: src,
+    height: 38,
+    waveColor: "rgba(255, 255, 255, 0.16)",
+    progressColor: "#e60000",
+    cursorColor: "#ffffff",
+    cursorWidth: 1,
+    barWidth: 2,
+    barGap: 2,
+    barRadius: 2,
+    normalize: true,
+    interact: true,
+  });
+
+  hrWaveSurfer.on("ready", () => {
+    hrWaveSurferReady = true;
+    const restoreAt = Number(options.currentTime ?? (options.restoreTime ? hrCurrentBeatDetail?.currentTime : 0));
+    if (Number.isFinite(restoreAt) && restoreAt > 0 && hrWaveSurfer.getDuration()) {
+      hrWaveSurfer.seekTo(Math.max(0, restoreAt) / hrWaveSurfer.getDuration());
+    }
+    if (player) player.dataset.state = "paused";
+    syncGlobalBeatPlayerControls(
+      player?.querySelector("[data-beat-player-toggle]"),
+      seek,
+      document.getElementById("beat-player-time"),
+      player?.querySelector("[data-beat-player-mute]"),
+      document.getElementById("beat-player-volume"),
+      waveform,
+    );
+    emitGlobalBeatPlayerState();
+    if (options.autoplay) hrWaveSurfer.play().catch(() => {});
+  });
+  ["audioprocess", "seeking", "interaction", "play", "pause"].forEach((eventName) => {
+    hrWaveSurfer.on(eventName, () => {
+      if (player && player.dataset.state !== "loading") player.dataset.state = hrWaveSurfer.isPlaying() ? "playing" : "paused";
+      syncGlobalBeatPlayerControls(
+        player?.querySelector("[data-beat-player-toggle]"),
+        seek,
+        document.getElementById("beat-player-time"),
+        player?.querySelector("[data-beat-player-mute]"),
+        document.getElementById("beat-player-volume"),
+        waveform,
+      );
+      persistGlobalBeatPlayerState();
+      emitGlobalBeatPlayerState();
+    });
+  });
+  hrWaveSurfer.on("finish", () => {
+    hrWaveSurfer.seekTo(0);
+    if (player) player.dataset.state = "ended";
+    syncGlobalBeatPlayerControls(
+      player?.querySelector("[data-beat-player-toggle]"),
+      seek,
+      document.getElementById("beat-player-time"),
+      player?.querySelector("[data-beat-player-mute]"),
+      document.getElementById("beat-player-volume"),
+      waveform,
+    );
+    persistGlobalBeatPlayerState();
+    emitGlobalBeatPlayerState();
+  });
+  hrWaveSurfer.on("error", () => {
+    const failedAt = hrWaveSurfer?.getCurrentTime?.() || 0;
+    const fallbackDetail = hrCurrentBeatDetail || { src };
+    destroyBeatWaveform();
+    loadBeatFallbackAudio(fallbackDetail, { ...options, restoreTime: failedAt > 0 || options.restoreTime, currentTime: failedAt || options.currentTime || fallbackDetail.currentTime || 0 });
+  });
+}
+
+function destroyBeatWaveform() {
+  if (hrWaveSurfer) {
+    try { hrWaveSurfer.destroy(); } catch {}
+  }
+  hrWaveSurfer = null;
+  hrWaveSurferSrc = "";
+  hrWaveSurferReady = false;
+}
+
+function loadBeatFallbackAudio(detail, options = {}) {
+  const player = document.getElementById("hr-beat-player");
   const audio = document.getElementById("beat-audio");
+  const waveform = document.getElementById("beat-player-waveform");
+  const seek = document.getElementById("beat-player-seek");
+  if (!audio) return;
+  hrWaveSurferFailed = true;
+  if (waveform) waveform.hidden = true;
+  if (seek) seek.hidden = false;
+  audio.src = detail.src;
+  audio.load();
+  const restoreAt = Number(options.currentTime ?? (options.restoreTime ? detail.currentTime : 0));
+  if (Number.isFinite(restoreAt) && restoreAt > 0) {
+    audio.addEventListener("loadedmetadata", () => {
+      audio.currentTime = Math.min(Math.max(0, restoreAt), Number.isFinite(audio.duration) ? audio.duration : restoreAt);
+    }, { once: true });
+  }
+  if (player) player.dataset.state = "loading";
+  if (options.autoplay) audio.play().catch(() => {});
+}
+
+function getBeatPlayerSrc() {
+  return hrWaveSurfer ? hrWaveSurferSrc : (document.getElementById("beat-audio")?.src || "");
+}
+
+function getBeatPlayerCurrentTime() {
+  return hrWaveSurfer ? hrWaveSurfer.getCurrentTime() || 0 : (document.getElementById("beat-audio")?.currentTime || 0);
+}
+
+function getBeatPlayerDuration() {
+  return hrWaveSurfer ? hrWaveSurfer.getDuration() || 0 : (document.getElementById("beat-audio")?.duration || 0);
+}
+
+function isBeatPlayerPlaying() {
+  return hrWaveSurfer ? hrWaveSurfer.isPlaying() : Boolean(document.getElementById("beat-audio")?.src && !document.getElementById("beat-audio")?.paused && !document.getElementById("beat-audio")?.ended);
+}
+
+function getBeatPlayerMuted() {
+  return hrWaveSurfer ? hrWaveSurfer.getMuted() : Boolean(document.getElementById("beat-audio")?.muted);
+}
+
+function setBeatPlayerMuted(muted) {
+  if (hrWaveSurfer) hrWaveSurfer.setMuted(muted);
+  const audio = document.getElementById("beat-audio");
+  if (audio) audio.muted = muted;
+}
+
+function getBeatPlayerVolume() {
+  return hrWaveSurfer ? hrWaveSurfer.getVolume() : (document.getElementById("beat-audio")?.volume ?? 1);
+}
+
+function setBeatPlayerVolume(value) {
+  if (hrWaveSurfer) hrWaveSurfer.setVolume(value);
+  const audio = document.getElementById("beat-audio");
+  if (audio) audio.volume = value;
+}
+function persistGlobalBeatPlayerState() {
   const title = document.getElementById("player-title");
   const meta = document.getElementById("player-detail");
-  if (!audio?.src) return;
+  const art = document.getElementById("beat-player-art");
+  const cover = art?.querySelector("img")?.src || "";
+  const src = getBeatPlayerSrc();
+  if (!src) return;
   try {
     sessionStorage.setItem(HR_BEAT_PLAYER_STORAGE_KEY, JSON.stringify({
-      src: audio.src,
+      src,
       title: title?.textContent || "Beat Store",
       detail: meta?.textContent || "",
-      currentTime: audio.currentTime || 0,
-      wasPlaying: !audio.paused,
+      cover,
+      currentTime: getBeatPlayerCurrentTime(),
+      wasPlaying: isBeatPlayerPlaying(),
     }));
   } catch {}
 }
@@ -726,6 +1022,19 @@ window.addEventListener("beforeunload", persistGlobalBeatPlayerState);
 window.addEventListener("hr:beat-preview", (event) => {
   setGlobalBeatPlayer(event.detail, { autoplay: true });
 });
+window.addEventListener("hr:beat-preview-toggle", (event) => {
+  const action = event.detail?.action;
+  const audio = document.getElementById("beat-audio");
+  if (hrWaveSurfer && hrWaveSurferSrc) {
+    if (action === "pause") hrWaveSurfer.pause();
+    else hrWaveSurfer.play().catch(() => {});
+  } else if (audio?.src) {
+    if (action === "pause") audio.pause();
+    else audio.play().catch(() => {});
+  }
+  emitGlobalBeatPlayerState();
+});
+
 function attachGlobalDrawerSwipe(drawer) {
   if (!drawer) return;
   let startX = 0;
@@ -766,18 +1075,18 @@ function renderGlobalNav() {
           <img src="/assets/img/white_logo.webp" alt="">
           <span>Hidden Room</span>
         </a>
-        <nav class="hr-nav__links" aria-label="Navegación principal">
+        <nav class="hr-nav__links" aria-label="NavegaciÃ³n principal">
           ${ECOSYSTEM_LINKS.map(([key, href, label, adminOnly]) => `
             <a href="${href}"${adminOnly ? ' data-admin-nav-link hidden' : ""}${(key === activeModule && !(activeModule === "store" && navPath.startsWith("/store/beat_store/"))) || (key === "beat-store" && navPath.startsWith("/store/beat_store/")) ? ' aria-current="page"' : ""}>${label}</a>
           `).join("")}
         </nav>
         <div class="${actionsClass}">${renderNavActions(module)}</div>
-        <button class="hr-nav__mobile-toggle" type="button" aria-label="Abrir menú"
+        <button class="hr-nav__mobile-toggle" type="button" aria-label="Abrir menÃº"
           aria-controls="hr-global-drawer" aria-expanded="false">
           <span></span><span></span><span></span>
         </button>
       </div>
-      ${subnav ? `<nav class="hr-nav__sub" aria-label="Navegación contextual">${subnav}</nav>` : ""}
+      ${subnav ? `<nav class="hr-nav__sub" aria-label="NavegaciÃ³n contextual">${subnav}</nav>` : ""}
     </header>
     ${renderGlobalDrawer(activeModule)}
     <aside class="hr-global-notifications" id="hr-global-notifications"
@@ -787,10 +1096,10 @@ function renderGlobalNav() {
           <span>Cuenta</span>
           <strong>Notificaciones</strong>
         </div>
-        <button type="button" data-hr-notifications-close aria-label="Cerrar notificaciones">×</button>
+        <button type="button" data-hr-notifications-close aria-label="Cerrar notificaciones">Ã—</button>
       </header>
       <ul data-hr-notifications-list>
-        <li class="hr-global-notifications__empty">Cargando notificaciones…</li>
+        <li class="hr-global-notifications__empty">Cargando notificacionesâ€¦</li>
       </ul>
     </aside>
     ${renderGlobalBeatPlayer()}
@@ -1051,3 +1360,5 @@ if (track) {
   });
 
 }
+
+

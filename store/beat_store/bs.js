@@ -7,12 +7,15 @@ const CLOUD_ORIGIN = "https://cloud.hiddenroom.mx";
 const BEAT_STORE_ENDPOINT = `${CLOUD_ORIGIN}/api/beat-store`;
 const BEAT_STORE_CLOUD_PATH = "/beats_store";
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const state = { products: [], adminProducts: [], beats: [], items: [], isAdmin: false };
+const supabase = window.HiddenRoomSupabase?.getClient
+  ? await window.HiddenRoomSupabase.getClient()
+  : createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const state = { products: [], adminProducts: [], beats: [], items: [], isAdmin: false, hasBeatMetadata: true };
 
 const grid = document.getElementById("beat-grid");
 const searchInput = document.getElementById("beat-search");
 const sortSelect = document.getElementById("beat-sort");
+const genreSelect = document.getElementById("beat-genre");
 const adminPanel = document.getElementById("beat-admin-panel");
 const adminForm = document.getElementById("beat-admin-form");
 const adminList = document.getElementById("beat-admin-products");
@@ -20,6 +23,7 @@ const adminStatus = document.getElementById("beat-admin-status");
 const adminError = document.getElementById("beat-admin-error");
 const cancelEditButton = document.getElementById("beat-cancel-edit");
 const beatUploadInput = document.getElementById("beat-upload-file");
+const beatCoverInput = document.getElementById("beat-cover-file");
 const beatUploadStatus = document.getElementById("beat-upload-status");
 
 initBeatStore().catch((error) => {
@@ -34,6 +38,7 @@ async function initBeatStore() {
   state.adminProducts = state.isAdmin ? products : [];
   state.beats = beats;
   state.items = mergeProductsAndBeats(products, beats);
+  renderGenreOptions();
   renderBeats();
   initializeAdminPanel();
 
@@ -43,13 +48,40 @@ async function initBeatStore() {
 
   searchInput?.addEventListener("input", renderBeats);
   sortSelect?.addEventListener("change", renderBeats);
+  genreSelect?.addEventListener("change", renderBeats);
   grid?.addEventListener("click", handleGridClick);
+  grid?.addEventListener("keydown", handleGridKeydown);
+  window.addEventListener("hr:beat-player-state", syncBeatCardPlayState);
   adminForm?.addEventListener("submit", handleAdminSubmit);
   adminList?.addEventListener("click", handleAdminListClick);
   cancelEditButton?.addEventListener("click", resetAdminForm);
   document.addEventListener("click", handleAdminModeClick);
 }
 
+function ensureAdminMusicFields() {
+  if (!adminForm || document.getElementById("beat-genre-input")) return;
+  const producerField = document.getElementById("beat-producer")?.closest(".field");
+  if (!producerField) return;
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "beat-admin__music-fields";
+  wrapper.innerHTML = `
+    <div class="field hr-field"><label class="hr-label" for="beat-genre-input">Genero</label><input class="hr-input" id="beat-genre-input" maxlength="80" placeholder="Trap, Boom bap, Reggaeton..."></div>
+    <div class="field hr-field"><label class="hr-label" for="beat-bpm">BPM</label><input class="hr-input" id="beat-bpm" type="number" min="1" max="300" step="1"></div>
+    <div class="field hr-field"><label class="hr-label" for="beat-key">Tonalidad</label><input class="hr-input" id="beat-key" maxlength="24" placeholder="Cm, F# minor..."></div>
+    <div class="field hr-field"><label class="hr-label" for="beat-duration">Duracion</label><input class="hr-input" id="beat-duration" type="number" min="1" step="1" placeholder="Segundos"></div>
+  `;
+  producerField.insertAdjacentElement("afterend", wrapper);
+}
+
+function adminProductMetaText(product) {
+  return [
+    product.beat_genre || null,
+    product.beat_bpm ? `${product.beat_bpm} BPM` : null,
+    product.beat_key || null,
+    product.beat_duration_seconds ? formatDuration(product.beat_duration_seconds) : null,
+  ].filter(Boolean).join(" / ");
+}
 function wantsAdminMode() {
   const params = new URLSearchParams(window.location.search);
   return params.get("view") === "admin" || params.get("admin") === "1";
@@ -133,20 +165,39 @@ async function currentUserIsAdmin() {
     .includes("admin");
 }
 
+const BEAT_PRODUCT_BASE_SELECT = "id, slug, name, description, category, price, currency, image_url, file_url, producer, stock, is_digital, featured, is_active, created_at";
+const BEAT_PRODUCT_META_SELECT = `${BEAT_PRODUCT_BASE_SELECT}, beat_genre, beat_bpm, beat_key, beat_duration_seconds`;
+
 async function fetchBeatProducts(includeInactive = false) {
+  const { data, error } = await runBeatProductQuery(includeInactive, state.hasBeatMetadata ? BEAT_PRODUCT_META_SELECT : BEAT_PRODUCT_BASE_SELECT);
+
+  if (!error) return data ?? [];
+
+  if (state.hasBeatMetadata && isMissingBeatMetadataError(error)) {
+    state.hasBeatMetadata = false;
+    const fallback = await runBeatProductQuery(includeInactive, BEAT_PRODUCT_BASE_SELECT);
+    if (!fallback.error) return fallback.data ?? [];
+    throw new Error(`No se pudieron cargar productos: ${fallback.error.message}`);
+  }
+
+  throw new Error(`No se pudieron cargar productos: ${error.message}`);
+}
+
+function runBeatProductQuery(includeInactive, columns) {
   let query = supabase
     .from("store_products")
-    .select("id, slug, name, description, category, price, currency, image_url, file_url, producer, stock, is_digital, featured, is_active, created_at")
+    .select(columns)
     .eq("category", "beats")
     .order("featured", { ascending: false })
     .order("created_at", { ascending: false });
 
   if (!includeInactive) query = query.eq("is_active", true);
+  return query;
+}
 
-  const { data, error } = await query;
-
-  if (error) throw new Error(`No se pudieron cargar productos: ${error.message}`);
-  return data ?? [];
+function isMissingBeatMetadataError(error) {
+  const message = String(error?.message || error?.details || "").toLowerCase();
+  return error?.code === "42703" || ["beat_genre", "beat_bpm", "beat_key", "beat_duration_seconds"].some((column) => message.includes(column));
 }
 
 async function fetchCloudBeats() {
@@ -180,6 +231,7 @@ function mergeProductsAndBeats(products, beats) {
 }
 function renderBeats() {
   const query = String(searchInput?.value || "").trim().toLowerCase();
+  const genre = String(genreSelect?.value || "").trim();
   const sorted = sortItems(state.items, sortSelect?.value || "featured");
   const filtered = sorted.filter((item) => {
     const product = item.product;
@@ -192,8 +244,12 @@ function renderBeats() {
       beat?.title,
       beat?.file,
       beat?.slug,
+      beatGenre(item),
+      itemMusicMeta(item).map((entry) => entry.value).join(" "),
     ].filter(Boolean).join(" ").toLowerCase();
-    return !query || haystack.includes(query);
+    const matchesQuery = !query || haystack.includes(query);
+    const matchesGenre = !genre || normalizeKey(beatGenre(item)) === genre;
+    return matchesQuery && matchesGenre;
   });
 
   if (!filtered.length) {
@@ -202,6 +258,18 @@ function renderBeats() {
   }
 
   grid.innerHTML = filtered.map(beatCardMarkup).join("");
+}
+
+function renderGenreOptions() {
+  if (!genreSelect) return;
+  const current = genreSelect.value;
+  const genres = Array.from(new Map(state.items
+    .map((item) => beatGenre(item))
+    .filter(Boolean)
+    .map((genre) => [normalizeKey(genre), genre])).entries())
+    .sort((a, b) => a[1].localeCompare(b[1]));
+  genreSelect.innerHTML = `<option value="">Todos</option>${genres.map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`).join("")}`;
+  genreSelect.value = genres.some(([value]) => value === current) ? current : "";
 }
 
 function sortItems(items, mode) {
@@ -216,37 +284,62 @@ function sortItems(items, mode) {
 
 function beatCardMarkup(item) {
   const product = item.product;
-  const beat = item.beat;
   const title = itemTitle(item);
   const canPreview = Boolean(previewUrlForItem(item));
   const canBuy = Boolean(product && productCanBePurchased(product));
   const price = product ? formatPrice(product.price, product.currency) : "Sin producto";
-  const description = String(product?.description || "").trim();
   const producer = productProducer(item);
-  const status = [
-    product?.featured ? "Featured" : null,
-    canPreview ? "Preview" : "Sin preview",
-    canBuy ? "Compra activa" : product?.is_active === false ? "Inactivo" : "No disponible",
-  ].filter(Boolean).join(" / ");
+  const meta = itemMusicMeta(item);
 
   return `
     <article class="product-card beat-card" data-item-id="${escapeHtml(item.id)}">
-      ${waveMarkup(title)}
-      <div class="beat-card__meta">
-        <span class="product-category">${escapeHtml(product?.category ? categoryLabel(product.category) : "Beat")}</span>
-        <span class="beat-card__status">${escapeHtml(status)}</span>
+      ${coverMarkup(item)}
+      <div class="beat-card__body">
+        <h3>${escapeHtml(title)}</h3>
+        <p class="beat-card__producer">${escapeHtml(producer || "Productor por confirmar")}</p>
+        ${musicMetaMarkup(meta)}
       </div>
-      <h3>${escapeHtml(title)}</h3>
-      <p class="beat-card__producer">${escapeHtml(producer ? `Prod. ${producer}` : "Productor por confirmar")}</p>
-      ${description ? `<p class="product-description">${escapeHtml(description)}</p>` : ""}
-      <p class="product-price">${escapeHtml(price)}</p>
       <div class="beat-card__actions">
-        <button class="secondary-button" type="button" data-play-beat="${escapeHtml(item.id)}" ${canPreview ? "" : "disabled"}>Reproducir</button>
-        <button class="primary-button" type="button" data-add-beat="${escapeHtml(item.id)}" ${canBuy ? "" : "disabled"}>Comprar</button>
+        <strong class="product-price">${escapeHtml(price)}</strong>
+        <button class="primary-button" type="button" data-add-beat="${escapeHtml(item.id)}" ${canBuy ? "" : "disabled"}>Ver licencias</button>
       </div>
     </article>`;
 }
 
+function musicMetaMarkup(meta) {
+  if (!meta.length) return '<p class="beat-card__music beat-card__music--empty">Genero, BPM y tonalidad por confirmar</p>';
+  return `<dl class="beat-card__music">${meta.map((entry) => `
+    <div><dt>${escapeHtml(entry.label)}</dt><dd>${escapeHtml(entry.value)}</dd></div>
+  `).join("")}</dl>`;
+}
+function coverMarkup(item) {
+  const title = itemTitle(item);
+  const imageUrl = coverUrlForItem(item);
+  const canPreview = Boolean(previewUrlForItem(item));
+  const playAttrs = canPreview ? ` role="button" tabindex="0" data-play-beat="${escapeHtml(item.id)}" aria-label="Preview ${escapeHtml(title)}"` : "";
+  const playOverlay = canPreview ? '<span class="beat-card__cover-play" aria-hidden="true">&#9658;</span>' : "";
+  if (imageUrl) {
+    return `<div class="beat-card__cover"${playAttrs}><img src="${escapeHtml(imageUrl)}" alt="Portada de ${escapeHtml(title)}" loading="lazy">${playOverlay}</div>`;
+  }
+  return `<div class="beat-card__cover beat-card__cover--empty"${playAttrs}><span>${escapeHtml(coverInitials(title))}</span>${playOverlay}</div>`;
+}
+
+function coverUrlForItem(item) {
+  const raw = String(item?.product?.image_url || item?.beat?.cover_url || item?.beat?.image_url || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const clean = raw.replaceAll("\\", "/").replace(/^\/+/, "").replace(/^beats_store\//i, "");
+  return new URL(`/api/beat-store/stream?file=${encodeURIComponent(clean)}`, CLOUD_ORIGIN).href;
+}
+function coverInitials(value) {
+  return String(value || "Beat")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((word) => word[0] || "")
+    .join("")
+    .toUpperCase();
+}
 function waveMarkup(seed) {
   const base = Array.from(seed).reduce((sum, char) => sum + char.charCodeAt(0), 0) || 7;
   const bars = Array.from({ length: 28 }, (_, index) => {
@@ -256,15 +349,45 @@ function waveMarkup(seed) {
   return `<div class="beat-card__wave" aria-hidden="true">${bars}</div>`;
 }
 
+function handleGridKeydown(event) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const playTarget = event.target.closest("[data-play-beat]");
+  if (!playTarget) return;
+  event.preventDefault();
+  toggleBeatPreview(playTarget.dataset.playBeat);
+}
 function handleGridClick(event) {
   const playButton = event.target.closest("[data-play-beat]");
   const addButton = event.target.closest("[data-add-beat]");
 
   if (playButton) {
-    playBeat(playButton.dataset.playBeat);
+    toggleBeatPreview(playButton.dataset.playBeat);
     return;
   }
   if (addButton) addBeatToCart(addButton.dataset.addBeat);
+}
+
+function toggleBeatPreview(itemId) {
+  const item = state.items.find((candidate) => candidate.id === itemId);
+  const previewUrl = previewUrlForItem(item);
+  if (!item || !previewUrl) return;
+  if (window.HiddenRoomBeatPlayer?.src === previewUrl && window.HiddenRoomBeatPlayer?.isPlaying) {
+    window.dispatchEvent(new CustomEvent("hr:beat-preview-toggle", { detail: { action: "pause" } }));
+    return;
+  }
+  playBeat(itemId);
+}
+
+function syncBeatCardPlayState(event) {
+  const activeSrc = event.detail?.src || "";
+  const isPlaying = Boolean(event.detail?.isPlaying);
+  document.querySelectorAll(".beat-card__cover[data-play-beat]").forEach((cover) => {
+    const item = state.items.find((candidate) => candidate.id === cover.dataset.playBeat);
+    const isActive = previewUrlForItem(item) === activeSrc;
+    cover.classList.toggle("is-playing", isActive && isPlaying);
+    cover.closest(".beat-card")?.classList.toggle("is-active", isActive);
+    cover.querySelector(".beat-card__cover-play").innerHTML = isActive && isPlaying ? "&#10074;&#10074;" : "&#9658;";
+  });
 }
 
 function playBeat(itemId) {
@@ -276,7 +399,8 @@ function playBeat(itemId) {
     detail: {
       src: previewUrl,
       title: itemTitle(item),
-      detail: [producer ? `Prod. ${producer}` : null, item.product ? formatPrice(item.product.price, item.product.currency) : null].filter(Boolean).join(" / "),
+      detail: producer || "Productor por confirmar",
+      cover: coverUrlForItem(item),
     },
   }));
 }
@@ -344,7 +468,7 @@ function renderAdminProducts() {
       <div>
         <span class="product-category">${escapeHtml(product.is_active ? "Activo" : "Inactivo")}${product.featured ? " / Featured" : ""}</span>
         <h3>${escapeHtml(product.name)}</h3>
-        <p>${escapeHtml(product.slug)} / ${escapeHtml(product.producer || "Sin productor")} / ${formatPrice(product.price, product.currency)} / stock ${escapeHtml(product.stock ?? "ilimitado")}</p>
+        <p>${escapeHtml(product.slug)} / ${escapeHtml(product.producer || "Sin productor")} / ${formatPrice(product.price, product.currency)} / stock ${escapeHtml(product.stock ?? "ilimitado")}</p>${adminProductMetaText(product) ? `<p class="beat-admin-row__music">${escapeHtml(adminProductMetaText(product))}</p>` : ""}
       </div>
       <div class="admin-actions">
         <button class="secondary-button" type="button" data-edit-beat="${escapeHtml(product.id)}">Editar</button>
@@ -363,7 +487,9 @@ async function handleAdminSubmit(event) {
   const id = document.getElementById("beat-product-id").value;
   const stockValue = document.getElementById("beat-stock").value;
   let uploadedFileUrl = "";
+  let uploadedCoverUrl = "";
   try {
+    uploadedCoverUrl = await uploadSelectedBeatCoverFile();
     uploadedFileUrl = await uploadSelectedBeatFile();
   } catch (error) {
     adminError.textContent = error.message || "No se pudo subir el audio.";
@@ -379,13 +505,19 @@ async function handleAdminSubmit(event) {
     category: "beats",
     price: Number(document.getElementById("beat-price").value),
     currency: "MXN",
-    image_url: null,
+    image_url: uploadedCoverUrl || document.getElementById("beat-image-url")?.value.trim() || null,
     file_url: uploadedFileUrl || document.getElementById("beat-file-url").value.trim() || null,
     stock: stockValue === "" ? null : Number(stockValue),
     is_digital: document.getElementById("beat-digital").checked,
     featured: document.getElementById("beat-featured").checked,
     is_active: document.getElementById("beat-active").checked,
   };
+  if (state.hasBeatMetadata) {
+    payload.beat_genre = document.getElementById("beat-genre-input").value.trim() || null;
+    payload.beat_bpm = nullableNumberFromInput("beat-bpm");
+    payload.beat_key = document.getElementById("beat-key").value.trim() || null;
+    payload.beat_duration_seconds = nullableNumberFromInput("beat-duration");
+  }
 
   const query = id
     ? supabase.from("store_products").update(payload).eq("id", id)
@@ -399,9 +531,36 @@ async function handleAdminSubmit(event) {
 
   showNotice(id ? "Beat actualizado" : "Beat creado");
   resetAdminForm();
-  await reloadBeatStore({ refreshBeats: Boolean(uploadedFileUrl) });
+  await reloadBeatStore({ refreshBeats: Boolean(uploadedFileUrl || uploadedCoverUrl) });
 }
 
+async function uploadSelectedBeatCoverFile() {
+  const file = beatCoverInput?.files?.[0];
+  if (!file) return "";
+  if (!file.type.startsWith("image/") && !/\.(jpg|jpeg|png|webp)$/i.test(file.name)) {
+    throw new Error("Selecciona una imagen valida para la portada.");
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("Sesion requerida para subir portadas.");
+
+  setUploadStatus(`Subiendo portada ${file.name}...`);
+  const response = await fetch(`${CLOUD_ORIGIN}/api/upload?path=${encodeURIComponent(`${BEAT_STORE_CLOUD_PATH}/covers`)}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      "X-File-Name": encodeURIComponent(file.name),
+      "Content-Type": file.type || "application/octet-stream",
+    },
+    body: file,
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "No se pudo subir la portada a MysAuth Cloud.");
+
+  setUploadStatus(`Portada subida: ${file.name}`);
+  return new URL(`/api/beat-store/stream?file=${encodeURIComponent(`covers/${file.name}`)}`, CLOUD_ORIGIN).href;
+}
 async function uploadSelectedBeatFile() {
   const file = beatUploadInput?.files?.[0];
   if (!file) return "";
@@ -479,7 +638,12 @@ function editAdminProduct(id) {
   document.getElementById("beat-slug").value = product.slug;
   document.getElementById("beat-description").value = product.description ?? "";
   document.getElementById("beat-producer").value = product.producer ?? "";
+  document.getElementById("beat-genre-input").value = product.beat_genre ?? "";
+  document.getElementById("beat-bpm").value = product.beat_bpm ?? "";
+  document.getElementById("beat-key").value = product.beat_key ?? "";
+  document.getElementById("beat-duration").value = product.beat_duration_seconds ?? "";
   document.getElementById("beat-price").value = product.price;
+  document.getElementById("beat-image-url").value = product.image_url ?? "";
   document.getElementById("beat-file-url").value = product.file_url ?? "";
   document.getElementById("beat-stock").value = product.stock ?? "";
   document.getElementById("beat-featured").checked = Boolean(product.featured);
@@ -507,6 +671,7 @@ async function reloadBeatStore(options = {}) {
   state.products = products;
   state.adminProducts = state.isAdmin ? products : [];
   state.items = mergeProductsAndBeats(products, state.beats);
+  renderGenreOptions();
   renderBeats();
   renderAdminProducts();
 }
@@ -552,6 +717,37 @@ function productProducer(item) {
   return item.product?.producer || item.beat?.producer || "";
 }
 
+function beatGenre(item) {
+  return item?.product?.beat_genre || item?.beat?.genre || item?.product?.category || "";
+}
+
+function itemMusicMeta(item) {
+  const product = item?.product || {};
+  const beat = item?.beat || {};
+  const bpm = product.beat_bpm || beat.bpm;
+  const key = product.beat_key || beat.key;
+  const genre = product.beat_genre || beat.genre;
+  const duration = product.beat_duration_seconds || beat.duration_seconds || beat.duration;
+  return [
+    genre ? { label: "Genero", value: genre } : null,
+    bpm ? { label: "BPM", value: `${bpm}` } : null,
+    key ? { label: "Tonalidad", value: key } : null,
+    duration ? { label: "Duracion", value: formatDuration(duration) } : null,
+  ].filter(Boolean);
+}
+
+function formatDuration(value) {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return String(value || "");
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.floor(seconds % 60);
+  return `${minutes}:${String(rest).padStart(2, "0")}`;
+}
+
+function nullableNumberFromInput(id) {
+  const value = document.getElementById(id)?.value;
+  return value === "" ? null : Number(value);
+}
 function productPrice(item) {
   return item.product ? Number(item.product.price) : Number.POSITIVE_INFINITY;
 }

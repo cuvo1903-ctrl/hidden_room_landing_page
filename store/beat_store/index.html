@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
@@ -9,9 +9,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../../styles.css?v=20260718-hero-rhythm">
-  <link rel="stylesheet" href="../store.css?v=20260718-admin-store-subnav">
-  <link rel="stylesheet" href="bs.css?v=20260718-hero-rhythm">
+  <link rel="stylesheet" href="../../styles.css?v=20260718-wavesurfer-player">
+  <link rel="stylesheet" href="../store.css?v=20260718-beat-admin-fields">
+  <link rel="stylesheet" href="bs.css?v=20260718-cover-play-toggle">
 </head>
 <body class="store-page beat-store-page hr-page" data-page="beat-store" data-hr-chrome data-hr-context="store">
   <div id="hr-global-nav"></div>
@@ -22,7 +22,7 @@
         <div class="beat-hero__copy hr-stack">
           <p class="eyebrow hr-eyebrow">Hidden Room Beats</p>
           <h1 id="beat-store-title" class="hr-title-xl">Beat Store</h1>
-          <p class="hero-copy hr-subtitle">Reproduce previews desde MysAuth Cloud y compra licencias digitales con checkout seguro.</p>
+          <p class="hero-copy hr-subtitle">Compra licencias, descarga al instante.</p>
           <div class="beat-hero__actions hr-cluster">
             <a class="primary-button hr-btn hr-btn-primary" href="#beat-grid">Explorar beats</a>
             <a class="secondary-button hr-btn" href="../cart.html">Carrito <span class="cart-count">0</span></a>
@@ -38,13 +38,18 @@
             <p class="eyebrow hr-eyebrow">Catalogo</p>
             <h2 id="beats-title" class="hr-section-title">Beats disponibles</h2>
           </div>
-          <p>Los productos vienen de Supabase Store. Los previews vienen de MysAuth Cloud, carpeta <code>beats_store</code>.</p>
         </div>
 
         <div class="catalog-tools hr-filterbar beat-tools">
           <label class="hr-search">
             <span>Buscar</span>
             <input id="beat-search" class="hr-search-input" type="search" placeholder="Nombre, genero, slug...">
+          </label>
+          <label class="hr-field">
+            <span>Genero</span>
+            <select id="beat-genre" class="hr-select">
+              <option value="">Todos</option>
+            </select>
           </label>
           <label class="hr-field">
             <span>Orden</span>
@@ -82,7 +87,15 @@
             <div class="field hr-field"><label class="hr-label" for="beat-slug">Slug</label><input class="hr-input" id="beat-slug" required pattern="[a-z0-9-]+" maxlength="160"></div>
             <div class="field hr-field"><label class="hr-label" for="beat-description">Descripcion</label><textarea class="hr-textarea" id="beat-description" rows="4"></textarea></div>
             <div class="field hr-field"><label class="hr-label" for="beat-producer">Productor</label><input class="hr-input" id="beat-producer" maxlength="160" placeholder="Nombre del productor"></div>
+            <div class="beat-admin__music-fields">
+              <div class="field hr-field"><label class="hr-label" for="beat-genre-input">Genero</label><input class="hr-input" id="beat-genre-input" maxlength="80" placeholder="Trap, Boom bap, Reggaeton..."></div>
+              <div class="field hr-field"><label class="hr-label" for="beat-bpm">BPM</label><input class="hr-input" id="beat-bpm" type="number" min="1" max="300" step="1"></div>
+              <div class="field hr-field"><label class="hr-label" for="beat-key">Tonalidad</label><input class="hr-input" id="beat-key" maxlength="24" placeholder="Cm, F# minor..."></div>
+              <div class="field hr-field"><label class="hr-label" for="beat-duration">Duracion</label><input class="hr-input" id="beat-duration" type="number" min="1" step="1" placeholder="Segundos"></div>
+            </div>
             <div class="field hr-field"><label class="hr-label" for="beat-price">Precio MXN</label><input class="hr-input" id="beat-price" type="number" min="0" step="0.01" required></div>
+            <div class="field hr-field"><label class="hr-label" for="beat-cover-file">Portada cuadrada</label><input class="hr-input" id="beat-cover-file" type="file" accept="image/*,.jpg,.jpeg,.png,.webp"></div>
+            <div class="field hr-field"><label class="hr-label" for="beat-image-url">URL de portada</label><input class="hr-input" id="beat-image-url" placeholder="Se llena al subir portada"></div>
             <div class="field hr-field"><label class="hr-label" for="beat-upload-file">Subir audio</label><input class="hr-input" id="beat-upload-file" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"></div>
             <p id="beat-upload-status" class="beat-upload-status" aria-live="polite"></p>
             <div class="field hr-field"><label class="hr-label" for="beat-file-url">URL de entrega</label><input class="hr-input" id="beat-file-url" placeholder="Archivo final o link privado"></div>
@@ -107,15 +120,14 @@
     </section>
   </main>
 
-
   <div id="store-notice" class="notice" role="status" aria-live="polite"></div>
 
-  <footer class="store-footer">
+  <footer class="store-footer beat-store-footer">
     <span>Hidden Room Beat Store</span>
     <a href="../">Volver a la tienda</a>
   </footer>
 
-  <script src="../../site.js?v=20260718-admin-store-subnav"></script>
-  <script type="module" src="bs.js?v=20260718-beat-card-clean"></script>
+  <script src="../../site.js?v=20260718-wavesurfer-player"></script>
+  <script type="module" src="bs.js?v=20260718-player-refine"></script>
 </body>
 </html>
