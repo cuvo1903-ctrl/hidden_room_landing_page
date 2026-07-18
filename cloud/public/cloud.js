@@ -49,6 +49,12 @@ function setMessage(message, isError = false) {
   statusMessage.textContent = message || '';
   statusMessage.classList.toggle('error', Boolean(isError));
 }
+function isIosSafari() {
+  const ua = navigator.userAgent || '';
+  const isAppleMobile = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return isAppleMobile && /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS/i.test(ua);
+}
+
 function setActionsEnabled(canUpload) {
   if (uploadButton) uploadButton.hidden = !canUpload;
   if (folderButton) folderButton.hidden = !canUpload;
@@ -129,12 +135,34 @@ async function createFolder() {
   await apiJson('/api/folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: state.path, name }) });
   await loadFiles();
 }
-async function uploadFile(file) {
-  if (!file || !state.meta?.canUpload) return;
-  setMessage(`Subiendo ${file.name}...`);
-  await apiJson(`/api/upload?path=${encodeURIComponent(state.path)}`, { method: 'POST', headers: { 'X-File-Name': encodeURIComponent(file.name), 'Content-Type': file.type || 'application/octet-stream' }, body: file });
-  fileInput.value = '';
-  await loadFiles();
+async function uploadOneFile(file, index, total) {
+  const prefix = total > 1 ? `${index + 1}/${total}: ` : '';
+  setMessage(`Subiendo ${prefix}${file.name}...`);
+  await apiJson(`/api/upload?path=${encodeURIComponent(state.path)}`, {
+    method: 'POST',
+    headers: { 'X-File-Name': encodeURIComponent(file.name), 'Content-Type': file.type || 'application/octet-stream' },
+    body: file,
+  });
+}
+
+async function uploadFiles(fileList) {
+  if (!state.meta?.canUpload) return;
+  const files = Array.from(fileList || []).filter(Boolean);
+  if (!files.length) return;
+
+  fileInput.disabled = true;
+  if (uploadButton) uploadButton.classList.add('is-uploading');
+  try {
+    for (const [index, file] of files.entries()) {
+      await uploadOneFile(file, index, files.length);
+    }
+    setMessage(files.length === 1 ? 'Archivo subido.' : `${files.length} archivos subidos.`);
+    await loadFiles();
+  } finally {
+    fileInput.value = '';
+    fileInput.disabled = false;
+    if (uploadButton) uploadButton.classList.remove('is-uploading');
+  }
 }
 async function renameItem(type, name) {
   if (!state.meta?.canUpload) return;
@@ -151,7 +179,15 @@ async function deleteItem(type, name) {
 }
 async function downloadFile(name) {
   setMessage(`Preparando ${name}...`);
-  const response = await api(`/api/download?path=${encodeURIComponent(state.path)}&name=${encodeURIComponent(name)}`);
+  const query = `path=${encodeURIComponent(state.path)}&name=${encodeURIComponent(name)}`;
+  if (isIosSafari()) {
+    const data = await apiJson(`/api/download-link?${query}`);
+    window.location.assign(data.url);
+    setMessage('');
+    return;
+  }
+
+  const response = await api(`/api/download?${query}`);
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -196,7 +232,7 @@ document.getElementById('logout-button').addEventListener('click', async () => {
 document.getElementById('refresh-button').addEventListener('click', () => loadFiles().catch((err) => setMessage(err.message, true)));
 folderButton.addEventListener('click', () => createFolder().catch((err) => setMessage(err.message, true)));
 document.getElementById('up-button').addEventListener('click', () => loadFiles(parentPath()).catch((err) => setMessage(err.message, true)));
-fileInput.addEventListener('change', () => uploadFile(fileInput.files?.[0]).catch((err) => setMessage(err.message, true)));
+fileInput.addEventListener('change', () => uploadFiles(fileInput.files).catch((err) => setMessage(err.message, true)));
 breadcrumb.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-path]');
   if (button) loadFiles(button.dataset.path).catch((err) => setMessage(err.message, true));

@@ -209,7 +209,8 @@ async function processJob(job) {
       if (!storagePath) throw new Error('La ruta temporal del archivo es requerida.');
       const targetPath = getSafeChildPath(fullPath, filename);
       const fileBuffer = await downloadStagedFile(storagePath);
-      if (Number.isSafeInteger(expectedSize) && expectedSize >= 0 && fileBuffer.length !== expectedSize) {
+      if (!fileBuffer.length) throw new Error('El archivo temporal esta vacio.');
+      if (Number.isSafeInteger(expectedSize) && expectedSize > 0 && fileBuffer.length !== expectedSize) {
         throw new Error(`El tamaño descargado (${fileBuffer.length}) no coincide con el esperado (${expectedSize}).`);
       }
       await fs.mkdir(fullPath, { recursive: true });
@@ -228,7 +229,7 @@ async function processJob(job) {
       const folderName = String(payload.folderName ?? '').trim();
       if (!folderName) throw new Error('El nombre de la carpeta es requerido.');
       const targetPath = getSafeChildPath(fullPath, folderName);
-      await fs.mkdir(targetPath, { recursive: false });
+      await fs.mkdir(targetPath, { recursive: true });
       result = { folderName, path: requestPath };
       break;
     }

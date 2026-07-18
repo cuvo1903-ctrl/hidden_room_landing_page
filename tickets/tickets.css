@@ -23,7 +23,6 @@
 .tickets-shell,
 .validator-shell {
   --hr-content-max: 1180px;
-  padding-block: clamp(40px, 7vw, 90px) 80px;
 }
 
 .validator-shell {
@@ -31,13 +30,9 @@
 }
 
 .tickets-hero {
-  margin-bottom: 34px;
   gap: 0;
 }
 
-.tickets-hero--compact {
-  margin-bottom: 24px;
-}
 
 .tickets-hero h1 {
   max-width: 850px;

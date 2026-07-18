@@ -1,9 +1,7 @@
 .beat-store-page .beat-hero {
-  min-height: 68vh;
   display: flex;
   align-items: end;
   border-bottom: 1px solid var(--hr-border);
-  padding-block: clamp(92px, 14vw, 150px) clamp(48px, 8vw, 86px);
 }
 
 .beat-hero__grid {
@@ -22,16 +20,6 @@
 
 .beat-hero__actions { gap: 12px; margin-top: 10px; }
 
-.beat-player {
-  padding: clamp(20px, 3vw, 34px);
-  border: 1px solid var(--hr-border);
-  background: linear-gradient(140deg, rgba(219, 1, 0, .14), rgba(0, 194, 198, .07)), rgba(17, 17, 17, .86);
-}
-
-.beat-player__meta { display: grid; gap: 12px; margin-bottom: 24px; }
-.beat-player h2 { margin: 0; font: 700 clamp(20px, 3vw, 34px)/1.05 var(--hr-font-display); text-transform: uppercase; }
-.beat-player p { margin: 0; color: var(--hr-muted); font-size: 12px; line-height: 1.7; }
-.beat-player audio { width: 100%; min-height: 42px; }
 
 .beat-tools { grid-template-columns: minmax(220px, 1fr) minmax(180px, .34fr); }
 
@@ -60,13 +48,12 @@
 .beat-card__status { color: var(--hr-muted); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
 .beat-card__actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .beat-card__actions .primary-button, .beat-card__actions .secondary-button { flex: 1 1 140px; text-align: center; }
-.beat-card__file { margin: -4px 0 0; color: var(--hr-muted); font-size: 10px; word-break: break-word; }
+.beat-card__producer { margin: -6px 0 0; color: var(--teal); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
 
 .beat-empty { grid-column: 1 / -1; }
 
 @media (max-width: 880px) {
   .beat-hero__grid, .beat-tools { grid-template-columns: 1fr; }
-  .beat-store-page .beat-hero { min-height: auto; }
 }
 
 @media (max-width: 620px) {
@@ -111,3 +98,17 @@
 .beat-upload-status.is-error {
   color: #ff6b6b;
 }
+
+
+
+body.beat-admin-mode .beat-hero,
+body.beat-admin-mode .catalog-section,
+body.beat-admin-mode .store-footer {
+  display: none;
+}
+
+body.beat-admin-mode .beat-admin {
+  border-top: 0;
+  padding-top: calc(var(--hr-nav-height, 78px) + 32px);
+}
+

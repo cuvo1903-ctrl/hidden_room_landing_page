@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../styles.css?v=20260701-notifications">
-  <link rel="stylesheet" href="store.css?v=20260701-notifications">
+  <link rel="stylesheet" href="../styles.css?v=20260718-hero-rhythm">
+  <link rel="stylesheet" href="store.css?v=20260718-admin-store-subnav">
 </head>
 <body class="store-page hr-page" data-hr-chrome data-hr-context="store">
   <div id="hr-global-nav"></div>
@@ -26,6 +26,7 @@
         <div class="field hr-field"><label class="hr-label" for="product-name">Nombre</label><input class="hr-input" id="product-name" required maxlength="160"></div>
         <div class="field hr-field"><label class="hr-label" for="product-slug">Slug</label><input class="hr-input" id="product-slug" required pattern="[a-z0-9-]+" maxlength="160"></div>
         <div class="field hr-field"><label class="hr-label" for="product-description">Descripción</label><textarea class="hr-textarea" id="product-description" rows="4"></textarea></div>
+        <div class="field hr-field"><label class="hr-label" for="product-producer">Productor</label><input class="hr-input" id="product-producer" maxlength="160" placeholder="Opcional para beats"></div>
         <div class="field hr-field">
           <label class="hr-label" for="product-category">Categoría</label>
           <select class="hr-select" id="product-category" required>
@@ -64,7 +65,7 @@
     <p id="admin-denied-message">Revisando tu sesión y rol.</p>
   </main>
 
-  <script src="../site.js?v=20260701-beatstore-nav"></script>
-  <script type="module" src="admin.js?v=20260701-notifications"></script>
+  <script src="../site.js?v=20260718-admin-store-subnav"></script>
+  <script type="module" src="admin.js?v=20260718-admin-store-subnav"></script>
 </body>
 </html>

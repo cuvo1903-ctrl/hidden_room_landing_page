@@ -13,9 +13,6 @@ const state = { products: [], adminProducts: [], beats: [], items: [], isAdmin: 
 const grid = document.getElementById("beat-grid");
 const searchInput = document.getElementById("beat-search");
 const sortSelect = document.getElementById("beat-sort");
-const audio = document.getElementById("beat-audio");
-const playerTitle = document.getElementById("player-title");
-const playerDetail = document.getElementById("player-detail");
 const adminPanel = document.getElementById("beat-admin-panel");
 const adminForm = document.getElementById("beat-admin-form");
 const adminList = document.getElementById("beat-admin-products");
@@ -40,12 +37,83 @@ async function initBeatStore() {
   renderBeats();
   initializeAdminPanel();
 
+  window.addEventListener("popstate", () => {
+    if (state.isAdmin) setAdminMode(wantsAdminMode());
+  });
+
   searchInput?.addEventListener("input", renderBeats);
   sortSelect?.addEventListener("change", renderBeats);
   grid?.addEventListener("click", handleGridClick);
   adminForm?.addEventListener("submit", handleAdminSubmit);
   adminList?.addEventListener("click", handleAdminListClick);
   cancelEditButton?.addEventListener("click", resetAdminForm);
+  document.addEventListener("click", handleAdminModeClick);
+}
+
+function wantsAdminMode() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("view") === "admin" || params.get("admin") === "1";
+}
+
+function setAdminMode(active) {
+  const isActive = Boolean(active);
+  document.body.classList.toggle("beat-admin-mode", isActive);
+  if (adminPanel) adminPanel.hidden = !isActive;
+  syncAdminSubNavState(isActive);
+}
+
+function syncAdminSubNavState(active) {
+  document.querySelectorAll('.hr-nav__sub-link[href="/store/beat_store/"]').forEach((link) => {
+    if (active) {
+      link.removeAttribute("aria-current");
+    } else {
+      link.setAttribute("aria-current", "page");
+    }
+  });
+  document.querySelectorAll('.hr-nav__sub-link[href="/store/beat_store/?view=admin"]').forEach((link) => {
+    if (active) {
+      link.setAttribute("aria-current", "page");
+    } else {
+      link.removeAttribute("aria-current");
+    }
+  });
+}
+
+function ensureAdminEntryLink() {
+  if (!state.isAdmin || document.querySelector("[data-beat-admin-entry]")) return;
+  const actions = document.querySelector(".beat-hero__actions");
+  if (!actions) return;
+  const button = document.createElement("button");
+  button.className = "secondary-button hr-btn";
+  button.type = "button";
+  button.dataset.beatAdminEntry = "true";
+  button.textContent = "Admin beats";
+  actions.appendChild(button);
+}
+
+function handleAdminModeClick(event) {
+  const adminEntry = event.target.closest("[data-beat-admin-entry]");
+  const storeEntry = event.target.closest("[data-beat-store-entry]");
+  if (adminEntry) {
+    event.preventDefault();
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", "admin");
+    url.hash = "";
+    history.pushState(null, "", url);
+    setAdminMode(true);
+    requestAnimationFrame(() => adminPanel?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    return;
+  }
+  if (storeEntry) {
+    event.preventDefault();
+    const url = new URL(window.location.href);
+    url.searchParams.delete("view");
+    url.searchParams.delete("admin");
+    url.hash = "";
+    history.pushState(null, "", url);
+    setAdminMode(false);
+    requestAnimationFrame(() => document.getElementById("beat-store-title")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
 }
 
 async function currentUserIsAdmin() {
@@ -68,7 +136,7 @@ async function currentUserIsAdmin() {
 async function fetchBeatProducts(includeInactive = false) {
   let query = supabase
     .from("store_products")
-    .select("id, slug, name, description, category, price, currency, image_url, file_url, stock, is_digital, featured, is_active, created_at")
+    .select("id, slug, name, description, category, price, currency, image_url, file_url, producer, stock, is_digital, featured, is_active, created_at")
     .eq("category", "beats")
     .order("featured", { ascending: false })
     .order("created_at", { ascending: false });
@@ -89,28 +157,27 @@ async function fetchCloudBeats() {
 }
 
 function mergeProductsAndBeats(products, beats) {
-  const productBySlug = new Map();
-  const productByName = new Map();
-  for (const product of products) {
-    productBySlug.set(normalizeKey(product.slug), product);
-    productByName.set(normalizeKey(product.name), product);
+  const beatBySlug = new Map();
+  const beatByTitle = new Map();
+  const beatByFilePath = new Map();
+  const beatByFileName = new Map();
+  for (const beat of beats) {
+    beatBySlug.set(normalizeKey(beat.slug), beat);
+    beatByTitle.set(normalizeKey(beat.title), beat);
+    beatByFilePath.set(normalizeKey(BEAT_STORE_CLOUD_PATH + '/' + beat.file), beat);
+    beatByFilePath.set(normalizeKey(beat.file), beat);
+    beatByFileName.set(normalizeKey(cloudFileName(beat.file)), beat);
   }
 
-  const usedProductIds = new Set();
-  const merged = beats.map((beat) => {
-    const product = productBySlug.get(normalizeKey(beat.slug)) || productByName.get(normalizeKey(beat.title));
-    if (product) usedProductIds.add(product.id);
-    return { id: `beat:${beat.file}`, beat, product };
+  return products.map((product) => {
+    const beat = beatByFilePath.get(normalizeKey(product.file_url))
+      || beatByFileName.get(normalizeKey(cloudFileName(product.file_url)))
+      || beatBySlug.get(normalizeKey(product.slug))
+      || beatByTitle.get(normalizeKey(product.name))
+      || null;
+    return { id: 'product:' + product.id, beat, product };
   });
-
-  for (const product of products) {
-    if (usedProductIds.has(product.id)) continue;
-    merged.push({ id: `product:${product.id}`, beat: null, product });
-  }
-
-  return merged;
 }
-
 function renderBeats() {
   const query = String(searchInput?.value || "").trim().toLowerCase();
   const sorted = sortItems(state.items, sortSelect?.value || "featured");
@@ -120,6 +187,7 @@ function renderBeats() {
     const haystack = [
       product?.name,
       product?.description,
+      product?.producer,
       product?.slug,
       beat?.title,
       beat?.file,
@@ -129,7 +197,7 @@ function renderBeats() {
   });
 
   if (!filtered.length) {
-    grid.innerHTML = `<div class="empty-state beat-empty"><h2>Sin beats</h2><p>${state.beats.length ? "Prueba otra busqueda." : "Sube archivos de audio a cloud/beats_store para publicar previews aqui."}</p></div>`;
+    grid.innerHTML = `<div class="empty-state beat-empty"><h2>Sin beats</h2><p>${query ? "Prueba otra busqueda." : "No hay beats activos publicados."}</p></div>`;
     return;
   }
 
@@ -150,14 +218,15 @@ function beatCardMarkup(item) {
   const product = item.product;
   const beat = item.beat;
   const title = itemTitle(item);
-  const canPreview = Boolean(beat?.stream_url);
+  const canPreview = Boolean(previewUrlForItem(item));
   const canBuy = Boolean(product && productCanBePurchased(product));
   const price = product ? formatPrice(product.price, product.currency) : "Sin producto";
-  const description = product?.description || (beat ? "Preview disponible desde MysAuth Cloud." : "Producto pendiente de preview en Cloud.");
+  const description = String(product?.description || "").trim();
+  const producer = productProducer(item);
   const status = [
     product?.featured ? "Featured" : null,
     canPreview ? "Preview" : "Sin preview",
-    canBuy ? "Compra activa" : product?.is_active === false ? "Inactivo" : product ? "No disponible" : "No vinculado",
+    canBuy ? "Compra activa" : product?.is_active === false ? "Inactivo" : "No disponible",
   ].filter(Boolean).join(" / ");
 
   return `
@@ -168,8 +237,8 @@ function beatCardMarkup(item) {
         <span class="beat-card__status">${escapeHtml(status)}</span>
       </div>
       <h3>${escapeHtml(title)}</h3>
-      <p class="product-description">${escapeHtml(description)}</p>
-      <p class="beat-card__file">${escapeHtml(beat?.file || product?.slug || "Sin archivo asociado")}</p>
+      <p class="beat-card__producer">${escapeHtml(producer ? `Prod. ${producer}` : "Productor por confirmar")}</p>
+      ${description ? `<p class="product-description">${escapeHtml(description)}</p>` : ""}
       <p class="product-price">${escapeHtml(price)}</p>
       <div class="beat-card__actions">
         <button class="secondary-button" type="button" data-play-beat="${escapeHtml(item.id)}" ${canPreview ? "" : "disabled"}>Reproducir</button>
@@ -200,14 +269,48 @@ function handleGridClick(event) {
 
 function playBeat(itemId) {
   const item = state.items.find((candidate) => candidate.id === itemId);
-  if (!item?.beat?.stream_url) return;
-  const title = itemTitle(item);
-  audio.src = new URL(item.beat.stream_url, CLOUD_ORIGIN).href;
-  playerTitle.textContent = title;
-  playerDetail.textContent = item.product ? `${formatPrice(item.product.price, item.product.currency)} / licencia digital` : "Preview sin producto vinculado.";
-  audio.play().catch(() => null);
+  const previewUrl = previewUrlForItem(item);
+  if (!item || !previewUrl) return;
+  const producer = productProducer(item);
+  window.dispatchEvent(new CustomEvent("hr:beat-preview", {
+    detail: {
+      src: previewUrl,
+      title: itemTitle(item),
+      detail: [producer ? `Prod. ${producer}` : null, item.product ? formatPrice(item.product.price, item.product.currency) : null].filter(Boolean).join(" / "),
+    },
+  }));
+}
+function previewUrlForItem(item) {
+  const streamUrl = item?.beat?.stream_url;
+  if (streamUrl) return new URL(streamUrl, CLOUD_ORIGIN).href;
+
+  const relativeFile = beatRelativeFile(item?.product?.file_url);
+  if (!relativeFile) return "";
+  return new URL(`/api/beat-store/stream?file=${encodeURIComponent(relativeFile)}`, CLOUD_ORIGIN).href;
 }
 
+function beatRelativeFile(value) {
+  let clean = String(value || "").trim();
+  if (!clean) return "";
+  if (clean.startsWith("http://") || clean.startsWith("https://")) {
+    try {
+      const url = new URL(clean);
+      clean = url.searchParams.get("file") || url.pathname;
+    } catch {
+      return "";
+    }
+  }
+  clean = clean
+    .split("?")[0]
+    .split("#")[0]
+    .replaceAll("\\", "/")
+    .replace(/\/+/g, "/")
+    .replace(/^\/+/g, "");
+  if (clean.toLowerCase().startsWith("beats_store/")) clean = clean.slice("beats_store/".length);
+  if (!clean || clean.split("/").some((part) => !part || part === "." || part === "..")) return "";
+  if (!/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(clean)) return "";
+  return clean;
+}
 function addBeatToCart(itemId) {
   const item = state.items.find((candidate) => candidate.id === itemId);
   if (!item?.product || !productCanBePurchased(item.product)) return;
@@ -221,7 +324,8 @@ function addBeatToCart(itemId) {
 
 function initializeAdminPanel() {
   if (!state.isAdmin || !adminPanel) return;
-  adminPanel.hidden = false;
+  ensureAdminEntryLink();
+  setAdminMode(wantsAdminMode());
   resetAdminForm();
   renderAdminProducts();
 }
@@ -240,7 +344,7 @@ function renderAdminProducts() {
       <div>
         <span class="product-category">${escapeHtml(product.is_active ? "Activo" : "Inactivo")}${product.featured ? " / Featured" : ""}</span>
         <h3>${escapeHtml(product.name)}</h3>
-        <p>${escapeHtml(product.slug)} / ${formatPrice(product.price, product.currency)} / stock ${escapeHtml(product.stock ?? "ilimitado")}</p>
+        <p>${escapeHtml(product.slug)} / ${escapeHtml(product.producer || "Sin productor")} / ${formatPrice(product.price, product.currency)} / stock ${escapeHtml(product.stock ?? "ilimitado")}</p>
       </div>
       <div class="admin-actions">
         <button class="secondary-button" type="button" data-edit-beat="${escapeHtml(product.id)}">Editar</button>
@@ -271,6 +375,7 @@ async function handleAdminSubmit(event) {
     name: document.getElementById("beat-name").value.trim(),
     slug: document.getElementById("beat-slug").value.trim().toLowerCase(),
     description: document.getElementById("beat-description").value.trim() || null,
+    producer: document.getElementById("beat-producer").value.trim() || null,
     category: "beats",
     price: Number(document.getElementById("beat-price").value),
     currency: "MXN",
@@ -349,7 +454,7 @@ async function handleAdminListClick(event) {
     await updateAdminProduct(featuredButton.dataset.featureBeat, { featured: featuredButton.dataset.featured !== "true" });
     return;
   }
-  if (deleteButton && window.confirm("Eliminar este beat de productos? Esta accion no borra archivos del Cloud.")) {
+  if (deleteButton && window.confirm("Eliminar este beat de productos? Dejara de existir para clientes, pero no se borra el archivo de Cloud.")) {
     const { error } = await supabase.from("store_products").delete().eq("id", deleteButton.dataset.deleteBeat);
     if (error) adminStatus.textContent = error.message;
     else {
@@ -373,6 +478,7 @@ function editAdminProduct(id) {
   document.getElementById("beat-name").value = product.name;
   document.getElementById("beat-slug").value = product.slug;
   document.getElementById("beat-description").value = product.description ?? "";
+  document.getElementById("beat-producer").value = product.producer ?? "";
   document.getElementById("beat-price").value = product.price;
   document.getElementById("beat-file-url").value = product.file_url ?? "";
   document.getElementById("beat-stock").value = product.stock ?? "";
@@ -429,8 +535,21 @@ function updateCartCount() {
   });
 }
 
+function cloudFileName(value) {
+  const clean = String(value || "").split("?")[0].split("#")[0];
+  try {
+    return decodeURIComponent(clean.split("/").filter(Boolean).pop() || clean);
+  } catch {
+    return clean.split("/").filter(Boolean).pop() || clean;
+  }
+}
+
 function itemTitle(item) {
   return item.product?.name || item.beat?.title || "Beat";
+}
+
+function productProducer(item) {
+  return item.product?.producer || item.beat?.producer || "";
 }
 
 function productPrice(item) {

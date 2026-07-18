@@ -9,18 +9,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../../styles.css?v=20260701-notifications">
-  <link rel="stylesheet" href="../store.css?v=20260701-notifications">
-  <link rel="stylesheet" href="bs.css?v=20260628-beat-store">
+  <link rel="stylesheet" href="../../styles.css?v=20260718-hero-rhythm">
+  <link rel="stylesheet" href="../store.css?v=20260718-admin-store-subnav">
+  <link rel="stylesheet" href="bs.css?v=20260718-hero-rhythm">
 </head>
 <body class="store-page beat-store-page hr-page" data-page="beat-store" data-hr-chrome data-hr-context="store">
   <div id="hr-global-nav"></div>
 
   <main>
-    <section class="beat-hero hr-section" aria-labelledby="beat-store-title">
+    <section class="beat-hero hr-hero hr-section" aria-labelledby="beat-store-title">
       <div class="hr-container beat-hero__grid">
         <div class="beat-hero__copy hr-stack">
-          <p class="eyebrow hr-eyebrow">Hidden Room Supply</p>
+          <p class="eyebrow hr-eyebrow">Hidden Room Beats</p>
           <h1 id="beat-store-title" class="hr-title-xl">Beat Store</h1>
           <p class="hero-copy hr-subtitle">Reproduce previews desde MysAuth Cloud y compra licencias digitales con checkout seguro.</p>
           <div class="beat-hero__actions hr-cluster">
@@ -28,14 +28,6 @@
             <a class="secondary-button hr-btn" href="../cart.html">Carrito <span class="cart-count">0</span></a>
           </div>
         </div>
-        <aside class="beat-player hr-panel" aria-label="Reproductor Beat Store">
-          <div class="beat-player__meta">
-            <span class="product-category">Preview</span>
-            <h2 id="player-title">Selecciona un beat</h2>
-            <p id="player-detail">Los audios se leen dinamicamente desde cloud/beats_store.</p>
-          </div>
-          <audio id="beat-audio" controls preload="none"></audio>
-        </aside>
       </div>
     </section>
 
@@ -79,7 +71,7 @@
             <p class="eyebrow hr-eyebrow">Admin</p>
             <h2 id="beat-admin-title" class="hr-section-title">Editar beats</h2>
           </div>
-          <p id="beat-admin-status">Panel disponible para cuentas admin.</p>
+          <div class="beat-admin__status hr-stack hr-stack-sm"><p id="beat-admin-status">Panel disponible para cuentas admin.</p><button class="secondary-button hr-btn" type="button" data-beat-store-entry>Volver a tienda</button></div>
         </div>
 
         <div class="admin-layout hr-grid">
@@ -89,6 +81,7 @@
             <div class="field hr-field"><label class="hr-label" for="beat-name">Nombre</label><input class="hr-input" id="beat-name" required maxlength="160"></div>
             <div class="field hr-field"><label class="hr-label" for="beat-slug">Slug</label><input class="hr-input" id="beat-slug" required pattern="[a-z0-9-]+" maxlength="160"></div>
             <div class="field hr-field"><label class="hr-label" for="beat-description">Descripcion</label><textarea class="hr-textarea" id="beat-description" rows="4"></textarea></div>
+            <div class="field hr-field"><label class="hr-label" for="beat-producer">Productor</label><input class="hr-input" id="beat-producer" maxlength="160" placeholder="Nombre del productor"></div>
             <div class="field hr-field"><label class="hr-label" for="beat-price">Precio MXN</label><input class="hr-input" id="beat-price" type="number" min="0" step="0.01" required></div>
             <div class="field hr-field"><label class="hr-label" for="beat-upload-file">Subir audio</label><input class="hr-input" id="beat-upload-file" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"></div>
             <p id="beat-upload-status" class="beat-upload-status" aria-live="polite"></p>
@@ -114,6 +107,7 @@
     </section>
   </main>
 
+
   <div id="store-notice" class="notice" role="status" aria-live="polite"></div>
 
   <footer class="store-footer">
@@ -121,7 +115,7 @@
     <a href="../">Volver a la tienda</a>
   </footer>
 
-  <script src="../../site.js?v=20260701-beatstore-nav"></script>
-  <script type="module" src="bs.js?v=20260701-notifications"></script>
+  <script src="../../site.js?v=20260718-admin-store-subnav"></script>
+  <script type="module" src="bs.js?v=20260718-beat-card-clean"></script>
 </body>
 </html>

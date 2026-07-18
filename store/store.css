@@ -28,19 +28,12 @@ html { color-scheme: dark; }
 }
 
 .store-hero {
-  min-height: 66vh;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 0;
   border-bottom: 1px solid var(--hr-border);
 }
 
-.store-hero__content {
-  width: 100%;
-  padding-block: 12vh 9vh;
-  gap: 0;
-}
 
 .eyebrow {
   margin: 0 0 20px;

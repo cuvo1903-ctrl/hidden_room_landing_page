@@ -162,7 +162,7 @@ Deno.serve(async (req) => {
   if (!isOwnedStoragePath(storagePath, callerData.user.id)) {
     return error('La ruta temporal del archivo no es válida.', 400);
   }
-  if (!Number.isSafeInteger(size) || size < 0) return error('El tamaño del archivo no es válido.', 400);
+  if (!Number.isSafeInteger(size) || size <= 0) return error('El tamano del archivo no es valido o esta vacio.', 400);
 
   try {
     const jobId = await createJob(adminClient, {

@@ -1422,6 +1422,7 @@ export type Database = {
           is_digital: boolean
           name: string
           price: number
+          producer: string | null
           slug: string
           stock: number | null
           stripe_price_id: string | null
@@ -1440,6 +1441,7 @@ export type Database = {
           is_digital?: boolean
           name: string
           price: number
+          producer?: string | null
           slug: string
           stock?: number | null
           stripe_price_id?: string | null
@@ -1458,6 +1460,7 @@ export type Database = {
           is_digital?: boolean
           name?: string
           price?: number
+          producer?: string | null
           slug?: string
           stock?: number | null
           stripe_price_id?: string | null

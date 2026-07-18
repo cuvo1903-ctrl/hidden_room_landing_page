@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
 const fsp = require('fs/promises');
 const http = require('http');
@@ -22,6 +23,7 @@ const SERVER_STATUS_HISTORY_LIMIT = Number(process.env.SERVER_STATUS_HISTORY_LIM
 const SERVER_STATUS_TABLE = process.env.SERVER_STATUS_TABLE || 'server_status_history';
 const SERVER_STATUS_DISK_PATH = process.env.SERVER_STATUS_DISK_PATH || CLOUD_ROOT || '/';
 const CLOUD_UPLOAD_PERMISSION = 'cloud.upload';
+const DOWNLOAD_TOKEN_TTL_MS = Number(process.env.CLOUD_DOWNLOAD_TOKEN_TTL_MS || 2 * 60 * 1000);
 const BEAT_PERMISSION_KEYS = ['beat.store', 'beats.store', 'store.beats', 'store.beat', 'beat_store', 'beats', 'Beat Store', 'module.beats', 'module.beat-store'];
 const BEAT_STORE_DIR = 'beats_store';
 const BEAT_AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.m4a', '.ogg', '.flac', '.aac']);
@@ -30,11 +32,11 @@ const PUBLIC_CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
   'Access-Control-Allow-Headers': 'Range, Content-Type',
-  'Access-Control-Expose-Headers': 'Accept-Ranges, Content-Length, Content-Range',
+  'Access-Control-Expose-Headers': 'Accept-Ranges, Content-Length, Content-Range, Content-Disposition',
 };
 const API_CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, HEAD, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-File-Name',
 };
 let lastCpuSnapshot = null;
@@ -82,6 +84,80 @@ function sendJson(res, status, body) { send(res, status, JSON.stringify(body), {
 function sendPublicJson(res, status, body) { send(res, status, JSON.stringify(body), { ...PUBLIC_CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8' }); }
 function fail(res, status, message) { sendJson(res, status, { success: false, error: message }); }
 function failPublic(res, status, message) { sendPublicJson(res, status, { success: false, error: message }); }
+
+function base64UrlEncode(value) {
+  return Buffer.from(value).toString('base64url');
+}
+
+function base64UrlDecode(value) {
+  return Buffer.from(String(value || ''), 'base64url').toString('utf8');
+}
+
+function signDownloadPayload(payload) {
+  const body = base64UrlEncode(JSON.stringify(payload));
+  const signature = crypto.createHmac('sha256', SERVICE_ROLE_KEY).update(body).digest('base64url');
+  return `${body}.${signature}`;
+}
+
+function verifyDownloadToken(token) {
+  const [body, signature] = String(token || '').split('.');
+  if (!body || !signature) throw new Error('Enlace de descarga invalido.');
+  const expected = crypto.createHmac('sha256', SERVICE_ROLE_KEY).update(body).digest('base64url');
+  const expectedBuffer = Buffer.from(expected);
+  const signatureBuffer = Buffer.from(signature);
+  if (expectedBuffer.length !== signatureBuffer.length || !crypto.timingSafeEqual(expectedBuffer, signatureBuffer)) throw new Error('Enlace de descarga invalido.');
+  const payload = JSON.parse(base64UrlDecode(body));
+  if (!payload.exp || Date.now() > Number(payload.exp)) throw new Error('El enlace de descarga expiro.');
+  return payload;
+}
+
+function streamFile(req, res, filePath, stats, headers = {}) {
+  const range = req.headers.range;
+  const baseHeaders = {
+    'Accept-Ranges': 'bytes',
+    ...headers,
+  };
+
+  function pipeReadStream(options = {}) {
+    if (req.method === 'HEAD') return res.end();
+    const stream = fs.createReadStream(filePath, options);
+    stream.on('error', (err) => {
+      console.error('File stream failed:', err.message || err);
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ success: false, error: 'No se pudo leer el archivo.' }));
+        return;
+      }
+      res.destroy(err);
+    });
+    return stream.pipe(res);
+  }
+
+  if (range) {
+    const match = String(range).match(/^bytes=(\d*)-(\d*)$/);
+    if (!match) {
+      res.writeHead(416, { ...baseHeaders, 'Content-Range': `bytes */${stats.size}` });
+      return res.end();
+    }
+    let start = match[1] ? Number(match[1]) : 0;
+    let end = match[2] ? Number(match[2]) : stats.size - 1;
+    if (!match[1] && match[2]) {
+      const suffix = Number(match[2]);
+      start = Math.max(stats.size - suffix, 0);
+      end = stats.size - 1;
+    }
+    if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= stats.size) {
+      res.writeHead(416, { ...baseHeaders, 'Content-Range': `bytes */${stats.size}` });
+      return res.end();
+    }
+    end = Math.min(end, stats.size - 1);
+    res.writeHead(206, { ...baseHeaders, 'Content-Length': end - start + 1, 'Content-Range': `bytes ${start}-${end}/${stats.size}` });
+    return pipeReadStream({ start, end });
+  }
+
+  res.writeHead(200, { ...baseHeaders, 'Content-Length': stats.size });
+  return pipeReadStream();
+}
 
 function normalizeCloudPath(input) {
   if (!input || input === '/') return '/';
@@ -267,6 +343,35 @@ async function resolveSafeChild(baseRoot, requestedPath, rawName, options = {}) 
   return { ...parent, name, child };
 }
 
+async function resolveDownloadChild(user, baseRoot, requestedPath, rawName) {
+  try {
+    return await resolveSafeChild(baseRoot, requestedPath, rawName, { mustExist: true });
+  } catch (err) {
+    const normalizedPath = normalizeCloudPath(requestedPath);
+    const name = safeChildName(rawName);
+    const canSearchLegacyUserDownloads = user.isAdmin && /^\/users\/[^/]+\/downloads$/i.test(normalizedPath);
+    if (!canSearchLegacyUserDownloads) throw err;
+
+    const root = await getRealRoot(baseRoot);
+    const usersRoot = path.resolve(root, 'users');
+    assertInsideRoot(root, usersRoot);
+    const entries = await fsp.readdir(usersRoot, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const candidate = path.resolve(usersRoot, entry.name, 'downloads', name);
+      assertInsideRoot(root, candidate);
+      const stats = await fsp.stat(candidate).catch(() => null);
+      if (!stats?.isFile()) continue;
+      const realChild = await fsp.realpath(candidate);
+      assertInsideRoot(root, realChild);
+      return { normalized: '/users/' + entry.name + '/downloads', resolved: path.dirname(realChild), root, name, child: realChild };
+    }
+
+    const notFound = new Error('Archivo no encontrado en Cloud. Vuelve a subirlo o corrige la ruta en BB.DD > descargas.');
+    notFound.status = 404;
+    throw notFound;
+  }
+}
 function requireUploadPermission(user) {
   if (!user.canUpload) { const err = new Error('No tienes permiso cloud.upload.'); err.status = 403; throw err; }
 }
@@ -292,6 +397,18 @@ async function readUpload(req) {
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);
+}
+
+function downloadTokenUser(payload) {
+  return {
+    id: payload.uid,
+    profile: payload.profile || { id: payload.uid, user_id: payload.uid },
+    roles: Array.isArray(payload.roles) ? payload.roles : [],
+    permissions: [],
+    isAdmin: Boolean(payload.isAdmin),
+    canUpload: false,
+    hasBeatStore: false,
+  };
 }
 
 function sessionPayload(user) {
@@ -581,7 +698,7 @@ function parseSensorsText(output) {
   const preferred = [];
   const fallback = [];
   String(output || '').split(/\r?\n/).forEach((line) => {
-    const match = line.match(/^\s*([^:]+):\s*\+?(-?\d+(?:\.\d+)?)\s*(?:°\s*)?C\b/i);
+    const match = line.match(/^\s*([^:]+):\s*\+?(-?\d+(?:\.\d+)?)\s*(?:Â°\s*)?C\b/i);
     if (!match) return;
     const label = match[1].toLowerCase();
     const value = Number(match[2]);
@@ -762,22 +879,51 @@ async function serverStatus(user, res) {
   const status = latestServerStatus || await collectServerStatus({ persist: false });
   sendJson(res, 200, status);
 }
-async function downloadFile(user, res, url) {
+async function createDownloadLink(user, res, url) {
+  const requestedPath = normalizeCloudPath(url.searchParams.get('path'));
+  const name = safeChildName(url.searchParams.get('name'));
   const baseRoot = getCloudBaseRoot(user);
-  const { name, child } = await resolveSafeChild(baseRoot, url.searchParams.get('path'), url.searchParams.get('name'), { mustExist: true });
+  await resolveDownloadChild(user, baseRoot, requestedPath, name);
+  const token = signDownloadPayload({
+    uid: user.id,
+    isAdmin: user.isAdmin,
+    roles: user.roles,
+    profile: {
+      id: user.profile?.id || user.id,
+      user_id: user.profile?.user_id || user.id,
+      username: user.profile?.username || null,
+      display_name: user.profile?.display_name || null,
+      email: user.profile?.email || null,
+    },
+    path: requestedPath,
+    name,
+    exp: Date.now() + DOWNLOAD_TOKEN_TTL_MS,
+  });
+  sendJson(res, 200, { success: true, url: `/api/download-public?token=${encodeURIComponent(token)}`, expiresInMs: DOWNLOAD_TOKEN_TTL_MS });
+}
+
+async function downloadPublic(req, res, url) {
+  const payload = verifyDownloadToken(url.searchParams.get('token'));
+  const user = downloadTokenUser(payload);
+  const tokenUrl = new URL(`/api/download?path=${encodeURIComponent(payload.path)}&name=${encodeURIComponent(payload.name)}`, `http://${req.headers.host || 'localhost'}`);
+  return downloadFile(user, req, res, tokenUrl);
+}
+
+async function downloadFile(user, req, res, url) {
+  const baseRoot = getCloudBaseRoot(user);
+  const { name, child } = await resolveDownloadChild(user, baseRoot, url.searchParams.get('path'), url.searchParams.get('name'));
   const stats = await fsp.stat(child);
   if (!stats.isFile()) throw new Error('El elemento no es archivo.');
   const encoded = encodeURIComponent(name).replace(/['()]/g, escape).replace(/\*/g, '%2A');
-  res.writeHead(200, {
+  const safeName = name.replace(/[\"\r\n]/g, '_');
+  return streamFile(req, res, child, stats, {
+    ...API_CORS_HEADERS,
     'Content-Type': 'application/octet-stream',
-    'Content-Length': stats.size,
-    'Content-Disposition': `attachment; filename="${name.replace(/["\\\r\n]/g, '_')}"; filename*=UTF-8''${encoded}`,
+    'Content-Disposition': `attachment; filename="${safeName}"; filename*=UTF-8''${encoded}`,
     'Cache-Control': 'private, no-store',
     'X-Content-Type-Options': 'nosniff',
   });
-  fs.createReadStream(child).pipe(res);
 }
-
 async function serveStatic(req, res, url) {
   let pathname = decodeURIComponent(url.pathname);
   if (pathname === '/') pathname = '/index.html';
@@ -810,6 +956,7 @@ async function route(req, res) {
       if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/api/beat-store/stream') return await streamBeatFile(req, res, url);
       return failPublic(res, 404, 'Ruta Beat Store no encontrada.');
     }
+    if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/api/download-public') return await downloadPublic(req, res, url);
     if (url.pathname.startsWith('/api/')) {
       if (req.method === 'OPTIONS') return send(res, 204, '', API_CORS_HEADERS);
       const user = await requireCloudUser(req);
@@ -820,7 +967,8 @@ async function route(req, res) {
       if (req.method === 'POST' && url.pathname === '/api/upload') return await uploadFile(user, req, res, url);
       if (req.method === 'POST' && url.pathname === '/api/rename') return await renameItem(user, req, res);
       if (req.method === 'DELETE' && url.pathname === '/api/item') return await deleteItem(user, res, url);
-      if (req.method === 'GET' && url.pathname === '/api/download') return await downloadFile(user, res, url);
+      if (req.method === 'GET' && url.pathname === '/api/download-link') return await createDownloadLink(user, res, url);
+      if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/api/download') return await downloadFile(user, req, res, url);
       return fail(res, 404, 'Ruta API no encontrada.');
     }
     return serveStatic(req, res, url);

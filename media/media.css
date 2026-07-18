@@ -2,7 +2,6 @@
   position: absolute;
   width: 1px;
   height: 1px;
-  padding: 0;
   margin: -1px;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
@@ -28,21 +27,14 @@
 }
 
 .media-hero {
-  min-height: min(58vh, 600px);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 0;
   border-bottom: 1px solid var(--hr-accent-dim);
   overflow: hidden;
   position: relative;
 }
 
-.media-hero__content {
-  width: 100%;
-  padding-block: clamp(64px, 9vw, 110px) clamp(48px, 6vw, 76px);
-  gap: 0;
-}
 
 .media-hero::after {
   content: "ARCHIVO";
@@ -263,7 +255,7 @@
 
 .post-header {
   --hr-content-max: 1120px;
-  padding-block: clamp(64px, 9vw, 110px) clamp(42px, 6vw, 72px);
+  padding-block: var(--hr-hero-padding-start) var(--hr-hero-padding-end);
   gap: 0;
 }
 
@@ -386,7 +378,6 @@
 }
 
 @media (max-width: 640px) {
-  .media-hero { min-height: 52vh; }
   .featured-grid,
   .posts-grid,
   .media-toolbar { grid-template-columns: 1fr; }

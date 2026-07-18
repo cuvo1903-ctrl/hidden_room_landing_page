@@ -2717,7 +2717,27 @@
 }
 
 .db-download-action {
+  min-height: var(--hr-touch-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   gap: var(--hr-space-xs);
+  border: 1px solid var(--hr-red);
+  background: var(--hr-red);
+  color: var(--hr-text);
+  font-family: var(--hr-font-mono);
+  font-size: var(--hr-text-xs);
+  text-transform: uppercase;
+  text-decoration: none;
+  padding: 0 var(--hr-space-md);
+  white-space: nowrap;
+}
+
+
+.db-download-admin-remove {
+  width: max-content;
+  min-height: 32px;
+  padding: 6px 8px;
   white-space: nowrap;
 }
 
@@ -2738,19 +2758,19 @@
 }
 
 .db-download-action__icon::before {
-  top: 1px;
-  width: 6px;
-  height: 8px;
-  border-left: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
-  transform: translateX(-50%) rotate(-45deg);
+  top: 0;
+  width: 2px;
+  height: 9px;
+  background: currentColor;
 }
 
 .db-download-action__icon::after {
   bottom: 1px;
-  width: 12px;
-  height: 2px;
-  background: currentColor;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateX(-50%) rotate(45deg);
 }
 
 .db-upload-progress {

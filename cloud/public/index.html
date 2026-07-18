@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MysAuth Cloud</title>
-  <link rel="stylesheet" href="/cloud.css" />
+  <link rel="stylesheet" href="/cloud.css?v=20260718-hero-rhythm" />
 </head>
 <body>
   <main class="cloud-shell">
@@ -35,7 +35,7 @@
       </header>
 
       <section class="toolbar" aria-label="Herramientas cloud">
-        <label class="upload-button">Subir<input id="file-input" type="file" hidden /></label>
+        <label class="upload-button">Subir<input id="file-input" type="file" multiple hidden /></label>
         <button type="button" id="folder-button">Carpeta</button>
         <button type="button" id="up-button">Subir nivel</button>
       </section>
@@ -59,6 +59,6 @@
       </section>
     </section>
   </main>
-  <script type="module" src="/cloud.js"></script>
+  <script type="module" src="/cloud.js?v=20260718-multi-upload"></script>
 </body>
 </html>

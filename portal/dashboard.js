@@ -240,6 +240,9 @@ async function uploadCloudFile(file, targetPath = state.erpCloud.currentPath) {
 
 async function uploadCloudFileToPath(file, targetPath = '/') {
   if (!file) return null;
+  if (!Number.isFinite(file.size) || file.size <= 0) {
+    throw new Error('El archivo esta vacio. Vuelve a exportarlo o elige otro archivo.');
+  }
   const currentPath = normalizeCloudPath(targetPath);
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
@@ -1029,20 +1032,30 @@ const TABLE_EDITOR_CONFIG = {
     lockedFields: ['id'],
     editableFields: ['user_id', 'name', 'storage_path', 'notes', 'type', 'release_mode', 'membership_id', 'membership_delivery_id', 'membership_cycle_number'],
     hiddenColumns: ['id'],
+    summaryFields: ['user_id', 'name', 'type', 'release_mode', 'notes'],
+    pdfColumns: ['user_id', 'name', 'type', 'release_mode', 'notes'],
+    pdfColumnLabels: {
+      user_id: 'Usuario',
+      name: 'Producto',
+      type: 'Formato',
+      release_mode: 'Origen',
+      notes: 'Notas',
+    },
   },
   store_products: {
     label: 'Beats a la venta',
     primaryKey: 'id',
-    select: 'id, slug, name, description, category, price, currency, image_url, file_url, stock, is_digital, is_active, featured, stripe_price_id, created_at, updated_at',
+    select: 'id, slug, name, description, category, price, currency, image_url, file_url, producer, stock, is_digital, is_active, featured, stripe_price_id, created_at, updated_at',
     defaultSort: { field: 'created_at', direction: 'desc' },
     lockedFields: ['id', 'created_at', 'updated_at'],
-    editableFields: ['slug', 'name', 'description', 'category', 'price', 'currency', 'image_url', 'file_url', 'stock', 'is_digital', 'is_active', 'featured', 'stripe_price_id'],
+    editableFields: ['slug', 'name', 'description', 'category', 'price', 'currency', 'image_url', 'file_url', 'producer', 'stock', 'is_digital', 'is_active', 'featured', 'stripe_price_id'],
     hiddenColumns: ['id', 'updated_at'],
     rowFilter: (row) => String(row.category ?? '').toLowerCase() === 'beats',
     pdfColumnLabels: {
       category: 'tipo',
       created_at: 'fecha',
       price: 'cantidad',
+      producer: 'productor',
     },
   },
   rewards: {
@@ -1153,6 +1166,18 @@ const TABLE_EDITOR_CONFIG = {
     lockedFields: ['id', 'created_at'],
     editableFields: ['entity_key', 'name', 'entity_type', 'status', 'notes'],
     hiddenColumns: ['id'],
+  },
+  payment_methods: {
+    label: 'Metodos de pago',
+    primaryKey: 'id',
+    select: 'id, key, name, status, sort_order, created_at',
+    defaultSort: { field: 'sort_order', direction: 'asc' },
+    lockedFields: ['id', 'created_at'],
+    editableFields: ['key', 'name', 'status', 'sort_order'],
+    hiddenColumns: ['id'],
+    summaryFields: ['key', 'name', 'status', 'sort_order'],
+    pdfColumns: ['key', 'name', 'status', 'sort_order'],
+    pdfColumnLabels: { key: 'Clave', name: 'Nombre', status: 'Status', sort_order: 'Orden' },
   },
 };
 
@@ -2785,17 +2810,71 @@ function isCloudDownloadUrl(value) {
   }
 }
 
+function downloadReleaseLabel(item = {}) {
+  return item.release_mode === 'membership_delivery'
+    ? 'Membresía - Mes ' + (item.membership_cycle_number ?? '-')
+    : 'Directa';
+}
+
 function renderDownloadAction(item) {
   const href = String(item?.storage_path || '').trim();
   if (!href) return '-';
   const isCloudFile = isCloudDownloadUrl(href);
   const label = isCloudFile ? 'Descarga directa' : 'Descargar';
   return `
-    <a class="btn-primary db-download-action${isCloudFile ? ' db-download-action--cloud' : ''}" href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer"${isCloudFile ? ' download' : ''} aria-label="${escapeAttr(label)}">
-      ${isCloudFile ? '<span class="db-download-action__icon" aria-hidden="true"></span>' : ''}
+    <a class="btn-primary db-download-action${isCloudFile ? ' db-download-action--cloud' : ''}" href="${escapeAttr(href)}" ${isCloudFile ? 'data-direct-cloud-download="true"' : 'target="_blank" rel="noopener noreferrer"'} aria-label="${escapeAttr(label)}">
+      <svg class="db-download-action__icon" aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
       <span>${escapeHTML(label)}</span>
     </a>
   `;
+}
+
+function cloudDownloadRequestFromHref(href) {
+  if (!isCloudDownloadUrl(href)) return null;
+  const url = new URL(String(href), window.location.origin);
+  const segments = url.pathname.split('/').filter(Boolean).map((segment) => decodeURIComponent(segment));
+  const name = segments.pop();
+  if (!name) return null;
+  let pathSegments = segments;
+  if (pathSegments[0] === 'files') pathSegments = pathSegments.slice(1);
+  if (!hasRole('admin') && pathSegments[0] === 'users') pathSegments = pathSegments.slice(2);
+  return {
+    path: normalizeCloudPath('/' + pathSegments.join('/')),
+    name,
+  };
+}
+
+async function downloadCloudFileFromPortal(link) {
+  const request = cloudDownloadRequestFromHref(link?.href);
+  if (!request) return false;
+  const apiUrl = `${CLOUD_HIDDENROOM_URL.replace(/\/$/, '')}/api/download?path=${encodeURIComponent(request.path)}&name=${encodeURIComponent(request.name)}`;
+  link.setAttribute('aria-busy', 'true');
+  link.classList.add('is-loading');
+  try {
+    const response = await cloudApiFetch(apiUrl, { headers: { Accept: 'application/octet-stream' } });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(detail || `No se pudo descargar el archivo (${response.status})`);
+    }
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = request.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+    showToast('Descarga iniciada.', 'success');
+    return true;
+  } catch (err) {
+    console.error('[HR] direct cloud download:', err);
+    showToast(err.message || 'No se pudo descargar desde Cloud.', 'error');
+    return false;
+  } finally {
+    link.removeAttribute('aria-busy');
+    link.classList.remove('is-loading');
+  }
 }
 
 
@@ -5778,6 +5857,10 @@ async function renderErpOps() {
       label: 'Nuevo participante',
       html: renderEventParticipantForm(),
     },
+    paymentMethod: {
+      label: 'Metodo de pago',
+      html: renderPaymentMethodOpsForm(),
+    },
     financeEntity: {
       label: 'Entidad financiera',
       html: `
@@ -5852,6 +5935,7 @@ async function renderErpOps() {
             ['eventMovement', 'Nuevo movimiento'],
             ['eventParticipant', 'Nuevo participante'],
             ['financeEntity', 'Entidad financiera'],
+            ['paymentMethod', 'Metodo de pago'],
             ['membership', 'Membresías'],
             ['userMerge', 'Fusionar usuarios'],
           ].map(([value, label]) => optionHTML(value, label, activeForm)).join('')}
@@ -5865,6 +5949,22 @@ async function renderErpOps() {
       </article>
     </div>
   `);
+}
+
+function renderPaymentMethodOpsForm() {
+  return `
+    <form class="db-form" data-form="payment-method-create">
+      <div class="db-form__row">
+        <label class="db-field"><span>Clave</span><input name="key" placeholder="NU" required /></label>
+        <label class="db-field"><span>Nombre</span><input name="name" placeholder="NU" required /></label>
+      </div>
+      <div class="db-form__row">
+        <label class="db-field"><span>Status</span><select name="status"><option value="active" selected>active</option><option value="inactive">inactive</option></select></label>
+        <label class="db-field"><span>Orden</span><input name="sort_order" type="number" step="1" value="100" required /></label>
+      </div>
+      <button class="btn-primary" type="submit">Crear metodo</button>
+    </form>
+  `;
 }
 
 function renderEventParticipantForm() {
@@ -7301,6 +7401,7 @@ async function renderAdminTableEditor() {
     : '';
   const isMembershipDashboard = tableName === 'membership_dashboard';
   const membershipDashboardHasUser = isMembershipDashboard && Boolean(searchQuery);
+  const isDownloadsUserView = tableName === 'downloads';
   const searchControl = isMembershipDashboard
     ? renderMembershipDashboardUserPicker(searchQuery)
     : `
@@ -7324,6 +7425,9 @@ async function renderAdminTableEditor() {
   const membershipDashboardTable = isMembershipDashboard
     ? renderMembershipDashboardTable(visibleData, { canEditMaterialDelivery: true })
     : '';
+  const downloadsUserTable = isDownloadsUserView
+    ? renderAdminDownloadsUserViewTable(rowsToRender)
+    : '';
 
   return sectionShell('ERP', 'BB.DD', 'title-admin-table-editor', `
     <div class="db-toolbar hr-table-toolbar">
@@ -7346,7 +7450,7 @@ async function renderAdminTableEditor() {
     ${tableName === 'users' ? '<p class="db-empty">El campo email se guarda a través de Auth (Edge Function). El cambio se aplica al confirmar el correo.</p>' : ''}
     ${membershipDashboardContext}
     ${isMembershipDashboard && !membershipDashboardHasUser ? '<p class="db-empty">Selecciona un usuario para consultar su dashboard de membresía.</p>' : `
-    ${isMembershipDashboard ? membershipDashboardTable : `
+    ${isMembershipDashboard ? membershipDashboardTable : isDownloadsUserView ? downloadsUserTable : `
     <div class="db-table-wrap hr-table-wrap">
       <table class="db-table hr-table hr-table-editable db-table--editor" aria-label="Editor de ${escapeAttr(config.label)}">
         <thead>
@@ -7364,6 +7468,37 @@ async function renderAdminTableEditor() {
   `);
 }
 
+function renderAdminDownloadsUserViewTable(rows = []) {
+  const body = rows.length
+    ? rows.map((item) => {
+      const original = encodeURIComponent(JSON.stringify(item));
+      const cells = [
+        escapeHTML(item.user_id ?? '-'),
+        escapeHTML(item.name ?? '-'),
+        escapeHTML(item.type ?? '-'),
+        escapeHTML(downloadReleaseLabel(item)),
+        escapeHTML(item.notes ?? '-'),
+        renderDownloadAction(item),
+        '<button class="db-btn-danger db-download-admin-remove" type="button" data-action="admin-table-delete" data-table-name="downloads" data-row-original="' + escapeAttr(original) + '" title="Desasigna esta descarga del usuario; el archivo en Cloud se conserva">Quitar descarga</button>',
+      ];
+      return '<tr>' + cells.map((cell) => '<td>' + cell + '</td>').join('') + '</tr>';
+    }).join('')
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="7" class="db-empty hr-table-empty">Sin descargas disponibles.</td></tr>';
+
+  return '<div class="db-table-wrap hr-table-wrap">' +
+    '<table class="db-table hr-table hr-table-readable" aria-label="Descargas como las ve el usuario">' +
+    '<thead><tr>' +
+    '<th scope="col">Usuario</th>' +
+    '<th scope="col">Producto</th>' +
+    '<th scope="col">Formato</th>' +
+    '<th scope="col">Origen</th>' +
+    '<th scope="col">Notas</th>' +
+    '<th scope="col">Descarga</th>' +
+    '<th scope="col">Acciones</th>' +
+    '</tr></thead>' +
+    '<tbody id="js-admin-table-body">' + body + '</tbody>' +
+    '</table></div>';
+}
 function renderAdminMembershipDashboardContext(rows = [], searchQuery = '') {
   if (!searchQuery || !rows.length) return '';
 
@@ -7456,6 +7591,7 @@ function renderAdminTableEditorRow(tableName, config, row, index, options = {}) 
           <input type="hidden" name="original" value="${escapeAttr(original)}" />
           <button class="db-btn-secondary" type="submit">Guardar</button>
         </form>
+        ${renderAdminTableRowExtraActions(tableName, row, original)}
         <button class="db-btn-danger" type="button" data-action="admin-table-delete" data-table-name="${escapeAttr(tableName)}" data-row-original="${escapeAttr(original)}">Eliminar</button>
         ${tableName === 'users' && row.temp_password ? `<button class="db-btn-secondary" type="button" data-action="share-login" data-user-row="${escapeAttr(original)}">Compartir</button>` : ''}
       </td>
@@ -7464,6 +7600,23 @@ function renderAdminTableEditorRow(tableName, config, row, index, options = {}) 
   `;
 }
 
+function renderAdminTableRowExtraActions(tableName, row, original) {
+  if (tableName !== 'memberships') return '';
+
+  const status = String(row?.status ?? '').toLowerCase();
+  const canCancel = !['cancelled', 'expired'].includes(status);
+  const canFinish = status !== 'expired';
+  const actions = [];
+
+  if (canCancel) {
+    actions.push('<button class="db-btn-secondary" type="button" data-action="membership-cancel-row" data-row-original="' + escapeAttr(original) + '">Cancelar</button>');
+  }
+  if (canFinish) {
+    actions.push('<button class="db-btn-secondary" type="button" data-action="membership-finish-row" data-row-original="' + escapeAttr(original) + '">Finalizar</button>');
+  }
+
+  return actions.join('');
+}
 function adminTableCellValue(tableName, field, row) {
   if (tableName === 'membership_dashboard') {
     if (field === 'saldo') return formatMembershipRowBalance(row);
@@ -9296,6 +9449,10 @@ async function prepareDownloadValues(form, values) {
       showToast('Selecciona un archivo para subir a Cloud.', 'error');
       return false;
     }
+    if (!Number.isFinite(file.size) || file.size <= 0) {
+      showToast('El archivo esta vacio. Vuelve a exportarlo o elige otro archivo.', 'error');
+      return false;
+    }
     const userId = String(values.user_id ?? '').trim();
     if (!userId) {
       showToast('Selecciona un usuario valido.', 'error');
@@ -9450,6 +9607,17 @@ async function handleErpForm(form) {
     values.sessions_per_week = Number(values.sessions_per_week || 1);
     if (!values.end_date) values.end_date = null;
   }
+  if (type === 'payment-method-create') {
+    values.key = String(values.key ?? '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+    values.name = String(values.name ?? '').trim();
+    values.status = String(values.status || 'active').toLowerCase();
+    values.sort_order = Number(values.sort_order || 100);
+    if (!values.key || !values.name) {
+      showToast('Ingresa una clave y nombre validos.', 'error');
+      return;
+    }
+  }
+
   if (type === 'finance-entity-create') {
     values.entity_key = String(values.entity_key ?? '')
       .trim()
@@ -9493,6 +9661,7 @@ async function handleErpForm(form) {
     'contract-create': ['contracts', operationPayload, 'Contrato creado.'],
     'event-create': ['events', operationPayload, 'Evento creado.'],
     'finance-entity-create': ['finance_entities', operationPayload, 'Entidad financiera creada.'],
+    'payment-method-create': ['payment_methods', operationPayload, 'Metodo de pago creado.'],
   };
 
   const config = map[type];
@@ -9507,6 +9676,8 @@ async function handleErpForm(form) {
       state.data.permissionEvents = null;
     } else if (type === 'finance-entity-create') {
       state.data.financeEntities = null;
+    } else if (type === 'payment-method-create') {
+      state.data.paymentMethods = null;
     } else if (shouldShareReceipt) {
       await createUserNotification(
         operationPayload.user_id,
@@ -9521,6 +9692,74 @@ async function handleErpForm(form) {
   }
 }
 
+async function updateMembershipStatusAction({ membershipId, status, endDate, notes, successMessage, refreshSection = state.activeSection || 'admin-table-editor' }) {
+  if (!requireAdminMutation()) return false;
+  const cleanMembershipId = String(membershipId ?? '').trim();
+  if (!cleanMembershipId) {
+    showToast('Selecciona una membresia.', 'error');
+    return false;
+  }
+
+  const payload = {
+    status,
+    end_date: endDate ? formatDateOnly(endDate) : todayDateInputValue(),
+  };
+  const cleanNotes = String(notes ?? '').trim();
+  if (cleanNotes) payload.notes = cleanNotes;
+
+  const { error } = await supabase
+    .from('memberships')
+    .update(payload)
+    .eq('id', cleanMembershipId);
+
+  if (error) {
+    console.error('[HR] membership status action:', error);
+    showToast('No se pudo actualizar la membresia.', 'error');
+    return false;
+  }
+
+  showToast(successMessage || 'Membresia actualizada.', 'success');
+  navigate(refreshSection);
+  return true;
+}
+
+async function handleMembershipRowStatusAction(action, encodedRow) {
+  let row = null;
+  try {
+    row = JSON.parse(decodeURIComponent(encodedRow || ''));
+  } catch (error) {
+    console.error('[HR] membership row parse:', error);
+  }
+
+  if (!row?.id) {
+    showToast('No se pudo leer la membresia seleccionada.', 'error');
+    return;
+  }
+
+  const isCancel = action === 'cancel';
+  const status = isCancel ? 'cancelled' : 'expired';
+  const currentStatus = String(row.status ?? '').toLowerCase();
+  if (currentStatus === status) {
+    showToast(isCancel ? 'La membresia ya esta cancelada.' : 'La membresia ya esta finalizada.', 'info');
+    return;
+  }
+
+  const label = isCancel ? 'Cancelar' : 'Finalizar';
+  if (!window.confirm(label + ' esta membresia? Se marcara con fecha de termino de hoy.')) return;
+
+  const existingNotes = String(row.notes ?? '').trim();
+  const actionNote = todayDateInputValue() + ' - Membresia ' + (isCancel ? 'cancelada' : 'finalizada') + ' desde BB.DD.';
+  const notes = existingNotes ? existingNotes + '\n' + actionNote : actionNote;
+
+  await updateMembershipStatusAction({
+    membershipId: row.id,
+    status,
+    endDate: todayDateInputValue(),
+    notes,
+    successMessage: isCancel ? 'Membresia cancelada.' : 'Membresia finalizada.',
+    refreshSection: 'admin-table-editor',
+  });
+}
 async function handleMembershipCancel(form, values = formValues(form)) {
   const membershipId = String(values.membership_id ?? '').trim();
   if (!membershipId) {
@@ -10080,15 +10319,6 @@ async function handleOperationReceipt(form, options = {}) {
     });
 
     const fileName = `hidden-room-${title.toLowerCase().replace(/[^a-z0-9]+/gi, '-')}-${new Date().toISOString().slice(0, 10)}.pdf`;
-    const blob = doc.output('blob');
-    const file = new File([blob], fileName, { type: 'application/pdf' });
-
-    if (!options.silent && navigator.canShare?.({ files: [file] }) && navigator.share) {
-      await navigator.share({ title: `Hidden Room - ${title}`, files: [file] });
-      if (!options.silent) showToast('Comprobante compartido.', 'success');
-      return;
-    }
-
     doc.save(fileName);
     if (!options.silent) showToast('Comprobante PDF descargado.', 'success');
   } catch (err) {
@@ -10694,12 +10924,20 @@ async function handleAdminTableUpdate(form) {
 
   const ok = await saveAdminTableRow(tableName, config, original, payload, { confirmUserId: true });
   if (ok) {
+    if (tableName === 'payment_methods') state.data.paymentMethods = null;
     showToast('Fila actualizada.', 'success');
     navigate('admin-table-editor');
   }
 }
 
 async function saveAdminTableRow(tableName, config, original, payload, options = {}) {
+  if (tableName === 'payment_methods') {
+    if ('key' in payload) payload.key = String(payload.key ?? '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+    if ('name' in payload) payload.name = String(payload.name ?? '').trim();
+    if ('status' in payload) payload.status = String(payload.status || 'active').toLowerCase();
+    if ('sort_order' in payload) payload.sort_order = Number(payload.sort_order || 100);
+  }
+
   if (tableName === 'users' && 'occupations' in payload) {
     payload.occupations = normalizeOccupationsValue(payload.occupations);
   }
@@ -10994,9 +11232,13 @@ async function handleAdminTableDelete(tableName, encodedRow) {
   const readable = prefersConcept
     ? (original.concept || original.name || original.id || original.user_id || 'esta fila')
     : (original.display_name || original.username || original.concept || original.name || original.id || original.user_id || 'esta fila');
-  const confirmed = window.confirm(
-    `Advertencia: vas a eliminar permanentemente ${readable} de ${label}.\n\nEsta acción no se puede deshacer. ¿Confirmas la eliminación?`
-  );
+  const confirmed = tableName === 'downloads'
+    ? window.confirm(
+      `Vas a quitar la descarga ${readable} del usuario ${original.user_id || 'sin user_id'}.\n\nSolo se borra la asignacion en BB.DD.; el usuario y el archivo en Cloud se conservan.\n\nConfirmas?`
+    )
+    : window.confirm(
+      `Advertencia: vas a eliminar permanentemente ${readable} de ${label}.\n\nEsta accion no se puede deshacer. Confirmas la eliminacion?`
+    );
 
   if (!confirmed) return;
 
@@ -11029,7 +11271,8 @@ async function handleAdminTableDelete(tableName, encodedRow) {
     return;
   }
 
-  showToast('Fila eliminada.', 'success');
+  if (tableName === 'payment_methods') state.data.paymentMethods = null;
+  showToast(tableName === 'downloads' ? 'Descarga desasignada. Usuario y archivo Cloud conservados.' : 'Fila eliminada.', 'success');
   navigate('admin-table-editor');
 }
 
@@ -11374,6 +11617,13 @@ function attachMainDelegation() {
   const main = document.getElementById('js-main');
 
   main?.addEventListener('click', (e) => {
+    const directCloudDownload = e.target.closest('[data-direct-cloud-download="true"]');
+    if (directCloudDownload) {
+      e.preventDefault();
+      downloadCloudFileFromPortal(directCloudDownload);
+      return;
+    }
+
     const passwordToggle = e.target.closest('[data-action="toggle-password"]');
     if (passwordToggle) {
       const input = passwordToggle.closest('.db-password-field')?.querySelector('input');
@@ -11613,6 +11863,12 @@ function attachMainDelegation() {
     if (action === 'event-movement-edit') {
       const btn = e.target.closest('[data-event-movement]');
       if (btn?.dataset.eventMovement) handleEventMovementEdit(btn.dataset.eventMovement);
+    }
+
+    if (action === 'membership-cancel-row' || action === 'membership-finish-row') {
+      const btn = e.target.closest('[data-row-original]');
+      if (btn) handleMembershipRowStatusAction(action === 'membership-cancel-row' ? 'cancel' : 'finish', btn.dataset.rowOriginal);
+      return;
     }
 
     if (action === 'admin-table-delete') {
@@ -12106,8 +12362,6 @@ export {
   hasPermission,
   hasAnyPermission,
 };
-
-
 
 
 

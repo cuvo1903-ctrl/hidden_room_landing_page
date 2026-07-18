@@ -201,7 +201,7 @@ begin
     raise exception 'La suma de allocations debe igualar el monto del movimiento.';
   end if;
   if v_has_percentage and abs(v_percentage_sum - 100) > 0.01 then
-    raise exception 'Los porcentajes de allocations deben sumar 100%.';
+    raise exception 'Los porcentajes de allocations deben sumar 100%%.';
   end if;
 
   if v_alloc_count = 1 then

@@ -1,5 +1,5 @@
 const SITE_STATUS = "BETA Sitio en construcción";
-const SITE_VERSION = "V. 2.1.0";
+const SITE_VERSION = "V. 2.1.1";
 const GA_MEASUREMENT_ID = "G-VNHC1Z3FXZ";
 const HR_SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 const HR_SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
@@ -69,6 +69,7 @@ initAnalytics();
 function renderSubNav(module) {
   const path = window.location.pathname;
   const hash = window.location.hash.slice(1);
+  const searchParams = new URLSearchParams(window.location.search);
   const page = document.body.dataset.page || "";
   const item = (href, label, active = false, attrs = "") => (
     `<a class="hr-nav__sub-link" href="${href}"${active ? ' aria-current="page"' : ""}${attrs}>${label}</a>`
@@ -88,13 +89,13 @@ function renderSubNav(module) {
   }
 
   if (module === "store") {
+    const isAdminStore = path.endsWith("/store/admin.html");
     return [
-      item("/store/", "Tienda", page === "catalog" || page === "product"),
-      item("/store/beat_store/", "Beat Store", path.includes("/store/beat_store/") && hash !== "beat-admin-panel"),
+      item("/store/", "Tienda", (page === "catalog" || page === "product") && !isAdminStore),
       item(
-        "/store/beat_store/#beat-admin-panel",
-        "Admin beats",
-        path.includes("/store/beat_store/") && hash === "beat-admin-panel",
+        "/store/admin.html",
+        "Admin Store",
+        isAdminStore,
         " data-admin-nav-link hidden",
       ),
       item("/store/cart.html", 'Carrito <span class="cart-count">0</span>', page === "cart"),
@@ -620,6 +621,111 @@ function toggleGlobalDrawer(forceOpen) {
   else toggle.focus();
 }
 
+const HR_BEAT_PLAYER_STORAGE_KEY = "hr_global_beat_player_clean";
+
+function shouldRenderGlobalBeatPlayer() {
+  const module = document.body.dataset.hrContext || "home";
+  const path = window.location.pathname;
+  const excludedGames = path.includes("/minijuegos/flappy_") || path.includes("/minijuegos/gol_gana/");
+  return module !== "portal"
+    && !path.startsWith("/portal/")
+    && !excludedGames;
+}
+
+function renderGlobalBeatPlayer() {
+  if (!shouldRenderGlobalBeatPlayer()) return "";
+  document.body.classList.add("hr-has-beat-player");
+  return `
+    <aside class="hr-beat-player" id="hr-beat-player" aria-label="Reproductor Beat Store">
+      <div class="hr-beat-player__meta">
+        <strong id="player-title">Selecciona un beat</strong>
+        <span id="player-detail"></span>
+      </div>
+      <audio id="beat-audio" controls controlsList="nodownload noplaybackrate" preload="none"></audio>
+    </aside>
+  `;
+}
+
+function hydrateGlobalBeatPlayer() {
+  const player = document.getElementById("hr-beat-player");
+  const audio = document.getElementById("beat-audio");
+  if (!player || !audio) return;
+
+  audio.setAttribute("controlsList", "nodownload noplaybackrate");
+  audio.addEventListener("contextmenu", (event) => event.preventDefault());
+
+  try {
+    sessionStorage.removeItem("hr_global_beat_player");
+    const saved = JSON.parse(sessionStorage.getItem(HR_BEAT_PLAYER_STORAGE_KEY) || "null");
+    if (saved?.src) setGlobalBeatPlayer(sanitizeBeatPlayerDetail(saved), { autoplay: false, restoreTime: true });
+  } catch {
+    sessionStorage.removeItem(HR_BEAT_PLAYER_STORAGE_KEY);
+  }
+
+  audio.addEventListener("timeupdate", persistGlobalBeatPlayerState);
+  audio.addEventListener("pause", persistGlobalBeatPlayerState);
+  audio.addEventListener("play", persistGlobalBeatPlayerState);
+}
+
+function sanitizeBeatPlayerDetail(detail) {
+  const clean = { ...(detail || {}) };
+  if (/compra para descargar|compra el beat para descargarlo/i.test(String(clean.detail || ""))) clean.detail = "";
+  return clean;
+}
+
+function setGlobalBeatPlayer(detail, options = {}) {
+  detail = sanitizeBeatPlayerDetail(detail);
+  const audio = document.getElementById("beat-audio");
+  const title = document.getElementById("player-title");
+  const meta = document.getElementById("player-detail");
+  if (!audio || !detail?.src) return;
+
+  audio.setAttribute("controlsList", "nodownload noplaybackrate");
+  audio.oncontextmenu = (event) => event.preventDefault();
+  const sameSource = audio.src === detail.src;
+  audio.src = detail.src;
+  audio.load();
+  if (options.restoreTime && Number.isFinite(Number(detail.currentTime))) {
+    const restoreTime = Math.max(0, Number(detail.currentTime));
+    audio.addEventListener("loadedmetadata", () => {
+      audio.currentTime = Math.min(restoreTime, Number.isFinite(audio.duration) ? audio.duration : restoreTime);
+    }, { once: true });
+  } else if (sameSource && Number.isFinite(Number(detail.currentTime))) {
+    audio.currentTime = Math.max(0, Number(detail.currentTime));
+  }
+  if (title) title.textContent = detail.title || "Beat Store";
+  if (meta) meta.textContent = detail.detail || "";
+
+  persistGlobalBeatPlayerState();
+
+  if (options.autoplay) {
+    audio.play().catch((error) => {
+      if (meta) meta.textContent = error?.message ? `No se pudo iniciar el audio: ${error.message}` : "No se pudo iniciar el audio.";
+    });
+  }
+}
+
+function persistGlobalBeatPlayerState() {
+  const audio = document.getElementById("beat-audio");
+  const title = document.getElementById("player-title");
+  const meta = document.getElementById("player-detail");
+  if (!audio?.src) return;
+  try {
+    sessionStorage.setItem(HR_BEAT_PLAYER_STORAGE_KEY, JSON.stringify({
+      src: audio.src,
+      title: title?.textContent || "Beat Store",
+      detail: meta?.textContent || "",
+      currentTime: audio.currentTime || 0,
+      wasPlaying: !audio.paused,
+    }));
+  } catch {}
+}
+
+window.addEventListener("pagehide", persistGlobalBeatPlayerState);
+window.addEventListener("beforeunload", persistGlobalBeatPlayerState);
+window.addEventListener("hr:beat-preview", (event) => {
+  setGlobalBeatPlayer(event.detail, { autoplay: true });
+});
 function attachGlobalDrawerSwipe(drawer) {
   if (!drawer) return;
   let startX = 0;
@@ -687,6 +793,7 @@ function renderGlobalNav() {
         <li class="hr-global-notifications__empty">Cargando notificaciones…</li>
       </ul>
     </aside>
+    ${renderGlobalBeatPlayer()}
   `;
 
   document.body.classList.toggle("hr-has-subnav", Boolean(subnav));
@@ -715,6 +822,7 @@ function renderGlobalNav() {
     if (event.target.closest("a")) toggleGlobalDrawer(false);
   });
   attachGlobalDrawerSwipe(target.querySelector(".hr-global-drawer"));
+  hydrateGlobalBeatPlayer();
 }
 
 function syncPortalSubNav() {
