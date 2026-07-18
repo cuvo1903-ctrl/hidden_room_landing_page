@@ -640,12 +640,9 @@ let hrWaveSurferFailed = false;
 let hrCurrentBeatDetail = null;
 
 function shouldRenderGlobalBeatPlayer() {
-  const module = document.body.dataset.hrContext || "home";
   const path = window.location.pathname;
   const excludedGames = path.includes("/minijuegos/flappy_") || path.includes("/minijuegos/gol_gana/");
-  return module !== "portal"
-    && !path.startsWith("/portal/")
-    && !excludedGames;
+  return !excludedGames;
 }
 
 function renderGlobalBeatPlayer() {
@@ -658,7 +655,10 @@ function renderGlobalBeatPlayer() {
         <strong id="player-title">Selecciona un beat</strong>
         <span id="player-detail"></span>
       </div>
-      <button class="hr-beat-player__more" type="button" data-beat-player-more aria-label="Opciones del reproductor">...</button>
+      <button class="hr-beat-player__more" type="button" data-beat-player-more aria-label="Opciones del reproductor" aria-expanded="false" aria-controls="beat-player-menu">...</button>
+      <div class="hr-beat-player__menu" id="beat-player-menu" hidden>
+        <a href="/store/beat_store/">Ir a Beat Store</a>
+      </div>
       <div class="hr-beat-player__controls">
         <div class="hr-beat-player__wave-wrap">
           <div class="hr-beat-player__wave" id="beat-player-waveform" role="slider" aria-label="Progreso del preview" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-valuetext="0:00 de 0:00" tabindex="0"></div>
@@ -684,17 +684,27 @@ function hydrateGlobalBeatPlayer() {
   const mute = player.querySelector("[data-beat-player-mute]");
   const volume = document.getElementById("beat-player-volume");
   const waveform = document.getElementById("beat-player-waveform");
+  const more = player.querySelector("[data-beat-player-more]");
+  const menu = document.getElementById("beat-player-menu");
 
   fallbackAudio.removeAttribute("controls");
   fallbackAudio.setAttribute("controlsList", "nodownload noplaybackrate");
   fallbackAudio.addEventListener("contextmenu", (event) => event.preventDefault());
 
   const sync = () => syncGlobalBeatPlayerControls(toggle, seek, time, mute, volume, waveform);
+  more?.addEventListener("click", (event) => {
+    event.preventDefault();
+    const open = Boolean(menu?.hidden);
+    if (menu) menu.hidden = !open;
+    more.setAttribute("aria-expanded", String(open));
+  });
+  document.addEventListener("click", (event) => {
+    if (!menu || menu.hidden) return;
+    if (event.target.closest("[data-beat-player-more], #beat-player-menu")) return;
+    menu.hidden = true;
+    more?.setAttribute("aria-expanded", "false");
+  });
   toggle?.addEventListener("click", () => {
-    if (hrWaveSurfer && hrWaveSurferSrc) {
-      hrWaveSurfer.playPause();
-      return;
-    }
     if (!fallbackAudio.src) return;
     if (fallbackAudio.paused) fallbackAudio.play().catch(() => {});
     else fallbackAudio.pause();
@@ -819,10 +829,11 @@ function setGlobalBeatPlayer(detail, options = {}) {
   if (!detail?.src) return;
   hrCurrentBeatDetail = detail;
 
-  fallbackAudio?.pause();
+  destroyBeatWaveform();
   if (fallbackAudio) {
+    fallbackAudio.pause();
     fallbackAudio.removeAttribute("controls");
-    fallbackAudio.removeAttribute("src");
+    fallbackAudio.src = detail.src;
     fallbackAudio.load();
   }
   player?.classList.add("is-loaded");
@@ -837,8 +848,9 @@ function setGlobalBeatPlayer(detail, options = {}) {
     art.classList.toggle("has-image", Boolean(cover));
   }
 
-  loadBeatWaveform(detail.src, options).catch(() => {
-    loadBeatFallbackAudio(detail, options);
+  loadBeatFallbackAudio(detail, { ...options, keepWaveform: true });
+  loadBeatWaveform(detail.src, { ...options, autoplay: false, media: fallbackAudio }).catch(() => {
+    loadBeatFallbackAudio(detail, { ...options, keepCurrentAudio: true });
   });
 }
 function getWaveSurferModule() {
@@ -854,7 +866,7 @@ async function loadBeatWaveform(src, options = {}) {
   const seek = document.getElementById("beat-player-seek");
   if (!waveform) throw new Error("Waveform container missing");
 
-  destroyBeatWaveform();
+  if (!options.media) destroyBeatWaveform();
   hrWaveSurferFailed = false;
   hrWaveSurferReady = false;
   hrWaveSurferSrc = src;
@@ -876,6 +888,7 @@ async function loadBeatWaveform(src, options = {}) {
     barRadius: 2,
     normalize: true,
     interact: true,
+    ...(options.media ? { media: options.media } : {}),
   });
 
   hrWaveSurfer.on("ready", () => {
@@ -884,7 +897,7 @@ async function loadBeatWaveform(src, options = {}) {
     if (Number.isFinite(restoreAt) && restoreAt > 0 && hrWaveSurfer.getDuration()) {
       hrWaveSurfer.seekTo(Math.max(0, restoreAt) / hrWaveSurfer.getDuration());
     }
-    if (player) player.dataset.state = "paused";
+    if (player) player.dataset.state = isBeatPlayerPlaying() ? "playing" : "paused";
     syncGlobalBeatPlayerControls(
       player?.querySelector("[data-beat-player-toggle]"),
       seek,
@@ -894,7 +907,7 @@ async function loadBeatWaveform(src, options = {}) {
       waveform,
     );
     emitGlobalBeatPlayerState();
-    if (options.autoplay) hrWaveSurfer.play().catch(() => {});
+
   });
   ["audioprocess", "seeking", "interaction", "play", "pause"].forEach((eventName) => {
     hrWaveSurfer.on(eventName, () => {
@@ -929,7 +942,7 @@ async function loadBeatWaveform(src, options = {}) {
     const failedAt = hrWaveSurfer?.getCurrentTime?.() || 0;
     const fallbackDetail = hrCurrentBeatDetail || { src };
     destroyBeatWaveform();
-    loadBeatFallbackAudio(fallbackDetail, { ...options, restoreTime: failedAt > 0 || options.restoreTime, currentTime: failedAt || options.currentTime || fallbackDetail.currentTime || 0 });
+    loadBeatFallbackAudio(fallbackDetail, { ...options, keepCurrentAudio: true, restoreTime: failedAt > 0 || options.restoreTime, currentTime: failedAt || options.currentTime || fallbackDetail.currentTime || 0 });
   });
 }
 
@@ -949,10 +962,12 @@ function loadBeatFallbackAudio(detail, options = {}) {
   const seek = document.getElementById("beat-player-seek");
   if (!audio) return;
   hrWaveSurferFailed = true;
-  if (waveform) waveform.hidden = true;
-  if (seek) seek.hidden = false;
-  audio.src = detail.src;
-  audio.load();
+  if (waveform) waveform.hidden = Boolean(!options.keepWaveform);
+  if (seek) seek.hidden = Boolean(options.keepWaveform);
+  if (!options.keepCurrentAudio) {
+    audio.src = detail.src;
+    audio.load();
+  }
   const restoreAt = Number(options.currentTime ?? (options.restoreTime ? detail.currentTime : 0));
   if (Number.isFinite(restoreAt) && restoreAt > 0) {
     audio.addEventListener("loadedmetadata", () => {
@@ -964,23 +979,25 @@ function loadBeatFallbackAudio(detail, options = {}) {
 }
 
 function getBeatPlayerSrc() {
-  return hrWaveSurfer ? hrWaveSurferSrc : (document.getElementById("beat-audio")?.src || "");
+  return document.getElementById("beat-audio")?.src || hrWaveSurferSrc || "";
 }
 
 function getBeatPlayerCurrentTime() {
-  return hrWaveSurfer ? hrWaveSurfer.getCurrentTime() || 0 : (document.getElementById("beat-audio")?.currentTime || 0);
+  return document.getElementById("beat-audio")?.currentTime || hrWaveSurfer?.getCurrentTime?.() || 0;
 }
 
 function getBeatPlayerDuration() {
-  return hrWaveSurfer ? hrWaveSurfer.getDuration() || 0 : (document.getElementById("beat-audio")?.duration || 0);
+  const audioDuration = document.getElementById("beat-audio")?.duration;
+  return Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : (hrWaveSurfer?.getDuration?.() || 0);
 }
 
 function isBeatPlayerPlaying() {
-  return hrWaveSurfer ? hrWaveSurfer.isPlaying() : Boolean(document.getElementById("beat-audio")?.src && !document.getElementById("beat-audio")?.paused && !document.getElementById("beat-audio")?.ended);
+  const audio = document.getElementById("beat-audio");
+  return Boolean(audio?.src && !audio.paused && !audio.ended);
 }
 
 function getBeatPlayerMuted() {
-  return hrWaveSurfer ? hrWaveSurfer.getMuted() : Boolean(document.getElementById("beat-audio")?.muted);
+  return Boolean(document.getElementById("beat-audio")?.muted);
 }
 
 function setBeatPlayerMuted(muted) {
@@ -990,7 +1007,7 @@ function setBeatPlayerMuted(muted) {
 }
 
 function getBeatPlayerVolume() {
-  return hrWaveSurfer ? hrWaveSurfer.getVolume() : (document.getElementById("beat-audio")?.volume ?? 1);
+  return document.getElementById("beat-audio")?.volume ?? hrWaveSurfer?.getVolume?.() ?? 1;
 }
 
 function setBeatPlayerVolume(value) {
@@ -1025,10 +1042,7 @@ window.addEventListener("hr:beat-preview", (event) => {
 window.addEventListener("hr:beat-preview-toggle", (event) => {
   const action = event.detail?.action;
   const audio = document.getElementById("beat-audio");
-  if (hrWaveSurfer && hrWaveSurferSrc) {
-    if (action === "pause") hrWaveSurfer.pause();
-    else hrWaveSurfer.play().catch(() => {});
-  } else if (audio?.src) {
+  if (audio?.src) {
     if (action === "pause") audio.pause();
     else audio.play().catch(() => {});
   }
@@ -1360,5 +1374,14 @@ if (track) {
   });
 
 }
+
+
+
+
+
+
+
+
+
 
 

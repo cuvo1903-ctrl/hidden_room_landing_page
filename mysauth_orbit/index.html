@@ -1,16 +1,16 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#07080c">
-  <title>Mysauth ORBIT — Hidden Room</title>
+  <title>Mysauth ORBIT â€” Hidden Room</title>
   <meta name="description" content="Mapa de relaciones entre comunidad y artistas de Hidden Room.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307080c'/%3E%3Ccircle cx='32' cy='32' r='19' fill='none' stroke='%23f02c27' stroke-width='7'/%3E%3Ccircle cx='49' cy='20' r='5' fill='%23f2efe8'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Unbounded:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../styles.css?v=20260718-global-beat-player-clean2">
+  <link rel="stylesheet" href="../styles.css?v=20260718-wavesurfer-global">
   <link rel="stylesheet" href="orbit.css">
 </head>
 <body class="orbit-auth-pending" data-hr-chrome data-hr-context="orbit">
@@ -75,17 +75,17 @@
             <input id="topN" type="range" min="1" max="50" value="25">
           </label>
           <label>
-            <span>Peso mínimo <output id="minWeightValue">1</output></span>
+            <span>Peso mÃ­nimo <output id="minWeightValue">1</output></span>
             <input id="minWeight" type="range" min="1" max="10" value="1">
           </label>
           <label>
-            <span>Mín. comentarios autor <output id="minCommentsValue">1</output></span>
+            <span>MÃ­n. comentarios autor <output id="minCommentsValue">1</output></span>
             <input id="minComments" type="range" min="1" max="20" value="1">
           </label>
           <label class="field">
             <span>Handles ignorados</span>
             <textarea id="ignoredHandles" rows="3" spellcheck="false" placeholder="@hiddenroom.mx, @cuvo1903"></textarea>
-            <small>Separados por coma, espacio o línea.</small>
+            <small>Separados por coma, espacio o lÃ­nea.</small>
           </label>
           <label class="switch-row">
             <span>Solo embajadores <small>3+ artistas</small></span>
@@ -100,7 +100,7 @@
           <button class="button secondary" id="recalculate" type="button">Recalcular layout</button>
         </section>
 
-        <button class="button export" id="exportPng" type="button">Exportar PNG <span>↗</span></button>
+        <button class="button export" id="exportPng" type="button">Exportar PNG <span>â†—</span></button>
       </aside>
 
       <main class="main-content">
@@ -181,7 +181,8 @@
   <script src="https://unpkg.com/layout-base@2.0.1/layout-base.js"></script>
   <script src="https://unpkg.com/cose-base@2.2.0/cose-base.js"></script>
   <script src="https://unpkg.com/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js"></script>
-  <script src="../site.js?v=20260718-global-beat-player-clean2"></script>
+  <script src="../site.js?v=20260718-wavesurfer-global"></script>
   <script type="module" src="orbit.js"></script>
 </body>
 </html>
+

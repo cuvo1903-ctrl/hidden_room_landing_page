@@ -3587,3 +3587,13 @@ input[data-user-search] {
     grid-template-columns: 1fr;
   }
 }
+/* Keep dashboard toasts physically above the global Beat player. */
+.db-body.hr-has-beat-player .db-toast-region {
+  bottom: calc(var(--hr-beat-player-offset, 120px) + 20px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-width: 800px) {
+  .db-body.hr-has-beat-player .db-toast-region {
+    bottom: calc(var(--hr-bottom-nav-height, 66px) + var(--hr-beat-player-offset, 120px) + 12px + env(safe-area-inset-bottom, 0px));
+  }
+}

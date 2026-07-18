@@ -1,4 +1,4 @@
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+﻿import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
 const SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
@@ -364,7 +364,7 @@ function handleGridClick(event) {
     toggleBeatPreview(playButton.dataset.playBeat);
     return;
   }
-  if (addButton) addBeatToCart(addButton.dataset.addBeat);
+  if (addButton) showNotice("Próximamente");
 }
 
 function toggleBeatPreview(itemId) {
@@ -798,3 +798,4 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
+
