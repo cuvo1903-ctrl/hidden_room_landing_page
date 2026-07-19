@@ -263,13 +263,13 @@ async function hasBeatStoreDownload(userId) {
 
 async function requireCloudUser(req) {
   const token = getBearerToken(req);
-  if (!token) { const err = new Error('Sesion requerida.'); err.status = 401; throw err; }
+  if (!token) { const err = new Error('Sesión requerida.'); err.status = 401; throw err; }
 
   const userData = await supabaseFetch('/auth/v1/user', {
     headers: { Authorization: `Bearer ${token}`, apikey: SERVICE_ROLE_KEY, Accept: 'application/json' },
   });
   const userId = userData?.id;
-  if (!userId) { const err = new Error('Sesion invalida.'); err.status = 401; throw err; }
+  if (!userId) { const err = new Error('Sesión inválida.'); err.status = 401; throw err; }
 
   const encodedUserId = encodeURIComponent(userId);
   const profiles = await supabaseFetch(`/rest/v1/users?select=id,user_id,username,display_name,email,roles&or=(id.eq.${encodedUserId},user_id.eq.${encodedUserId})&limit=1`, {
@@ -426,7 +426,7 @@ async function readLimitedUploadToTemp(req, limitBytes) {
     for await (const chunk of req) {
       size += chunk.length;
       if (size > limitBytes) {
-        const err = new Error('La imagen supera el limite de 12 MB');
+        const err = new Error('La imagen supera el límite de 12 MB');
         err.status = 413;
         throw err;
       }
@@ -510,9 +510,9 @@ async function writeBeatCoverImages(tempPath, crop, outputDir) {
   try {
     meta = await sharp(tempPath, { animated: true, limitInputPixels: BEAT_COVER_MAX_DIMENSION * BEAT_COVER_MAX_DIMENSION }).metadata();
   } catch {
-    throw sharpError('La portada debe ser una imagen valida');
+    throw sharpError('La portada debe ser una imagen válida');
   }
-  if (!meta?.width || !meta?.height) throw sharpError('La portada debe ser una imagen valida');
+  if (!meta?.width || !meta?.height) throw sharpError('La portada debe ser una imagen válida');
   if (meta.format === 'svg') throw sharpError('Formato de imagen no permitido');
   if (!['jpeg', 'png', 'webp'].includes(meta.format)) throw sharpError('Formato de imagen no permitido');
   if ((meta.pages || 1) > 1) throw sharpError('Formato de imagen no permitido');
@@ -545,7 +545,7 @@ const MAX_ACTIVE_BEAT_COVER_PROCESSES = Number(process.env.BEAT_COVER_MAX_CONCUR
 
 async function uploadBeatCover(user, req, res) {
   if (activeBeatCoverProcesses >= MAX_ACTIVE_BEAT_COVER_PROCESSES) {
-    const err = new Error('El procesador de portadas esta ocupado. Intenta de nuevo en unos segundos.');
+    const err = new Error('El procesador de portadas está ocupado. Intenta de nuevo en unos segundos.');
     err.status = 429;
     throw err;
   }
@@ -557,9 +557,9 @@ async function uploadBeatCover(user, req, res) {
     const product = await assertCanMutateBeatCover(user, productId);
     const crop = parseBeatCoverCrop(req.headers['x-beat-crop']);
     const contentLength = Number(req.headers['content-length'] || 0);
-    if (contentLength > BEAT_COVER_MAX_UPLOAD_BYTES) throw sharpError('La imagen supera el limite de 12 MB', 413);
+    if (contentLength > BEAT_COVER_MAX_UPLOAD_BYTES) throw sharpError('La imagen supera el límite de 12 MB', 413);
     temp = await readLimitedUploadToTemp(req, BEAT_COVER_MAX_UPLOAD_BYTES);
-    if (!temp.size) throw sharpError('La portada debe ser una imagen valida');
+    if (!temp.size) throw sharpError('La portada debe ser una imagen válida');
     const coverId = crypto.randomUUID();
     const root = await getRealRoot(beatStoreRoot());
     outputDir = path.resolve(root, 'covers', coverId);
@@ -611,7 +611,7 @@ function sessionPayload(user) {
     isAdmin: user.isAdmin,
     canUpload: user.canUpload,
     hasBeatStore: user.hasBeatStore,
-    rootLabel: user.isAdmin ? 'Raiz Cloud' : 'Mi Cloud',
+    rootLabel: user.isAdmin ? 'Raíz Cloud' : 'Mi Cloud',
     homePath: '/',
   };
 }
@@ -887,7 +887,7 @@ function parseSensorsText(output) {
   const preferred = [];
   const fallback = [];
   String(output || '').split(/\r?\n/).forEach((line) => {
-    const match = line.match(/^\s*([^:]+):\s*\+?(-?\d+(?:\.\d+)?)\s*(?:ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°\s*)?C\b/i);
+    const match = line.match(/^\s*([^:]+):\s*\+?(-?\d+(?:\.\d+)?)\s*(?:°\s*)?C\b/i);
     if (!match) return;
     const label = match[1].toLowerCase();
     const value = Number(match[2]);

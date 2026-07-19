@@ -82,10 +82,10 @@ function ensureAdminMusicFields() {
   const wrapper = document.createElement("div");
   wrapper.className = "beat-admin__music-fields";
   wrapper.innerHTML = `
-    <div class="field hr-field"><label class="hr-label" for="beat-genre-input">Genero</label><input class="hr-input" id="beat-genre-input" maxlength="80" placeholder="Trap, Boom bap, Reggaeton..."></div>
+    <div class="field hr-field"><label class="hr-label" for="beat-genre-input">Género</label><input class="hr-input" id="beat-genre-input" maxlength="80" placeholder="Trap, Boom bap, Reggaeton..."></div>
     <div class="field hr-field"><label class="hr-label" for="beat-bpm">BPM</label><input class="hr-input" id="beat-bpm" type="number" min="1" max="300" step="1"></div>
     <div class="field hr-field"><label class="hr-label" for="beat-key">Tonalidad</label><input class="hr-input" id="beat-key" maxlength="24" placeholder="Cm, F# minor..."></div>
-    <div class="field hr-field"><label class="hr-label" for="beat-duration">Duracion</label><input class="hr-input" id="beat-duration" type="number" min="1" step="1" placeholder="Segundos"></div>
+    <div class="field hr-field"><label class="hr-label" for="beat-duration">Duración</label><input class="hr-input" id="beat-duration" type="number" min="1" step="1" placeholder="Segundos"></div>
   `;
   producerField.insertAdjacentElement("afterend", wrapper);
 }
@@ -269,7 +269,7 @@ function renderBeats() {
   });
 
   if (!filtered.length) {
-    grid.innerHTML = `<div class="empty-state beat-empty"><h2>Sin beats</h2><p>${query ? "Prueba otra busqueda." : "No hay beats activos publicados."}</p></div>`;
+    grid.innerHTML = `<div class="empty-state beat-empty"><h2>Sin beats</h2><p>${query ? "Prueba otra búsqueda." : "No hay beats activos publicados."}</p></div>`;
     return;
   }
 
@@ -323,7 +323,7 @@ function beatCardMarkup(item) {
 }
 
 function musicMetaMarkup(meta) {
-  if (!meta.length) return '<p class="beat-card__music beat-card__music--empty">Genero, BPM y tonalidad por confirmar</p>';
+  if (!meta.length) return '<p class="beat-card__music beat-card__music--empty">Género, BPM y tonalidad por confirmar</p>';
   return `<dl class="beat-card__music">${meta.map((entry) => `
     <div><dt>${escapeHtml(entry.label)}</dt><dd>${escapeHtml(entry.value)}</dd></div>
   `).join("")}</dl>`;
@@ -380,7 +380,7 @@ function handleGridClick(event) {
     toggleBeatPreview(playButton.dataset.playBeat);
     return;
   }
-  if (addButton) showNotice("PrÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³ximamente");
+  if (addButton) showNotice("Próximamente");
 }
 
 function toggleBeatPreview(itemId) {
@@ -687,11 +687,11 @@ async function uploadSelectedBeatCoverFile() {
   const file = beatCoverInput?.files?.[0];
   if (!file) return "";
   if (!file.type.startsWith("image/") && !/\.(jpg|jpeg|png|webp)$/i.test(file.name)) {
-    throw new Error("Selecciona una imagen valida para la portada.");
+    throw new Error("Selecciona una imagen válida para la portada.");
   }
 
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) throw new Error("Sesion requerida para subir portadas.");
+  if (!session?.access_token) throw new Error("Sesión requerida para subir portadas.");
 
   setUploadStatus(`Procesando portada ${file.name}...`);
   const productId = document.getElementById("beat-product-id")?.value || "";
@@ -720,7 +720,7 @@ async function uploadSelectedBeatFile() {
   }
 
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) throw new Error("Sesion requerida para subir archivos.");
+  if (!session?.access_token) throw new Error("Sesión requerida para subir archivos.");
 
   setUploadStatus(`Subiendo ${file.name}...`);
   const response = await fetch(`${CLOUD_ORIGIN}/api/upload?path=${encodeURIComponent(BEAT_STORE_CLOUD_PATH)}`, {
@@ -764,7 +764,7 @@ async function handleAdminListClick(event) {
     await updateAdminProduct(featuredButton.dataset.featureBeat, { featured: featuredButton.dataset.featured !== "true" });
     return;
   }
-  if (deleteButton && window.confirm("Eliminar este beat de productos? Dejara de existir para clientes, pero no se borra el archivo de Cloud.")) {
+  if (deleteButton && window.confirm("¿Eliminar este beat de productos? Dejará de existir para clientes, pero no se borra el archivo de Cloud.")) {
     const { error } = await supabase.from("store_products").delete().eq("id", deleteButton.dataset.deleteBeat);
     if (error) adminStatus.textContent = error.message;
     else {
@@ -884,10 +884,10 @@ function itemMusicMeta(item) {
   const genre = product.beat_genre || beat.genre;
   const duration = product.beat_duration_seconds || beat.duration_seconds || beat.duration;
   return [
-    genre ? { label: "Genero", value: genre } : null,
+    genre ? { label: "Género", value: genre } : null,
     bpm ? { label: "BPM", value: `${bpm}` } : null,
     key ? { label: "Tonalidad", value: key } : null,
-    duration ? { label: "Duracion", value: formatDuration(duration) } : null,
+    duration ? { label: "Duración", value: formatDuration(duration) } : null,
   ].filter(Boolean);
 }
 
