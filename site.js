@@ -843,7 +843,7 @@ function setGlobalBeatPlayer(detail, options = {}) {
   if (art) {
     const cover = String(detail.cover || "").trim();
     art.innerHTML = cover
-      ? `<img src="${escapeNavText(cover)}" alt=""><span class="hr-beat-player__art-icon" aria-hidden="true">&#9658;</span>`
+      ? `<img src="${escapeNavText(cover)}" alt="" onerror="this.hidden=true;this.parentElement.classList.remove(\'has-image\')"><span class="hr-beat-player__art-icon" aria-hidden="true">&#9658;</span>`
       : '<span>HR</span><span class="hr-beat-player__art-icon" aria-hidden="true">&#9658;</span>';
     art.classList.toggle("has-image", Boolean(cover));
   }
@@ -1374,6 +1374,7 @@ if (track) {
   });
 
 }
+
 
 
 

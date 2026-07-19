@@ -9,15 +9,22 @@ const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const { URL } = require('url');
+const sharp = require('sharp');
 
 const APP_DIR = __dirname;
 loadEnv(path.join(APP_DIR, '.env'));
+sharp.cache(false);
+sharp.concurrency(Number(process.env.SHARP_CONCURRENCY || 1));
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const CLOUD_ROOT = process.env.CLOUD_HIDDENROOM_ROOT || process.env.CLOUD_ROOT;
 const PORT = Number(process.env.CLOUD_PORT || process.env.PORT || 3001);
 const MAX_UPLOAD_BYTES = Number(process.env.CLOUD_MAX_UPLOAD_BYTES || 100 * 1024 * 1024);
+const BEAT_COVER_MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
+const BEAT_COVER_MAX_DIMENSION = 8000;
+const BEAT_COVER_MAIN_SIZE = 1200;
+const BEAT_COVER_THUMB_SIZE = 300;
 const SERVER_STATUS_INTERVAL_MS = Number(process.env.SERVER_STATUS_INTERVAL_MS || 20_000);
 const SERVER_STATUS_HISTORY_LIMIT = Number(process.env.SERVER_STATUS_HISTORY_LIMIT || 50);
 const SERVER_STATUS_TABLE = process.env.SERVER_STATUS_TABLE || 'server_status_history';
@@ -27,11 +34,23 @@ const DOWNLOAD_TOKEN_TTL_MS = Number(process.env.CLOUD_DOWNLOAD_TOKEN_TTL_MS || 
 const BEAT_PERMISSION_KEYS = ['beat.store', 'beats.store', 'store.beats', 'store.beat', 'beat_store', 'beats', 'Beat Store', 'module.beats', 'module.beat-store'];
 const BEAT_STORE_DIR = 'beats_store';
 const BEAT_AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.m4a', '.ogg', '.flac', '.aac']);
-const BEAT_MIME_TYPES = { '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.flac': 'audio/flac', '.aac': 'audio/aac' };
+const BEAT_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const BEAT_MIME_TYPES = {
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.ogg': 'audio/ogg',
+  '.flac': 'audio/flac',
+  '.aac': 'audio/aac',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+};
 const PUBLIC_CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-  'Access-Control-Allow-Headers': 'Range, Content-Type',
+  'Access-Control-Allow-Headers': 'Authorization, Range, Content-Type, X-Beat-Product-Id, X-Beat-Crop',
   'Access-Control-Expose-Headers': 'Accept-Ranges, Content-Length, Content-Range, Content-Disposition',
 };
 const API_CORS_HEADERS = {
@@ -398,6 +417,175 @@ async function readUpload(req) {
   }
   return Buffer.concat(chunks);
 }
+async function readLimitedUploadToTemp(req, limitBytes) {
+  const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'hr-beat-cover-'));
+  const tempPath = path.join(tempDir, 'upload.bin');
+  let size = 0;
+  const out = fs.createWriteStream(tempPath, { flags: 'wx' });
+  try {
+    for await (const chunk of req) {
+      size += chunk.length;
+      if (size > limitBytes) {
+        const err = new Error('La imagen supera el limite de 12 MB');
+        err.status = 413;
+        throw err;
+      }
+      if (!out.write(chunk)) await new Promise((resolve) => out.once('drain', resolve));
+    }
+    await new Promise((resolve, reject) => out.end((err) => err ? reject(err) : resolve()));
+    return { tempDir, tempPath, size };
+  } catch (err) {
+    out.destroy();
+    await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    throw err;
+  }
+}
+
+function parseBeatCoverCrop(raw) {
+  if (!raw) return null;
+  let crop;
+  try { crop = JSON.parse(String(raw)); } catch { return null; }
+  const x = Number(crop?.x);
+  const y = Number(crop?.y);
+  const size = Number(crop?.size);
+  if (![x, y, size].every(Number.isFinite) || size <= 0) return null;
+  return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)), size: Math.max(0.05, Math.min(1, size)) };
+}
+
+function beatCoverProductId(req) {
+  const raw = String(req.headers['x-beat-product-id'] || '').trim();
+  if (!raw) return '';
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
+    const err = new Error('Beat invalido.');
+    err.status = 400;
+    throw err;
+  }
+  return raw;
+}
+
+async function fetchBeatProduct(productId) {
+  if (!productId) return null;
+  const rows = await supabaseFetch(`/rest/v1/store_products?select=id,category,image_url,beat_cover_path,beat_thumb_path&id=eq.${encodeURIComponent(productId)}&limit=1`, { headers: supabaseHeaders() });
+  return Array.isArray(rows) ? rows[0] : null;
+}
+
+async function assertCanMutateBeatCover(user, productId) {
+  if (!user.isAdmin) {
+    const err = new Error('Solo admin puede actualizar portadas de beats.');
+    err.status = 403;
+    throw err;
+  }
+  const product = await fetchBeatProduct(productId);
+  if (productId && (!product || product.category !== 'beats')) {
+    const err = new Error('Beat no encontrado.');
+    err.status = 404;
+    throw err;
+  }
+  return product;
+}
+
+function coverPathIsManaged(value) {
+  return /^covers\/[0-9a-f-]{36}\/(cover|thumb)\.webp$/i.test(String(value || ''));
+}
+
+async function removeManagedBeatCover(product) {
+  if (!product) return;
+  const root = await fsp.realpath(beatStoreRoot());
+  for (const value of [product.image_url, product.beat_cover_path, product.beat_thumb_path]) {
+    if (!coverPathIsManaged(value)) continue;
+    const target = path.resolve(root, value);
+    assertInsideRoot(root, target);
+    await fsp.rm(target, { force: true }).catch(() => {});
+  }
+}
+
+function sharpError(message, status = 400) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
+async function writeBeatCoverImages(tempPath, crop, outputDir) {
+  let meta;
+  try {
+    meta = await sharp(tempPath, { animated: true, limitInputPixels: BEAT_COVER_MAX_DIMENSION * BEAT_COVER_MAX_DIMENSION }).metadata();
+  } catch {
+    throw sharpError('La portada debe ser una imagen valida');
+  }
+  if (!meta?.width || !meta?.height) throw sharpError('La portada debe ser una imagen valida');
+  if (meta.format === 'svg') throw sharpError('Formato de imagen no permitido');
+  if (!['jpeg', 'png', 'webp'].includes(meta.format)) throw sharpError('Formato de imagen no permitido');
+  if ((meta.pages || 1) > 1) throw sharpError('Formato de imagen no permitido');
+  if (meta.width > BEAT_COVER_MAX_DIMENSION || meta.height > BEAT_COVER_MAX_DIMENSION) throw sharpError('La imagen tiene dimensiones demasiado grandes', 413);
+
+  const squareMax = Math.min(meta.width, meta.height);
+  const cropSize = crop ? Math.min(squareMax, Math.max(1, Math.round(crop.size * squareMax))) : squareMax;
+  const maxLeft = Math.max(0, meta.width - cropSize);
+  const maxTop = Math.max(0, meta.height - cropSize);
+  const left = crop ? Math.max(0, Math.min(maxLeft, Math.round(crop.x * maxLeft))) : Math.round((meta.width - cropSize) / 2);
+  const top = crop ? Math.max(0, Math.min(maxTop, Math.round(crop.y * maxTop))) : Math.round((meta.height - cropSize) / 2);
+  const extract = { left, top, width: cropSize, height: cropSize };
+  const inputOptions = { limitInputPixels: BEAT_COVER_MAX_DIMENSION * BEAT_COVER_MAX_DIMENSION };
+
+  await sharp(tempPath, inputOptions)
+    .rotate()
+    .extract(extract)
+    .resize(BEAT_COVER_MAIN_SIZE, BEAT_COVER_MAIN_SIZE, { fit: 'cover' })
+    .webp({ quality: 84 })
+    .toFile(path.join(outputDir, 'cover.webp'));
+  await sharp(tempPath, inputOptions)
+    .rotate()
+    .extract(extract)
+    .resize(BEAT_COVER_THUMB_SIZE, BEAT_COVER_THUMB_SIZE, { fit: 'cover' })
+    .webp({ quality: 78 })
+    .toFile(path.join(outputDir, 'thumb.webp'));
+}
+let activeBeatCoverProcesses = 0;
+const MAX_ACTIVE_BEAT_COVER_PROCESSES = Number(process.env.BEAT_COVER_MAX_CONCURRENCY || 2);
+
+async function uploadBeatCover(user, req, res) {
+  if (activeBeatCoverProcesses >= MAX_ACTIVE_BEAT_COVER_PROCESSES) {
+    const err = new Error('El procesador de portadas esta ocupado. Intenta de nuevo en unos segundos.');
+    err.status = 429;
+    throw err;
+  }
+  activeBeatCoverProcesses += 1;
+  let temp;
+  let outputDir = '';
+  try {
+    const productId = beatCoverProductId(req);
+    const product = await assertCanMutateBeatCover(user, productId);
+    const crop = parseBeatCoverCrop(req.headers['x-beat-crop']);
+    const contentLength = Number(req.headers['content-length'] || 0);
+    if (contentLength > BEAT_COVER_MAX_UPLOAD_BYTES) throw sharpError('La imagen supera el limite de 12 MB', 413);
+    temp = await readLimitedUploadToTemp(req, BEAT_COVER_MAX_UPLOAD_BYTES);
+    if (!temp.size) throw sharpError('La portada debe ser una imagen valida');
+    const coverId = crypto.randomUUID();
+    const root = await getRealRoot(beatStoreRoot());
+    outputDir = path.resolve(root, 'covers', coverId);
+    assertInsideRoot(root, outputDir);
+    await fsp.mkdir(outputDir, { recursive: false });
+    await writeBeatCoverImages(temp.tempPath, crop, outputDir);
+    const coverPath = `covers/${coverId}/cover.webp`;
+    const thumbPath = `covers/${coverId}/thumb.webp`;
+    if (productId) {
+      await supabaseFetch(`/rest/v1/store_products?id=eq.${encodeURIComponent(productId)}`, {
+        method: 'PATCH',
+        headers: { ...supabaseHeaders(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ image_url: coverPath, beat_cover_path: coverPath, beat_thumb_path: thumbPath }),
+      });
+      await removeManagedBeatCover(product);
+    }
+    sendJson(res, 201, { success: true, image_url: coverPath, beat_cover_path: coverPath, beat_thumb_path: thumbPath });
+  } catch (err) {
+    if (outputDir) await fsp.rm(outputDir, { recursive: true, force: true }).catch(() => {});
+    if (err.message && /Input image exceeds pixel limit|unsupported image format|corrupt|invalid/i.test(err.message)) throw sharpError('No se pudo procesar la imagen');
+    throw err;
+  } finally {
+    activeBeatCoverProcesses = Math.max(0, activeBeatCoverProcesses - 1);
+    if (temp?.tempDir) await fsp.rm(temp.tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
 
 function downloadTokenUser(payload) {
   return {
@@ -527,17 +715,18 @@ function titleFromBeatFile(fileName) {
     .replace(/\b\w/g, (char) => char.toUpperCase()) || 'Beat';
 }
 
-function normalizeBeatRelativePath(rawFile) {
+function normalizeBeatRelativePath(rawFile, options = {}) {
   const file = String(rawFile || '').replace(/\\/g, '/').replace(/\/+/g, '/').trim();
   if (!file || file.startsWith('/') || file.split('/').some((part) => !part || part === '.' || part === '..')) throw new Error('Archivo no permitido.');
   if (/[\u0000-\u001f\u007f]/.test(file)) throw new Error('Archivo no permitido.');
   const ext = path.extname(file).toLowerCase();
-  if (!BEAT_AUDIO_EXTENSIONS.has(ext)) throw new Error('Formato de audio no permitido.');
+  const allowed = options.allowImages ? (BEAT_AUDIO_EXTENSIONS.has(ext) || BEAT_IMAGE_EXTENSIONS.has(ext)) : BEAT_AUDIO_EXTENSIONS.has(ext);
+  if (!allowed) throw new Error(options.allowImages ? 'Formato Beat Store no permitido.' : 'Formato de audio no permitido.');
   return file;
 }
 
 async function resolveBeatFile(rawFile) {
-  const relativeFile = normalizeBeatRelativePath(rawFile);
+  const relativeFile = normalizeBeatRelativePath(rawFile, { allowImages: true });
   const root = beatStoreRoot();
   const realRoot = await fsp.realpath(root);
   const candidate = path.resolve(realRoot, relativeFile);
@@ -597,7 +786,7 @@ async function streamBeatFile(req, res, url) {
   const range = req.headers.range;
   const baseHeaders = {
     ...PUBLIC_CORS_HEADERS,
-    'Content-Type': BEAT_MIME_TYPES[ext] || 'audio/mpeg',
+    'Content-Type': BEAT_MIME_TYPES[ext] || 'application/octet-stream',
     'Accept-Ranges': 'bytes',
     'Cache-Control': 'public, max-age=300',
     'X-Content-Type-Options': 'nosniff',
@@ -698,7 +887,7 @@ function parseSensorsText(output) {
   const preferred = [];
   const fallback = [];
   String(output || '').split(/\r?\n/).forEach((line) => {
-    const match = line.match(/^\s*([^:]+):\s*\+?(-?\d+(?:\.\d+)?)\s*(?:Â°\s*)?C\b/i);
+    const match = line.match(/^\s*([^:]+):\s*\+?(-?\d+(?:\.\d+)?)\s*(?:ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°\s*)?C\b/i);
     if (!match) return;
     const label = match[1].toLowerCase();
     const value = Number(match[2]);
@@ -952,6 +1141,7 @@ async function route(req, res) {
     if (url.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'mysauth-cloud' });
     if (url.pathname.startsWith('/api/beat-store')) {
       if (req.method === 'OPTIONS') return send(res, 204, '', PUBLIC_CORS_HEADERS);
+      if (req.method === 'POST' && url.pathname === '/api/beat-store/cover') return await uploadBeatCover(await requireCloudUser(req), req, res);
       if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/api/beat-store') return await listBeatStore(res);
       if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/api/beat-store/stream') return await streamBeatFile(req, res, url);
       return failPublic(res, 404, 'Ruta Beat Store no encontrada.');
@@ -983,3 +1173,4 @@ http.createServer(route).listen(PORT, '0.0.0.0', () => {
   console.log(`Cloud root: ${path.resolve(CLOUD_ROOT)}`);
   startServerStatusCollector();
 });
+

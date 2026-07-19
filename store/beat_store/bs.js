@@ -1,4 +1,4 @@
-﻿import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
 const SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
@@ -25,6 +25,14 @@ const cancelEditButton = document.getElementById("beat-cancel-edit");
 const beatUploadInput = document.getElementById("beat-upload-file");
 const beatCoverInput = document.getElementById("beat-cover-file");
 const beatUploadStatus = document.getElementById("beat-upload-status");
+const beatCoverEditor = document.getElementById("beat-cover-editor");
+const beatCoverPreview = document.getElementById("beat-cover-preview");
+const beatCoverStage = document.querySelector(".beat-cover-editor__stage");
+let beatCoverObjectUrl = "";
+const beatCoverCropState = { x: 0.5, y: 0.5, zoom: 1 };
+const beatCoverPointers = new Map();
+let beatCoverDragStart = null;
+let beatCoverPinchStart = null;
 
 initBeatStore().catch((error) => {
   grid.innerHTML = errorState(error.message || "No se pudo cargar Beat Store.");
@@ -55,6 +63,14 @@ async function initBeatStore() {
   adminForm?.addEventListener("submit", handleAdminSubmit);
   adminList?.addEventListener("click", handleAdminListClick);
   cancelEditButton?.addEventListener("click", resetAdminForm);
+  beatCoverInput?.addEventListener("change", handleBeatCoverSelection);
+  beatCoverStage?.addEventListener("pointerdown", handleBeatCoverPointerDown);
+  beatCoverStage?.addEventListener("pointermove", handleBeatCoverPointerMove);
+  beatCoverStage?.addEventListener("pointerup", handleBeatCoverPointerEnd);
+  beatCoverStage?.addEventListener("pointercancel", handleBeatCoverPointerEnd);
+  beatCoverStage?.addEventListener("lostpointercapture", handleBeatCoverPointerEnd);
+  beatCoverStage?.addEventListener("wheel", handleBeatCoverWheel, { passive: false });
+  beatCoverStage?.addEventListener("dblclick", resetBeatCoverCrop);
   document.addEventListener("click", handleAdminModeClick);
 }
 
@@ -165,7 +181,7 @@ async function currentUserIsAdmin() {
     .includes("admin");
 }
 
-const BEAT_PRODUCT_BASE_SELECT = "id, slug, name, description, category, price, currency, image_url, file_url, producer, stock, is_digital, featured, is_active, created_at";
+const BEAT_PRODUCT_BASE_SELECT = "id, slug, name, description, category, price, currency, image_url, beat_cover_path, beat_thumb_path, file_url, producer, stock, is_digital, featured, is_active, created_at";
 const BEAT_PRODUCT_META_SELECT = `${BEAT_PRODUCT_BASE_SELECT}, beat_genre, beat_bpm, beat_key, beat_duration_seconds`;
 
 async function fetchBeatProducts(includeInactive = false) {
@@ -319,13 +335,13 @@ function coverMarkup(item) {
   const playAttrs = canPreview ? ` role="button" tabindex="0" data-play-beat="${escapeHtml(item.id)}" aria-label="Preview ${escapeHtml(title)}"` : "";
   const playOverlay = canPreview ? '<span class="beat-card__cover-play" aria-hidden="true">&#9658;</span>' : "";
   if (imageUrl) {
-    return `<div class="beat-card__cover"${playAttrs}><img src="${escapeHtml(imageUrl)}" alt="Portada de ${escapeHtml(title)}" loading="lazy">${playOverlay}</div>`;
+    return `<div class="beat-card__cover"${playAttrs} aria-label="Portada de ${escapeHtml(title)}"><img src="${escapeHtml(imageUrl)}" alt="" loading="lazy" onerror="this.hidden=true;this.parentElement.classList.add(\'beat-card__cover--empty\');this.nextElementSibling.hidden=false"><span class="beat-card__cover-fallback" hidden>${escapeHtml(coverInitials(title))}</span>${playOverlay}</div>`;
   }
   return `<div class="beat-card__cover beat-card__cover--empty"${playAttrs}><span>${escapeHtml(coverInitials(title))}</span>${playOverlay}</div>`;
 }
 
 function coverUrlForItem(item) {
-  const raw = String(item?.product?.image_url || item?.beat?.cover_url || item?.beat?.image_url || "").trim();
+  const raw = String(item?.product?.beat_cover_path || item?.product?.image_url || item?.beat?.cover_url || item?.beat?.image_url || "").trim();
   if (!raw) return "";
   if (/^https?:\/\//i.test(raw)) return raw;
   const clean = raw.replaceAll("\\", "/").replace(/^\/+/, "").replace(/^beats_store\//i, "");
@@ -364,7 +380,7 @@ function handleGridClick(event) {
     toggleBeatPreview(playButton.dataset.playBeat);
     return;
   }
-  if (addButton) showNotice("Próximamente");
+  if (addButton) showNotice("PrÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³ximamente");
 }
 
 function toggleBeatPreview(itemId) {
@@ -505,13 +521,19 @@ async function handleAdminSubmit(event) {
     category: "beats",
     price: Number(document.getElementById("beat-price").value),
     currency: "MXN",
-    image_url: uploadedCoverUrl || document.getElementById("beat-image-url")?.value.trim() || null,
+    image_url: uploadedCoverUrl?.image_url || uploadedCoverUrl || document.getElementById("beat-image-url")?.value.trim() || null,
     file_url: uploadedFileUrl || document.getElementById("beat-file-url").value.trim() || null,
     stock: stockValue === "" ? null : Number(stockValue),
     is_digital: document.getElementById("beat-digital").checked,
     featured: document.getElementById("beat-featured").checked,
     is_active: document.getElementById("beat-active").checked,
   };
+  if (uploadedCoverUrl?.beat_cover_path || uploadedCoverUrl?.image_url) {
+    payload.beat_cover_path = uploadedCoverUrl.beat_cover_path || uploadedCoverUrl.image_url;
+  }
+  if (uploadedCoverUrl?.beat_thumb_path) {
+    payload.beat_thumb_path = uploadedCoverUrl.beat_thumb_path;
+  }
   if (state.hasBeatMetadata) {
     payload.beat_genre = document.getElementById("beat-genre-input").value.trim() || null;
     payload.beat_bpm = nullableNumberFromInput("beat-bpm");
@@ -534,6 +556,133 @@ async function handleAdminSubmit(event) {
   await reloadBeatStore({ refreshBeats: Boolean(uploadedFileUrl || uploadedCoverUrl) });
 }
 
+function handleBeatCoverSelection() {
+  const file = beatCoverInput?.files?.[0];
+  if (beatCoverObjectUrl) URL.revokeObjectURL(beatCoverObjectUrl);
+  beatCoverObjectUrl = "";
+  if (!file || !beatCoverEditor || !beatCoverPreview) {
+    if (beatCoverEditor) beatCoverEditor.hidden = true;
+    return;
+  }
+  beatCoverObjectUrl = URL.createObjectURL(file);
+  beatCoverPreview.src = beatCoverObjectUrl;
+  beatCoverPreview.onload = updateBeatCoverPreview;
+  beatCoverEditor.hidden = false;
+  resetBeatCoverCrop();
+}
+
+function beatCoverImageRatio() {
+  const width = beatCoverPreview?.naturalWidth || 1;
+  const height = beatCoverPreview?.naturalHeight || 1;
+  return width / height;
+}
+
+function beatCoverAxisCanMove() {
+  const ratio = beatCoverImageRatio();
+  const zoom = beatCoverCropState.zoom;
+  return {
+    x: Math.max(ratio, 1) * zoom > 1.001,
+    y: Math.max(1 / ratio, 1) * zoom > 1.001,
+  };
+}
+
+function clampBeatCoverCrop() {
+  beatCoverCropState.zoom = Math.max(1, Math.min(3, beatCoverCropState.zoom));
+  const movable = beatCoverAxisCanMove();
+  beatCoverCropState.x = movable.x ? Math.max(0, Math.min(1, beatCoverCropState.x)) : 0.5;
+  beatCoverCropState.y = movable.y ? Math.max(0, Math.min(1, beatCoverCropState.y)) : 0.5;
+}
+
+function resetBeatCoverCrop() {
+  beatCoverCropState.x = 0.5;
+  beatCoverCropState.y = 0.5;
+  beatCoverCropState.zoom = 1;
+  updateBeatCoverPreview();
+}
+
+function currentBeatCoverCrop() {
+  clampBeatCoverCrop();
+  return {
+    x: beatCoverCropState.x,
+    y: beatCoverCropState.y,
+    size: 1 / beatCoverCropState.zoom,
+  };
+}
+
+function updateBeatCoverPreview() {
+  if (!beatCoverPreview) return;
+  clampBeatCoverCrop();
+  const { x, y, zoom } = beatCoverCropState;
+  const extraPan = zoom > 1 ? ((zoom - 1) / zoom) * 50 : 0;
+  const translateX = (0.5 - x) * extraPan;
+  const translateY = (0.5 - y) * extraPan;
+  beatCoverPreview.style.objectPosition = `${x * 100}% ${y * 100}%`;
+  beatCoverPreview.style.transform = `translate(${translateX}%, ${translateY}%) scale(${zoom})`;
+}
+function beatCoverPointerSnapshot(event) {
+  return { x: event.clientX, y: event.clientY };
+}
+
+function beatCoverPointerDistance() {
+  const points = Array.from(beatCoverPointers.values());
+  if (points.length < 2) return 0;
+  return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+}
+
+function handleBeatCoverPointerDown(event) {
+  if (!beatCoverPreview?.src || !beatCoverStage) return;
+  beatCoverStage.setPointerCapture?.(event.pointerId);
+  beatCoverStage.classList.add("is-dragging");
+  beatCoverPointers.set(event.pointerId, beatCoverPointerSnapshot(event));
+  if (beatCoverPointers.size === 2) {
+    beatCoverPinchStart = { distance: beatCoverPointerDistance(), zoom: beatCoverCropState.zoom };
+    beatCoverDragStart = null;
+    return;
+  }
+  beatCoverDragStart = {
+    x: event.clientX,
+    y: event.clientY,
+    cropX: beatCoverCropState.x,
+    cropY: beatCoverCropState.y,
+  };
+}
+
+function handleBeatCoverPointerMove(event) {
+  if (!beatCoverPointers.has(event.pointerId) || !beatCoverStage) return;
+  beatCoverPointers.set(event.pointerId, beatCoverPointerSnapshot(event));
+  if (beatCoverPointers.size >= 2 && beatCoverPinchStart?.distance) {
+    const distance = beatCoverPointerDistance();
+    beatCoverCropState.zoom = beatCoverPinchStart.zoom * (distance / beatCoverPinchStart.distance);
+    updateBeatCoverPreview();
+    return;
+  }
+  if (!beatCoverDragStart) return;
+  const rect = beatCoverStage.getBoundingClientRect();
+  const movable = beatCoverAxisCanMove();
+  const dragRangeX = movable.x ? Math.max(0.25, beatCoverCropState.zoom - 0.5) : Number.POSITIVE_INFINITY;
+  const dragRangeY = movable.y ? Math.max(0.25, beatCoverCropState.zoom - 0.5) : Number.POSITIVE_INFINITY;
+  beatCoverCropState.x = beatCoverDragStart.cropX - ((event.clientX - beatCoverDragStart.x) / rect.width / dragRangeX);
+  beatCoverCropState.y = beatCoverDragStart.cropY - ((event.clientY - beatCoverDragStart.y) / rect.height / dragRangeY);
+  updateBeatCoverPreview();
+}
+
+function handleBeatCoverPointerEnd(event) {
+  beatCoverPointers.delete(event.pointerId);
+  beatCoverStage?.releasePointerCapture?.(event.pointerId);
+  if (beatCoverPointers.size < 2) beatCoverPinchStart = null;
+  if (beatCoverPointers.size === 0) {
+    beatCoverDragStart = null;
+    beatCoverStage?.classList.remove("is-dragging");
+  }
+}
+
+function handleBeatCoverWheel(event) {
+  if (!beatCoverPreview?.src) return;
+  event.preventDefault();
+  const delta = event.deltaY < 0 ? 0.08 : -0.08;
+  beatCoverCropState.zoom += delta;
+  updateBeatCoverPreview();
+}
 async function uploadSelectedBeatCoverFile() {
   const file = beatCoverInput?.files?.[0];
   if (!file) return "";
@@ -544,22 +693,24 @@ async function uploadSelectedBeatCoverFile() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) throw new Error("Sesion requerida para subir portadas.");
 
-  setUploadStatus(`Subiendo portada ${file.name}...`);
-  const response = await fetch(`${CLOUD_ORIGIN}/api/upload?path=${encodeURIComponent(`${BEAT_STORE_CLOUD_PATH}/covers`)}`, {
+  setUploadStatus(`Procesando portada ${file.name}...`);
+  const productId = document.getElementById("beat-product-id")?.value || "";
+  const response = await fetch(`${CLOUD_ORIGIN}/api/beat-store/cover`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${session.access_token}`,
-      "X-File-Name": encodeURIComponent(file.name),
       "Content-Type": file.type || "application/octet-stream",
+      "X-Beat-Crop": JSON.stringify(currentBeatCoverCrop()),
+      ...(productId ? { "X-Beat-Product-Id": productId } : {}),
     },
     body: file,
   });
 
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || "No se pudo subir la portada a MysAuth Cloud.");
+  if (!response.ok) throw new Error(result.error || "No se pudo procesar la imagen");
 
-  setUploadStatus(`Portada subida: ${file.name}`);
-  return new URL(`/api/beat-store/stream?file=${encodeURIComponent(`covers/${file.name}`)}`, CLOUD_ORIGIN).href;
+  setUploadStatus(`Portada procesada: ${file.name}`);
+  return result;
 }
 async function uploadSelectedBeatFile() {
   const file = beatUploadInput?.files?.[0];
@@ -644,6 +795,7 @@ function editAdminProduct(id) {
   document.getElementById("beat-duration").value = product.beat_duration_seconds ?? "";
   document.getElementById("beat-price").value = product.price;
   document.getElementById("beat-image-url").value = product.image_url ?? "";
+  if (beatCoverEditor) beatCoverEditor.hidden = true;
   document.getElementById("beat-file-url").value = product.file_url ?? "";
   document.getElementById("beat-stock").value = product.stock ?? "";
   document.getElementById("beat-featured").checked = Boolean(product.featured);
@@ -657,6 +809,9 @@ function editAdminProduct(id) {
 function resetAdminForm() {
   if (!adminForm) return;
   adminForm.reset();
+  if (beatCoverEditor) beatCoverEditor.hidden = true;
+  if (beatCoverObjectUrl) URL.revokeObjectURL(beatCoverObjectUrl);
+  beatCoverObjectUrl = "";
   document.getElementById("beat-product-id").value = "";
   document.getElementById("beat-active").checked = true;
   document.getElementById("beat-digital").checked = true;
@@ -798,4 +953,9 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
+
+
+
+
+
 
