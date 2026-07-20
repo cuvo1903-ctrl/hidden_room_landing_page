@@ -1179,6 +1179,18 @@ const TABLE_EDITOR_CONFIG = {
     pdfColumns: ['key', 'name', 'status', 'sort_order'],
     pdfColumnLabels: { key: 'Clave', name: 'Nombre', status: 'Status', sort_order: 'Orden' },
   },
+  services: {
+    label: 'Servicios',
+    primaryKey: 'id',
+    select: 'id, key, name, status, sort_order, created_at',
+    defaultSort: { field: 'sort_order', direction: 'asc' },
+    lockedFields: ['id', 'created_at'],
+    editableFields: ['key', 'name', 'status', 'sort_order'],
+    hiddenColumns: ['id'],
+    summaryFields: ['key', 'name', 'status', 'sort_order'],
+    pdfColumns: ['key', 'name', 'status', 'sort_order'],
+    pdfColumnLabels: { key: 'Clave', name: 'Nombre', status: 'Status', sort_order: 'Orden' },
+  },
 };
 
 async function fetchAllTableEditorRows(tableName, select, defaultSort = null, options = {}) {
@@ -5755,13 +5767,14 @@ async function renderErpOps() {
   const participants = await fetchAllEventParticipants();
   const financeEntities = await fetchFinanceEntities();
   const paymentMethods = await fetchPaymentMethods();
+  const services = await fetchServices();
   const memberships = await fetchMembershipOptionsForOps();
   const activeForm = persistedDataValue('erpOpsForm', 'transaction');
   const mergeDuplicateMode = persistedDataValue('mergeDuplicateMode', 'email');
   const opsForms = {
     transaction: {
       label: 'Finanzas',
-      html: renderTransactionForm('transaction-create', paymentMethods),
+      html: renderTransactionForm('transaction-create', paymentMethods, services),
     },
     session: {
       label: 'Sesion',
@@ -5861,6 +5874,10 @@ async function renderErpOps() {
       label: 'Metodo de pago',
       html: renderPaymentMethodOpsForm(),
     },
+    service: {
+      label: 'Servicio',
+      html: renderServiceOpsForm(),
+    },
     financeEntity: {
       label: 'Entidad financiera',
       html: `
@@ -5936,6 +5953,7 @@ async function renderErpOps() {
             ['eventParticipant', 'Nuevo participante'],
             ['financeEntity', 'Entidad financiera'],
             ['paymentMethod', 'Metodo de pago'],
+            ['service', 'Servicio'],
             ['membership', 'Membresías'],
             ['userMerge', 'Fusionar usuarios'],
           ].map(([value, label]) => optionHTML(value, label, activeForm)).join('')}
@@ -5963,6 +5981,22 @@ function renderPaymentMethodOpsForm() {
         <label class="db-field"><span>Orden</span><input name="sort_order" type="number" step="1" value="100" required /></label>
       </div>
       <button class="btn-primary" type="submit">Crear metodo</button>
+    </form>
+  `;
+}
+
+function renderServiceOpsForm() {
+  return `
+    <form class="db-form" data-form="service-create">
+      <div class="db-form__row">
+        <label class="db-field"><span>Clave</span><input name="key" placeholder="GRABACION" required /></label>
+        <label class="db-field"><span>Nombre</span><input name="name" placeholder="GRABACIÓN" required /></label>
+      </div>
+      <div class="db-form__row">
+        <label class="db-field"><span>Status</span><select name="status"><option value="active" selected>active</option><option value="inactive">inactive</option></select></label>
+        <label class="db-field"><span>Orden</span><input name="sort_order" type="number" step="1" value="100" required /></label>
+      </div>
+      <button class="btn-primary" type="submit">Crear servicio</button>
     </form>
   `;
 }
@@ -6169,7 +6203,7 @@ function renderOperationCreateActions(createLabel = 'CREAR') {
   `;
 }
 
-function renderTransactionForm(formName, paymentMethods = state.data.paymentMethods ?? []) {
+function renderTransactionForm(formName, paymentMethods = state.data.paymentMethods ?? [], services = state.data.services ?? []) {
   const today = todayDateInputValue();
   return `
     <form class="db-form" data-form="${escapeAttr(formName)}">
@@ -6177,7 +6211,7 @@ function renderTransactionForm(formName, paymentMethods = state.data.paymentMeth
       ${renderUserAutofillFields()}
       <div class="db-form__row">
         <label class="db-field"><span>Tipo</span><select name="type" required>${ERP_TYPE_OPTIONS.map((type) => optionHTML(type, type, '')).join('')}</select></label>
-        <label class="db-field"><span>Servicio</span><select name="service" data-transaction-service required>${SERVICE_OPTIONS.map((service) => optionHTML(service, service, '')).join('')}</select></label>
+        <label class="db-field"><span>Servicio</span><select name="service" data-transaction-service required>${renderServiceOptions(services)}</select></label>
       </div>
       <div class="db-form__row">
         <label class="db-field"><span>Monto</span><input name="amount" type="number" step="0.01" required /></label>
@@ -6450,6 +6484,26 @@ async function fetchPaymentMethods() {
   return state.data.paymentMethods;
 }
 
+async function fetchServices() {
+  if (Array.isArray(state.data.services)) return state.data.services;
+
+  const { data, error } = await supabase
+    .from('services')
+    .select('id, key, name, status, sort_order')
+    .eq('status', 'active')
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true });
+
+  if (error) {
+    console.info('[HR] services unavailable:', error.message);
+    state.data.services = [];
+    return [];
+  }
+
+  state.data.services = data ?? [];
+  return state.data.services;
+}
+
 function financeEntityLabel(entity) {
   if (!entity) return '-';
   const type = entity.entity_type ? ` · ${entity.entity_type}` : '';
@@ -6467,6 +6521,18 @@ function renderPaymentMethodOptions(methods = [], selectedValue = '') {
   const normalizedSelected = String(selectedValue ?? '');
   const activeOptions = (methods ?? []).map((method) => optionHTML(method.name, method.name, normalizedSelected));
   if (normalizedSelected && !(methods ?? []).some((method) => String(method.name) === normalizedSelected)) {
+    activeOptions.unshift(optionHTML(normalizedSelected, `${normalizedSelected} (existente)`, normalizedSelected));
+  }
+  return [optionHTML('', 'Seleccionar', normalizedSelected), ...activeOptions].join('');
+}
+
+function renderServiceOptions(services = [], selectedValue = '') {
+  const normalizedSelected = String(selectedValue ?? '');
+  const source = (services ?? []).length
+    ? services.map((service) => service.name)
+    : SERVICE_OPTIONS;
+  const activeOptions = source.map((serviceName) => optionHTML(serviceName, serviceName, normalizedSelected));
+  if (normalizedSelected && !source.some((serviceName) => String(serviceName) === normalizedSelected)) {
     activeOptions.unshift(optionHTML(normalizedSelected, `${normalizedSelected} (existente)`, normalizedSelected));
   }
   return [optionHTML('', 'Seleccionar', normalizedSelected), ...activeOptions].join('');
@@ -9607,8 +9673,8 @@ async function handleErpForm(form) {
     values.sessions_per_week = Number(values.sessions_per_week || 1);
     if (!values.end_date) values.end_date = null;
   }
-  if (type === 'payment-method-create') {
-    values.key = String(values.key ?? '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+  if (type === 'payment-method-create' || type === 'service-create') {
+    values.key = String(values.key ?? '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
     values.name = String(values.name ?? '').trim();
     values.status = String(values.status || 'active').toLowerCase();
     values.sort_order = Number(values.sort_order || 100);
@@ -9662,6 +9728,7 @@ async function handleErpForm(form) {
     'event-create': ['events', operationPayload, 'Evento creado.'],
     'finance-entity-create': ['finance_entities', operationPayload, 'Entidad financiera creada.'],
     'payment-method-create': ['payment_methods', operationPayload, 'Metodo de pago creado.'],
+    'service-create': ['services', operationPayload, 'Servicio creado.'],
   };
 
   const config = map[type];
@@ -9678,6 +9745,8 @@ async function handleErpForm(form) {
       state.data.financeEntities = null;
     } else if (type === 'payment-method-create') {
       state.data.paymentMethods = null;
+    } else if (type === 'service-create') {
+      state.data.services = null;
     } else if (shouldShareReceipt) {
       await createUserNotification(
         operationPayload.user_id,
@@ -10925,13 +10994,14 @@ async function handleAdminTableUpdate(form) {
   const ok = await saveAdminTableRow(tableName, config, original, payload, { confirmUserId: true });
   if (ok) {
     if (tableName === 'payment_methods') state.data.paymentMethods = null;
+    if (tableName === 'services') state.data.services = null;
     showToast('Fila actualizada.', 'success');
     navigate('admin-table-editor');
   }
 }
 
 async function saveAdminTableRow(tableName, config, original, payload, options = {}) {
-  if (tableName === 'payment_methods') {
+  if (tableName === 'payment_methods' || tableName === 'services') {
     if ('key' in payload) payload.key = String(payload.key ?? '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
     if ('name' in payload) payload.name = String(payload.name ?? '').trim();
     if ('status' in payload) payload.status = String(payload.status || 'active').toLowerCase();
@@ -11272,6 +11342,7 @@ async function handleAdminTableDelete(tableName, encodedRow) {
   }
 
   if (tableName === 'payment_methods') state.data.paymentMethods = null;
+  if (tableName === 'services') state.data.services = null;
   showToast(tableName === 'downloads' ? 'Descarga desasignada. Usuario y archivo Cloud conservados.' : 'Fila eliminada.', 'success');
   navigate('admin-table-editor');
 }
