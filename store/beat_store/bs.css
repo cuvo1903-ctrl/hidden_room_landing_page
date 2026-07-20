@@ -204,7 +204,7 @@ body.beat-admin-mode .beat-admin {
 
 .beat-card__actions {
   display: grid;
-  grid-template-columns: minmax(104px, .8fr) auto minmax(124px, .95fr);
+  grid-template-columns: minmax(124px, .95fr);
   gap: 10px;
   align-items: center;
 }
@@ -226,13 +226,7 @@ body.beat-admin-mode .beat-admin {
   opacity: .45;
   cursor: not-allowed;
 }
-
-.beat-card .product-price {
-  margin: 0;
-  white-space: nowrap;
-  font-size: clamp(16px, 2vw, 22px);
-}
-
+`r`n
 .beat-card .primary-button {
   min-height: 42px;
   padding-inline: 12px;
@@ -297,7 +291,7 @@ body.beat-admin-mode .beat-admin {
   }
 
   .beat-card__actions {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr;
   }
 
   .beat-card__actions .primary-button {
@@ -416,13 +410,13 @@ body.beat-admin-mode .beat-admin {
 }
 
 .beat-card__actions {
-  grid-template-columns: auto minmax(124px, .95fr);
+  grid-template-columns: minmax(124px, .95fr);
   justify-content: end;
 }
 
 @media (max-width: 620px) {
   .beat-card__actions {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: 1fr;
   }
 
   .beat-card__actions .primary-button {
@@ -506,4 +500,279 @@ body.beat-admin-mode .beat-admin {
 
 .beat-cover-editor__stage.is-dragging {
   cursor: grabbing;
+}
+
+/* Beat license modal */
+.beat-license-modal {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--hr-z-overlay, 1000) + 20);
+  display: grid;
+  place-items: center;
+  padding: clamp(16px, 4vw, 40px);
+}
+
+.beat-license-modal[hidden] {
+  display: none;
+}
+
+.beat-license-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, .72);
+  backdrop-filter: blur(8px);
+}
+
+.beat-license-modal__dialog {
+  width: min(760px, 100%);
+  max-height: min(82vh, 760px);
+  position: relative;
+  z-index: 1;
+  overflow: auto;
+  display: grid;
+  gap: 18px;
+  padding: clamp(18px, 4vw, 30px);
+  border: 1px solid var(--hr-border);
+  background: rgba(12, 12, 12, .98);
+}
+
+.beat-license-modal__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--hr-border);
+  background: rgba(240, 236, 228, .04);
+  color: var(--white);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.beat-license-modal__header {
+  display: grid;
+  gap: 6px;
+  padding-right: 42px;
+}
+
+.beat-license-modal__header h2 {
+  margin: 0;
+  font: 700 clamp(24px, 4vw, 40px)/1 var(--hr-font-display);
+  text-transform: uppercase;
+}
+
+.beat-license-modal__header p:not(.eyebrow) {
+  margin: 0;
+  color: var(--hr-muted);
+  font-size: 12px;
+}
+
+.beat-license-modal-open {
+  overflow: hidden;
+}
+
+.beat-license-list {
+  display: grid;
+  gap: 10px;
+}
+
+.beat-license-option {
+  padding: 12px;
+  border: 1px solid rgba(240, 236, 228, .14);
+  background: rgba(0, 0, 0, .18);
+  display: grid;
+  gap: 10px;
+}
+
+.beat-license-option header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+}
+
+.beat-license-option h5 {
+  margin: 0;
+  font: 700 12px/1.2 var(--hr-font-display);
+  text-transform: uppercase;
+}
+
+.beat-license-option p,
+.beat-license-option dl {
+  margin: 0;
+  color: var(--hr-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.beat-license-option dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+
+.beat-license-option dt {
+  color: var(--teal);
+  font-size: 9px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.beat-license-option dd {
+  margin: 3px 0 0;
+  color: var(--white);
+}
+
+.beat-license-option strong {
+  color: var(--white);
+  white-space: nowrap;
+}
+
+.beat-license-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.beat-license-actions .secondary-button {
+  min-height: 34px;
+  padding: 8px 10px;
+  font-size: 10px;
+}
+
+.beat-license-empty {
+  margin: 0;
+  color: var(--hr-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+@media (max-width: 620px) {
+  .beat-license-option header,
+  .beat-license-actions {
+    display: grid;
+  }
+}
+/* Beat license admin */
+.beat-license-admin {
+  padding-top: clamp(28px, 5vw, 56px);
+  border-top: 1px solid var(--hr-border);
+}
+
+.beat-license-form h3,
+.beat-license-assignment h4 {
+  margin: 0;
+  font: 700 18px/1.1 var(--hr-font-display);
+  text-transform: uppercase;
+}
+
+.beat-license-assignment {
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--hr-border);
+  background: rgba(0, 0, 0, .18);
+}
+
+.beat-license-assignment .eyebrow {
+  margin-bottom: 6px;
+}
+
+.beat-license-assignment-list {
+  display: grid;
+  gap: 10px;
+}
+
+.beat-license-check {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(240, 236, 228, .14);
+  background: rgba(240, 236, 228, .03);
+  color: var(--hr-muted);
+  font-size: 11px;
+}
+
+.beat-license-check > span {
+  color: var(--white);
+  font: 700 11px/1.2 var(--hr-font-display);
+  text-transform: uppercase;
+}
+
+.beat-license-check small {
+  color: var(--hr-muted);
+  line-height: 1.4;
+}
+
+.beat-license-check.is-invalid {
+  border-color: rgba(255, 107, 107, .58);
+}
+
+.beat-license-warning {
+  min-height: 1.4em;
+  margin: 0;
+  color: var(--hr-warning, #f2c94c);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.beat-license-row .remove-button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.beat-license-empty {
+  margin: 0;
+  color: var(--hr-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+
+
+
+/* Beat upload helpers */
+.beat-autodetect-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.beat-autodetect-field .hr-label {
+  grid-column: 1 / -1;
+}
+
+.beat-autodetect-button {
+  min-height: 42px;
+  padding: 10px 12px;
+  font-size: 10px;
+}
+
+#beat-submit-button.is-loading {
+  position: relative;
+  pointer-events: none;
+  opacity: .82;
+}
+
+#beat-submit-button.is-loading::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  margin-left: 10px;
+  display: inline-block;
+  vertical-align: -2px;
+  border: 2px solid rgba(255, 255, 255, .35);
+  border-top-color: var(--white);
+  border-radius: 50%;
+  animation: beat-submit-spin .8s linear infinite;
+}
+
+@keyframes beat-submit-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 620px) {
+  .beat-autodetect-field {
+    grid-template-columns: 1fr;
+  }
 }
