@@ -7685,21 +7685,30 @@ function renderAdminTableEditorRow(tableName, config, row, index, options = {}) 
 }
 
 function renderAdminTableRowExtraActions(tableName, row, original) {
-  if (tableName !== 'memberships') return '';
-
-  const status = String(row?.status ?? '').toLowerCase();
-  const canCancel = !['cancelled', 'expired'].includes(status);
-  const canFinish = status !== 'expired';
   const actions = [];
 
-  if (canCancel) {
-    actions.push('<button class="db-btn-secondary" type="button" data-action="membership-cancel-row" data-row-original="' + escapeAttr(original) + '">Cancelar</button>');
+  if (adminTableRowSupportsReceipt(tableName)) {
+    actions.push('<button class="db-btn-secondary" type="button" data-action="admin-operation-receipt-share" data-table-name="' + escapeAttr(tableName) + '" data-row-original="' + escapeAttr(original) + '">Compartir PDF</button>');
   }
-  if (canFinish) {
-    actions.push('<button class="db-btn-secondary" type="button" data-action="membership-finish-row" data-row-original="' + escapeAttr(original) + '">Finalizar</button>');
+
+  if (tableName === 'memberships') {
+    const status = String(row?.status ?? '').toLowerCase();
+    const canCancel = !['cancelled', 'expired'].includes(status);
+    const canFinish = status !== 'expired';
+
+    if (canCancel) {
+      actions.push('<button class="db-btn-secondary" type="button" data-action="membership-cancel-row" data-row-original="' + escapeAttr(original) + '">Cancelar</button>');
+    }
+    if (canFinish) {
+      actions.push('<button class="db-btn-secondary" type="button" data-action="membership-finish-row" data-row-original="' + escapeAttr(original) + '">Finalizar</button>');
+    }
   }
 
   return actions.join('');
+}
+
+function adminTableRowSupportsReceipt(tableName) {
+  return ['transactions', 'sessions', 'downloads', 'contracts'].includes(tableName);
 }
 function adminTableCellValue(tableName, field, row) {
   if (tableName === 'membership_dashboard') {
@@ -10300,6 +10309,107 @@ async function handleEventFinanceTableUpdate(form) {
     navigate(state.activeSection);
   }
 }
+function operationReceiptFormTypeForTable(tableName) {
+  const formTypes = {
+    transactions: 'transaction-create',
+    sessions: 'session-create',
+    downloads: 'download-create',
+    contracts: 'contract-create',
+  };
+  return formTypes[tableName] ?? '';
+}
+
+function operationReceiptValuesFromRow(tableName, row = {}) {
+  if (tableName === 'transactions') {
+    return {
+      user_id: row.user_id,
+      username: row.username,
+      date: row.date,
+      type: row.type,
+      concept: row.concept,
+      amount: row.amount,
+      via: row.via,
+      id_trans: row.id_trans,
+      notes: row.notes,
+    };
+  }
+
+  if (tableName === 'sessions') {
+    return {
+      user_id: row.user_id,
+      username: row.username,
+      session_date: row.session_date,
+      type: row.type,
+      status: row.status,
+      concept: row.concept,
+      hour: row.hour,
+      sc_end: row.sc_end,
+      cost: row.cost,
+      promo: row.promo,
+      notes: row.notes,
+    };
+  }
+
+  if (tableName === 'downloads') {
+    return {
+      user_id: row.user_id,
+      name: row.name,
+      storage_path: row.storage_path,
+      release_mode: row.release_mode,
+      membership_id: row.membership_id,
+      membership_cycle_number: row.membership_cycle_number,
+      notes: row.notes,
+    };
+  }
+
+  if (tableName === 'contracts') {
+    return {
+      user_id: row.user_id,
+      contract: row.contract,
+      notes: row.notes,
+    };
+  }
+
+  return {};
+}
+
+function buildOperationReceiptForm(formType, values = {}) {
+  const form = document.createElement('form');
+  form.dataset.form = formType;
+
+  Object.entries(values).forEach(([name, value]) => {
+    if (value === undefined || value === null) return;
+    const input = document.createElement('input');
+    input.name = name;
+    input.value = String(value);
+    form.appendChild(input);
+  });
+
+  return form;
+}
+
+function parseAdminTableRowOriginal(encodedRow) {
+  try {
+    return JSON.parse(decodeURIComponent(encodedRow));
+  } catch (err) {
+    console.error('[HR] admin row receipt parse:', err);
+    showToast('No se pudo leer la operacion seleccionada.', 'error');
+    return null;
+  }
+}
+
+async function handleAdminOperationReceiptShare(tableName, encodedRow) {
+  if (!adminTableRowSupportsReceipt(tableName)) return;
+
+  const row = parseAdminTableRowOriginal(encodedRow);
+  if (!row) return;
+
+  const formType = operationReceiptFormTypeForTable(tableName);
+  const values = operationReceiptValuesFromRow(tableName, row);
+  const form = buildOperationReceiptForm(formType, values);
+  await handleOperationReceipt(form, { sharePreferred: true });
+}
+
 function operationReceiptTitle(formType) {
   const labels = {
     'transaction-create': 'Comprobante de transaccion',
@@ -12016,6 +12126,12 @@ function attachMainDelegation() {
     if (action === 'admin-table-delete') {
       const btn = e.target.closest('[data-table-name][data-row-original]');
       if (btn) handleAdminTableDelete(btn.dataset.tableName, btn.dataset.rowOriginal);
+    }
+
+    if (action === 'admin-operation-receipt-share') {
+      const btn = e.target.closest('[data-table-name][data-row-original]');
+      if (btn) handleAdminOperationReceiptShare(btn.dataset.tableName, btn.dataset.rowOriginal);
+      return;
     }
 
     if (action === 'operation-receipt') {
