@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hidden Room Cache Busting"
+  short_description: "Refresh static asset versions."
+  default_prompt: "Use this when Hidden Room JS or CSS changes need a new ?v= cache-buster for GitHub Pages and Safari."

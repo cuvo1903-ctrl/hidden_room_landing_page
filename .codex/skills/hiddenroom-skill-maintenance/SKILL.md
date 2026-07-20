@@ -29,6 +29,7 @@ foreach ($skill in $skills) {
 
 ## Existing Skill Set
 
+- `hiddenroom-cache-busting`
 - `hiddenroom-frontend`
 - `hiddenroom-design-system`
 - `hiddenroom-dashboard`
