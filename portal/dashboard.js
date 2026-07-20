@@ -3686,43 +3686,23 @@ function renderTaskCard(task, editable) {
 
 function renderUserPicker(name, label, value = '', options = {}) {
   const valueField = options.valueField || 'user_id';
+  const limit = options.limit ?? USER_PICKER_RENDER_LIMIT;
   const users = uniqueUsers(state.data.users)
     .filter((user) => !options.requiredField || String(user?.[options.requiredField] ?? '').trim());
   const selected = users.find((u) => String(u?.[valueField] ?? '') === String(value));
   const displayValue = selected
-    ? (options.displayValue?.(selected) ?? userLabel(selected.user_id))
+    ? (options.displayValue?.(selected) ?? userPickerDisplay(selected, valueField))
     : '';
   const inputId = `user-picker-${escapeAttr(name)}-${Math.random().toString(36).slice(2, 8)}`;
   const selectedUser = selected ? [selected] : [];
-  const menuUsers = uniqueUsers([...selectedUser, ...users]).slice(0, options.limit ?? USER_PICKER_RENDER_LIMIT);
+  const menuUsers = uniqueUsers([...selectedUser, ...users]).slice(0, limit);
   const clippedNotice = users.length > menuUsers.length
-    ? `<div class="db-user-picker__empty">Mostrando ${menuUsers.length} usuarios. Escribe mas especifico si no ves a la persona.</div>`
+    ? `<div class="db-user-picker__empty" data-user-picker-clipped>Mostrando ${menuUsers.length} usuarios. Escribe mas especifico si no ves a la persona.</div>`
     : '';
-  const optionButtons = menuUsers.map((user) => {
-    const optionValue = String(user?.[valueField] ?? '');
-    const optionDisplay = options.displayValue?.(user) ?? userLabel(user.user_id);
-    const searchText = [
-      user.display_name,
-      user.email,
-      user.username,
-      user.user_id,
-    ]
-      .filter((item) => item !== null && item !== undefined)
-      .join(' ')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase();
-
-    return `
-    <button class="db-user-option" type="button" data-user-id="${escapeAttr(String(user.user_id ?? ''))}" data-user-value="${escapeAttr(optionValue)}" data-user-display="${escapeAttr(optionDisplay)}" data-search-text="${escapeAttr(searchText)}">
-      <span>${escapeHTML(user.display_name || user.email || 'Usuario sin nombre')}</span>
-      <small>${escapeHTML(options.caption?.(user) ?? `${usernameLabel(user)} · ${user.user_id ?? '-'}`)}</small>
-    </button>
-  `;
-  }).join('');
+  const optionButtons = renderUserPickerOptions(menuUsers, options);
 
   return `
-    <div class="db-field db-user-picker">
+    <div class="db-field db-user-picker" data-user-value-field="${escapeAttr(valueField)}" data-user-required-field="${escapeAttr(options.requiredField || '')}" data-user-picker-limit="${escapeAttr(String(limit))}">
       <label for="${inputId}">${escapeHTML(label)}</label>
       <input id="${inputId}" data-user-search autocomplete="off" placeholder="${escapeAttr(options.placeholder || 'Buscar usuario')}" value="${escapeAttr(displayValue)}" />
       <input type="hidden" name="${escapeHTML(name)}" value="${escapeAttr(value)}" />
@@ -3733,6 +3713,44 @@ function renderUserPicker(name, label, value = '', options = {}) {
       </div>
     </div>
   `;
+}
+
+function userPickerDisplay(user, valueField = 'user_id') {
+  if (valueField === 'email') {
+    const name = user.display_name || user.username || 'Usuario';
+    return `${user.email ?? ''} · ${name}`;
+  }
+  return userLabel(user.user_id);
+}
+
+function userPickerCaption(user, valueField = 'user_id') {
+  if (valueField === 'email') return `${usernameLabel(user)} · ${user.email ?? 'sin email'}`;
+  return `${usernameLabel(user)} · ${user.user_id ?? '-'}`;
+}
+
+function userPickerSearchText(user) {
+  return normalizeSearchText([
+    user.display_name,
+    user.email,
+    user.username,
+    user.user_id,
+  ].filter((item) => item !== null && item !== undefined).join(' '));
+}
+
+function renderUserPickerOptions(users = [], options = {}) {
+  const valueField = options.valueField || 'user_id';
+  return users.map((user) => {
+    const optionValue = String(user?.[valueField] ?? '');
+    const optionDisplay = options.displayValue?.(user) ?? userPickerDisplay(user, valueField);
+    const searchText = userPickerSearchText(user);
+
+    return `
+    <button class="db-user-option" type="button" data-user-id="${escapeAttr(String(user.user_id ?? ''))}" data-user-value="${escapeAttr(optionValue)}" data-user-display="${escapeAttr(optionDisplay)}" data-search-text="${escapeAttr(searchText)}">
+      <span>${escapeHTML(user.display_name || user.email || 'Usuario sin nombre')}</span>
+      <small>${escapeHTML(options.caption?.(user) ?? userPickerCaption(user, valueField))}</small>
+    </button>
+  `;
+  }).join('');
 }
 
 function renderErpUserPicker(name, label) {
@@ -7880,20 +7898,20 @@ function sectionShell(label, title, titleId, bodyHTML) {
 async function ensureUsersLoaded() {
   if (state.data.users?.length) return state.data.users;
 
-  const { data, error } = await supabase
-    .from('users')
-    .select('user_id, display_name, username, email, passline_tracking')
-    .order('display_name', { ascending: true });
-
-  if (error) {
+  try {
+    const users = await fetchAllTableEditorRows(
+      'users',
+      'user_id, display_name, username, email, passline_tracking',
+      { field: 'display_name', direction: 'asc' }
+    );
+    state.data.users = uniqueUsers(users);
+    return state.data.users;
+  } catch (error) {
     console.error('[HR] ensureUsersLoaded:', error);
     showToast('No se pudieron cargar usuarios.', 'error');
     state.data.users = [];
     return [];
   }
-
-  state.data.users = uniqueUsers(data);
-  return state.data.users;
 }
 
 function formValues(form) {
@@ -11670,18 +11688,22 @@ function filterUserPicker(search, { clearSelection = false } = {}) {
   if (clearSelection) updateDownloadMembershipOptions(picker?.closest('form'), '');
   if (!menu) return;
 
-  menu.hidden = false;
-  let visibleCount = 0;
-  menu.querySelectorAll('.db-user-option').forEach((option) => {
-    const text = normalizeSearchText(option.dataset.searchText || option.textContent);
-    const visible = query ? text.includes(query) : true;
-    option.hidden = !visible;
-    option.style.display = visible ? '' : 'none';
-    if (visible) visibleCount += 1;
-  });
+  const valueField = picker?.dataset.userValueField || 'user_id';
+  const requiredField = picker?.dataset.userRequiredField || '';
+  const limit = Number(picker?.dataset.userPickerLimit || USER_PICKER_RENDER_LIMIT);
+  const users = uniqueUsers(state.data.users)
+    .filter((user) => !requiredField || String(user?.[requiredField] ?? '').trim());
+  const matchedUsers = (query
+    ? users.filter((user) => userPickerSearchText(user).includes(query))
+    : users)
+    .slice(0, Number.isFinite(limit) ? limit : USER_PICKER_RENDER_LIMIT);
+
+  menu.querySelectorAll('.db-user-option, [data-user-picker-clipped]').forEach((item) => item.remove());
+  menu.insertAdjacentHTML('afterbegin', renderUserPickerOptions(matchedUsers, { valueField }));
 
   const empty = menu.querySelector('[data-user-picker-empty]');
-  if (empty) empty.hidden = visibleCount > 0;
+  if (empty) empty.hidden = matchedUsers.length > 0;
+  menu.hidden = false;
 }
 
 
