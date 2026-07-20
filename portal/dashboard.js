@@ -9776,7 +9776,7 @@ async function handleErpForm(form) {
         operationNotificationMessage(type, operationPayload),
         'success'
       );
-      await handleOperationReceipt(form);
+      await handleOperationReceipt(form, { sharePreferred: true });
     }
     form.reset();
     if (type === 'download-create') updateDownloadMembershipFields(form);
@@ -10387,6 +10387,32 @@ function operationReceiptRows(form) {
   return rows;
 }
 
+function downloadBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+async function shareReceiptBlob(blob, fileName, title) {
+  if (!navigator.share || typeof File === 'undefined') return false;
+
+  const file = new File([blob], fileName, { type: 'application/pdf' });
+  if (navigator.canShare && !navigator.canShare({ files: [file] })) return false;
+
+  await navigator.share({
+    title: `Hidden Room - ${title}`,
+    text: `Comprobante ${title}`,
+    files: [file],
+  });
+  return true;
+}
+
 async function handleOperationReceipt(form, options = {}) {
   try {
     await ensurePdfLibraries();
@@ -10411,7 +10437,25 @@ async function handleOperationReceipt(form, options = {}) {
     });
 
     const fileName = `hidden-room-${title.toLowerCase().replace(/[^a-z0-9]+/gi, '-')}-${new Date().toISOString().slice(0, 10)}.pdf`;
-    doc.save(fileName);
+    const blob = doc.output('blob');
+
+    if (options.sharePreferred) {
+      try {
+        const shared = await shareReceiptBlob(blob, fileName, title);
+        if (shared) {
+          if (!options.silent) showToast('Comprobante listo para compartir.', 'success');
+          return;
+        }
+      } catch (shareError) {
+        if (shareError?.name === 'AbortError') {
+          if (!options.silent) showToast('Compartir comprobante cancelado.', 'info');
+          return;
+        }
+        console.info('[HR] receipt share fallback:', shareError?.message ?? shareError);
+      }
+    }
+
+    downloadBlob(blob, fileName);
     if (!options.silent) showToast('Comprobante PDF descargado.', 'success');
   } catch (err) {
     console.error('[HR] operation receipt:', err);
