@@ -9747,6 +9747,11 @@ async function handleErpForm(form) {
       state.data.paymentMethods = null;
     } else if (type === 'service-create') {
       state.data.services = null;
+      setPersistedDataValue('erpOpsForm', 'transaction');
+      form.reset();
+      delete form.dataset.operationAction;
+      navigate('erp-ops');
+      return;
     } else if (shouldShareReceipt) {
       await createUserNotification(
         operationPayload.user_id,
