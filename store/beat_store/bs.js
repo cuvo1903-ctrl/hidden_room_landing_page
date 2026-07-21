@@ -1017,10 +1017,17 @@ async function saveBeatUploadError(id, error) {
   payload.beat_preview_status = "error";
   payload.beat_preview_error = "No se pudo generar el preview MP3.";
   if (!payload.name || !payload.slug || !payload.file_url) return;
-  const query = id
-    ? supabase.from("store_products").update(payload).eq("id", id)
-    : supabase.from("store_products").insert(payload);
-  await query;
+  if (id) {
+    await supabase.from("store_products").update(payload).eq("id", id);
+    return;
+  }
+  const { data: existing } = await supabase
+    .from("store_products")
+    .select("id")
+    .eq("slug", payload.slug)
+    .maybeSingle();
+  if (existing?.id) return;
+  await supabase.from("store_products").insert(payload);
 }
 async function saveBeatLicenseAssignments(beatId) {
   if (!state.hasBeatLicenses || !beatLicenseAssignmentList || !beatId) return;

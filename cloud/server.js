@@ -640,6 +640,15 @@ function beatManagedPath(kind, id, name) {
   return `${kind}/${id}/${name}`;
 }
 
+async function moveUploadIntoPlace(fromPath, toPath) {
+  try {
+    await fsp.rename(fromPath, toPath);
+  } catch (err) {
+    if (err?.code !== 'EXDEV') throw err;
+    await fsp.copyFile(fromPath, toPath, fs.constants.COPYFILE_EXCL);
+    await fsp.unlink(fromPath);
+  }
+}
 async function convertBeatPreview(inputPath, outputPath) {
   await fsp.mkdir(path.dirname(outputPath), { recursive: true });
   const tempOutput = `${outputPath}.tmp-${process.pid}-${Date.now()}.mp3`;
@@ -711,7 +720,7 @@ async function uploadBeatAudio(user, req, res) {
       throw err;
     }
     await fsp.mkdir(path.dirname(originalPath), { recursive: true });
-    await fsp.rename(temp.tempPath, originalPath);
+    await moveUploadIntoPlace(temp.tempPath, originalPath);
     temp.tempPath = '';
     await convertBeatPreview(originalPath, previewPath);
     await patchBeatProduct(productId, {
