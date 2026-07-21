@@ -7674,6 +7674,25 @@ function getAdminTableSummaryColumns(visibleColumns = [], config = {}) {
   return selected.length ? selected : visibleColumns.slice(0, 5);
 }
 
+function isAdminTableBooleanField(tableName, field) {
+  return tableName === 'services' && ['show_in_finance', 'show_in_session'].includes(field);
+}
+
+function renderAdminTableBooleanCell(tableName, field, value, formId, cellToneClass = '') {
+  const checked = parseBooleanField(value);
+  const label = field === 'show_in_finance' ? 'Finanzas' : 'Sesión';
+
+  return `
+    <td class="db-table-cell--editable hr-cell-editable${escapeAttr(cellToneClass)}">
+      <input type="hidden" form="${escapeAttr(formId)}" name="${escapeAttr(field)}" value="false" />
+      <label class="db-check db-check--compact">
+        <input form="${escapeAttr(formId)}" name="${escapeAttr(field)}" type="checkbox" value="true" ${checked ? 'checked' : ''} />
+        <span>${escapeHTML(label)}</span>
+      </label>
+    </td>
+  `;
+}
+
 function renderAdminTableEditorRow(tableName, config, row, index, options = {}) {
   const columns = [...config.lockedFields, ...config.editableFields]
     .filter((field, fieldIndex, arr) => arr.indexOf(field) === fieldIndex);
@@ -7701,11 +7720,16 @@ function renderAdminTableEditorRow(tableName, config, row, index, options = {}) 
           return `<td class="db-table-cell--readonly${escapeAttr(cellToneClass)}"><code class="${field === 'temp_password' ? 'db-readonly-secret' : ''}">${escapeHTML(String(value))}</code></td>`;
         }
 
+        const formId = `admin-table-form-${index}`;
+        if (isAdminTableBooleanField(tableName, field)) {
+          return renderAdminTableBooleanCell(tableName, field, value, formId, cellToneClass);
+        }
+
         return `
           <td class="db-table-cell--editable hr-cell-editable${escapeAttr(cellToneClass)}">
             <input
               class="db-table-input hr-input"
-              form="admin-table-form-${index}"
+              form="${escapeAttr(formId)}"
               name="${escapeAttr(field)}"
               value="${escapeAttr(value)}"
             />
