@@ -9,7 +9,7 @@ const BEAT_STORE_CLOUD_PATH = "/beats_store";
 const supabase = window.HiddenRoomSupabase?.getClient
   ? await window.HiddenRoomSupabase.getClient()
   : createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const state = { products: [], adminProducts: [], beats: [], items: [], licenses: [], assignments: [], durationDetections: new Set(), isAdmin: false, currentUserId: null, hasBeatMetadata: true, hasBeatLicenses: true };
+const state = { products: [], adminProducts: [], beats: [], items: [], licenses: [], assignments: [], durationDetections: new Set(), isAdmin: false, currentUserId: null, hasBeatMetadata: true, hasBeatLicenses: true, hasBeatPreviews: true };
 
 const grid = document.getElementById("beat-grid");
 const searchInput = document.getElementById("beat-search");
@@ -213,11 +213,22 @@ async function currentUserIsAdmin() {
 
 const BEAT_PRODUCT_BASE_SELECT = "id, slug, name, description, category, price, currency, image_url, beat_cover_path, beat_thumb_path, file_url, producer, stock, is_digital, featured, is_active, created_at";
 const BEAT_PRODUCT_META_SELECT = `${BEAT_PRODUCT_BASE_SELECT}, producer_user_id, beat_genre, beat_bpm, beat_key, beat_duration_seconds`;
+const BEAT_PRODUCT_PREVIEW_SELECT = `${BEAT_PRODUCT_META_SELECT}, beat_original_path, beat_preview_path, beat_preview_status, beat_preview_error`;
 
 async function fetchBeatProducts(includeInactive = false) {
-  const { data, error } = await runBeatProductQuery(includeInactive, state.hasBeatMetadata ? BEAT_PRODUCT_META_SELECT : BEAT_PRODUCT_BASE_SELECT);
+  const columns = state.hasBeatPreviews
+    ? BEAT_PRODUCT_PREVIEW_SELECT
+    : (state.hasBeatMetadata ? BEAT_PRODUCT_META_SELECT : BEAT_PRODUCT_BASE_SELECT);
+  const { data, error } = await runBeatProductQuery(includeInactive, columns);
 
   if (!error) return data ?? [];
+
+  if (state.hasBeatPreviews && isMissingBeatPreviewError(error)) {
+    state.hasBeatPreviews = false;
+    const fallback = await runBeatProductQuery(includeInactive, state.hasBeatMetadata ? BEAT_PRODUCT_META_SELECT : BEAT_PRODUCT_BASE_SELECT);
+    if (!fallback.error) return fallback.data ?? [];
+    throw new Error(`No se pudieron cargar productos: ${fallback.error.message}`);
+  }
 
   if (state.hasBeatMetadata && isMissingBeatMetadataError(error)) {
     state.hasBeatMetadata = false;
@@ -239,6 +250,11 @@ function runBeatProductQuery(includeInactive, columns) {
 
   if (!includeInactive) query = query.eq("is_active", true);
   return query;
+}
+
+function isMissingBeatPreviewError(error) {
+  const message = String(error?.message || error?.details || "").toLowerCase();
+  return error?.code === "42703" && ["beat_original_path", "beat_preview_path", "beat_preview_status", "beat_preview_error"].some((column) => message.includes(column));
 }
 
 function isMissingBeatMetadataError(error) {
@@ -617,12 +633,21 @@ function playBeat(itemId) {
   }));
 }
 function previewUrlForItem(item) {
-  const streamUrl = item?.beat?.stream_url;
-  if (streamUrl) return new URL(streamUrl, CLOUD_ORIGIN).href;
+  const productPreview = beatPreviewRelativeFile(item?.product?.beat_preview_path);
+  if (productPreview && item?.product?.beat_preview_status !== "error") {
+    return new URL(`/api/beat-store/stream?file=${encodeURIComponent(productPreview)}`, CLOUD_ORIGIN).href;
+  }
 
-  const relativeFile = beatRelativeFile(item?.product?.file_url);
-  if (!relativeFile) return "";
-  return new URL(`/api/beat-store/stream?file=${encodeURIComponent(relativeFile)}`, CLOUD_ORIGIN).href;
+  const streamUrl = item?.beat?.stream_url;
+  const streamFile = beatPreviewRelativeFile(item?.beat?.file || streamUrl);
+  if (streamUrl && streamFile) return new URL(streamUrl, CLOUD_ORIGIN).href;
+  return "";
+}
+
+function beatPreviewRelativeFile(value) {
+  const clean = beatRelativeFile(value);
+  if (!clean) return "";
+  return clean.toLowerCase().startsWith("previews/") && /\.mp3$/i.test(clean) ? clean : "";
 }
 
 function beatRelativeFile(value) {
@@ -644,7 +669,7 @@ function beatRelativeFile(value) {
     .replace(/^\/+/g, "");
   if (clean.toLowerCase().startsWith("beats_store/")) clean = clean.slice("beats_store/".length);
   if (!clean || clean.split("/").some((part) => !part || part === "." || part === "..")) return "";
-  if (!/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(clean)) return "";
+  if (!/\.(mp3|wav|m4a|aac|ogg|flac|aif|aiff)$/i.test(clean)) return "";
   return clean;
 }
 function addBeatToCart(itemId) {
@@ -903,41 +928,22 @@ async function handleAdminSubmit(event) {
   adminError.textContent = "";
   setBeatSubmitLoading(true);
 
-  let uploadedFileUrl = "";
+  let uploadedBeatAudio = null;
   let uploadedCoverUrl = "";
+  let editingId = "";
   try {
     const id = document.getElementById("beat-product-id").value;
+    editingId = id;
     const stockValue = document.getElementById("beat-stock").value;
     uploadedCoverUrl = await uploadSelectedBeatCoverFile();
-    uploadedFileUrl = await uploadSelectedBeatFile();
+    uploadedBeatAudio = await uploadSelectedBeatFile(id);
 
-    const payload = {
-      name: document.getElementById("beat-name").value.trim(),
-      slug: document.getElementById("beat-slug").value.trim().toLowerCase(),
-      description: document.getElementById("beat-description").value.trim() || null,
-      producer: document.getElementById("beat-producer").value.trim() || null,
-      category: "beats",
-      price: 0,
-      currency: "MXN",
-      image_url: uploadedCoverUrl?.image_url || uploadedCoverUrl || document.getElementById("beat-image-url")?.value.trim() || null,
-      file_url: uploadedFileUrl || document.getElementById("beat-file-url").value.trim() || null,
-      stock: stockValue === "" ? null : Number(stockValue),
-      is_digital: document.getElementById("beat-digital").checked,
-      featured: document.getElementById("beat-featured").checked,
-      is_active: document.getElementById("beat-active").checked,
-    };
-    if (uploadedCoverUrl?.beat_cover_path || uploadedCoverUrl?.image_url) {
-      payload.beat_cover_path = uploadedCoverUrl.beat_cover_path || uploadedCoverUrl.image_url;
-    }
-    if (uploadedCoverUrl?.beat_thumb_path) {
-      payload.beat_thumb_path = uploadedCoverUrl.beat_thumb_path;
-    }
-    if (state.hasBeatMetadata) {
-      payload.beat_genre = document.getElementById("beat-genre-input").value.trim() || null;
-      payload.beat_bpm = nullableNumberFromInput("beat-bpm");
-      payload.beat_key = document.getElementById("beat-key").value.trim() || null;
-      payload.beat_duration_seconds = nullableNumberFromInput("beat-duration");
-    }
+    const payload = beatProductPayload({
+      uploadedCoverUrl,
+      uploadedBeatAudio,
+      isActive: document.getElementById("beat-active").checked,
+      stockValue,
+    });
 
     if (!id && state.currentUserId && state.hasBeatLicenses) payload.producer_user_id = state.currentUserId;
 
@@ -952,13 +958,69 @@ async function handleAdminSubmit(event) {
 
     showNotice(id ? "Beat actualizado" : "Beat creado");
     resetAdminForm();
-    await reloadBeatStore({ refreshBeats: Boolean(uploadedFileUrl || uploadedCoverUrl) });
+    await reloadBeatStore({ refreshBeats: Boolean(uploadedBeatAudio || uploadedCoverUrl) });
   } catch (error) {
+    if (error.beatUploadResult) await saveBeatUploadError(editingId, error).catch(() => {});
     adminError.textContent = error.message || "No se pudo guardar el beat.";
     setUploadStatus(adminError.textContent, true);
   } finally {
     setBeatSubmitLoading(false);
   }
+}
+
+function beatProductPayload({ uploadedCoverUrl = null, uploadedBeatAudio = null, isActive = true, stockValue = "" } = {}) {
+  const payload = {
+    name: document.getElementById("beat-name").value.trim(),
+    slug: document.getElementById("beat-slug").value.trim().toLowerCase(),
+    description: document.getElementById("beat-description").value.trim() || null,
+    producer: document.getElementById("beat-producer").value.trim() || null,
+    category: "beats",
+    price: 0,
+    currency: "MXN",
+    image_url: uploadedCoverUrl?.image_url || uploadedCoverUrl || document.getElementById("beat-image-url")?.value.trim() || null,
+    file_url: uploadedBeatAudio?.file_url || document.getElementById("beat-file-url").value.trim() || null,
+    stock: stockValue === "" ? null : Number(stockValue),
+    is_digital: document.getElementById("beat-digital").checked,
+    featured: document.getElementById("beat-featured").checked,
+    is_active: isActive,
+  };
+  if (uploadedCoverUrl?.beat_cover_path || uploadedCoverUrl?.image_url) payload.beat_cover_path = uploadedCoverUrl.beat_cover_path || uploadedCoverUrl.image_url;
+  if (uploadedCoverUrl?.beat_thumb_path) payload.beat_thumb_path = uploadedCoverUrl.beat_thumb_path;
+  if (state.hasBeatMetadata) {
+    payload.beat_genre = document.getElementById("beat-genre-input").value.trim() || null;
+    payload.beat_bpm = nullableNumberFromInput("beat-bpm");
+    payload.beat_key = document.getElementById("beat-key").value.trim() || null;
+    payload.beat_duration_seconds = nullableNumberFromInput("beat-duration");
+  }
+  if (state.hasBeatPreviews && uploadedBeatAudio) {
+    payload.beat_original_path = uploadedBeatAudio.beat_original_path || null;
+    payload.beat_preview_path = uploadedBeatAudio.beat_preview_path || null;
+    payload.beat_preview_status = uploadedBeatAudio.beat_preview_status || "ready";
+    payload.beat_preview_error = null;
+  }
+  return payload;
+}
+
+async function saveBeatUploadError(id, error) {
+  if (!state.hasBeatPreviews) return;
+  const result = error.beatUploadResult || {};
+  const payload = beatProductPayload({
+    uploadedBeatAudio: {
+      file_url: result.original_file_url || null,
+      beat_original_path: result.beat_original_path || null,
+      beat_preview_path: null,
+      beat_preview_status: "error",
+    },
+    isActive: false,
+    stockValue: document.getElementById("beat-stock").value,
+  });
+  payload.beat_preview_status = "error";
+  payload.beat_preview_error = "No se pudo generar el preview MP3.";
+  if (!payload.name || !payload.slug || !payload.file_url) return;
+  const query = id
+    ? supabase.from("store_products").update(payload).eq("id", id)
+    : supabase.from("store_products").insert(payload);
+  await query;
 }
 async function saveBeatLicenseAssignments(beatId) {
   if (!state.hasBeatLicenses || !beatLicenseAssignmentList || !beatId) return;
@@ -997,7 +1059,7 @@ function handleBeatAudioSelection() {
   const file = beatUploadInput?.files?.[0];
   const durationInput = document.getElementById("beat-duration");
   if (!file || !durationInput) return;
-  if (!file.type.startsWith("audio/") && !/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name)) return;
+  if (!file.type.startsWith("audio/") && !/\.(mp3|wav|m4a|aac|ogg|flac|aif|aiff)$/i.test(file.name)) return;
   detectAudioDuration(file)
     .then((seconds) => {
       durationInput.value = String(seconds);
@@ -1190,32 +1252,37 @@ async function uploadSelectedBeatCoverFile() {
   setUploadStatus(`Portada procesada: ${file.name}`);
   return result;
 }
-async function uploadSelectedBeatFile() {
+async function uploadSelectedBeatFile(productId = "") {
   const file = beatUploadInput?.files?.[0];
-  if (!file) return "";
-  if (!file.type.startsWith("audio/") && !/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name)) {
+  if (!file) return null;
+  if (!file.type.startsWith("audio/") && !/\.(mp3|wav|m4a|aac|ogg|flac|aif|aiff)$/i.test(file.name)) {
     throw new Error("Selecciona un archivo de audio valido.");
   }
 
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) throw new Error("Sesión requerida para subir archivos.");
 
-  setUploadStatus(`Subiendo ${file.name}...`);
-  const response = await safeFetch(`${CLOUD_ORIGIN}/api/upload?path=${encodeURIComponent(BEAT_STORE_CLOUD_PATH)}`, {
+  setUploadStatus(`Subiendo ${file.name} y generando preview MP3...`);
+  const response = await safeFetch(`${CLOUD_ORIGIN}/api/beat-store/upload-audio`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${session.access_token}`,
       "X-File-Name": encodeURIComponent(file.name),
       "Content-Type": file.type || "application/octet-stream",
+      ...(productId ? { "X-Beat-Product-Id": productId } : {}),
     },
     body: file,
   }, { retries: 1, retryDelayMs: 900, label: "subir audio" });
 
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || "No se pudo subir el audio a MysAuth Cloud.");
+  if (!response.ok) {
+    const error = new Error(result.error || "No se pudo generar el preview MP3. El original se conservo, pero el beat no se publico.");
+    error.beatUploadResult = result;
+    throw error;
+  }
 
-  setUploadStatus(`Audio subido: ${file.name}`);
-  return `${BEAT_STORE_CLOUD_PATH}/${file.name}`;
+  setUploadStatus(`Preview MP3 listo: ${file.name}`);
+  return result;
 }
 
 async function safeFetch(url, options = {}, retryOptions = {}) {

@@ -21,6 +21,8 @@ const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const CLOUD_ROOT = process.env.CLOUD_HIDDENROOM_ROOT || process.env.CLOUD_ROOT;
 const PORT = Number(process.env.CLOUD_PORT || process.env.PORT || 3001);
 const MAX_UPLOAD_BYTES = Number(process.env.CLOUD_MAX_UPLOAD_BYTES || 100 * 1024 * 1024);
+const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg';
+const BEAT_PREVIEW_MAX_UPLOAD_BYTES = Number(process.env.BEAT_PREVIEW_MAX_UPLOAD_BYTES || MAX_UPLOAD_BYTES);
 const BEAT_COVER_MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
 const BEAT_COVER_MAX_DIMENSION = 8000;
 const BEAT_COVER_MAIN_SIZE = 1200;
@@ -33,7 +35,8 @@ const CLOUD_UPLOAD_PERMISSION = 'cloud.upload';
 const DOWNLOAD_TOKEN_TTL_MS = Number(process.env.CLOUD_DOWNLOAD_TOKEN_TTL_MS || 2 * 60 * 1000);
 const BEAT_PERMISSION_KEYS = ['beat.store', 'beats.store', 'store.beats', 'store.beat', 'beat_store', 'beats', 'Beat Store', 'module.beats', 'module.beat-store'];
 const BEAT_STORE_DIR = 'beats_store';
-const BEAT_AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.m4a', '.ogg', '.flac', '.aac']);
+const BEAT_AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.m4a', '.ogg', '.flac', '.aac', '.aif', '.aiff']);
+const BEAT_PREVIEW_AUDIO_EXTENSIONS = new Set(['.mp3']);
 const BEAT_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const BEAT_MIME_TYPES = {
   '.mp3': 'audio/mpeg',
@@ -42,6 +45,8 @@ const BEAT_MIME_TYPES = {
   '.ogg': 'audio/ogg',
   '.flac': 'audio/flac',
   '.aac': 'audio/aac',
+  '.aif': 'audio/aiff',
+  '.aiff': 'audio/aiff',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.png': 'image/png',
@@ -49,8 +54,8 @@ const BEAT_MIME_TYPES = {
 };
 const PUBLIC_CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-  'Access-Control-Allow-Headers': 'Authorization, Range, Content-Type, X-Beat-Product-Id, X-Beat-Crop',
+  'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Authorization, Range, Content-Type, X-Beat-Product-Id, X-Beat-Crop, X-File-Name',
   'Access-Control-Expose-Headers': 'Accept-Ranges, Content-Length, Content-Range, Content-Disposition',
 };
 const API_CORS_HEADERS = {
@@ -440,6 +445,29 @@ async function readLimitedUploadToTemp(req, limitBytes) {
     throw err;
   }
 }
+async function readLimitedUploadToTempNamed(req, limitBytes, prefix) {
+  const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), prefix));
+  const tempPath = path.join(tempDir, 'upload.bin');
+  let size = 0;
+  const out = fs.createWriteStream(tempPath, { flags: 'wx' });
+  try {
+    for await (const chunk of req) {
+      size += chunk.length;
+      if (size > limitBytes) {
+        const err = new Error('El audio supera el limite permitido.');
+        err.status = 413;
+        throw err;
+      }
+      if (!out.write(chunk)) await new Promise((resolve) => out.once('drain', resolve));
+    }
+    await new Promise((resolve, reject) => out.end((err) => err ? reject(err) : resolve()));
+    return { tempDir, tempPath, size };
+  } catch (err) {
+    out.destroy();
+    await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    throw err;
+  }
+}
 
 function parseBeatCoverCrop(raw) {
   if (!raw) return null;
@@ -587,6 +615,133 @@ async function uploadBeatCover(user, req, res) {
   }
 }
 
+function safeBeatUploadName(rawName) {
+  const decoded = decodeURIComponent(String(rawName || 'beat').trim());
+  const ext = path.extname(decoded).toLowerCase();
+  if (!BEAT_AUDIO_EXTENSIONS.has(ext)) {
+    const err = new Error('Formato de audio no permitido.');
+    err.status = 400;
+    throw err;
+  }
+  const base = path.basename(decoded, ext)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/[-._]{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'beat';
+  return { base, ext };
+}
+
+function beatManagedPath(kind, id, name) {
+  return `${kind}/${id}/${name}`;
+}
+
+async function convertBeatPreview(inputPath, outputPath) {
+  await fsp.mkdir(path.dirname(outputPath), { recursive: true });
+  const tempOutput = `${outputPath}.tmp-${process.pid}-${Date.now()}.mp3`;
+  try {
+    await new Promise((resolve, reject) => {
+      execFile(FFMPEG_PATH, [
+        '-y',
+        '-i', inputPath,
+        '-vn',
+        '-ar', '44100',
+        '-ac', '2',
+        '-b:a', '160k',
+        '-map_metadata', '-1',
+        tempOutput,
+      ], { timeout: Number(process.env.BEAT_PREVIEW_FFMPEG_TIMEOUT_MS || 180000) }, (error) => {
+        if (error) return reject(error);
+        resolve();
+      });
+    });
+    await fsp.rename(tempOutput, outputPath);
+  } catch (err) {
+    await fsp.rm(tempOutput, { force: true }).catch(() => {});
+    throw err;
+  }
+}
+
+async function patchBeatProduct(productId, payload) {
+  if (!productId) return;
+  await supabaseFetch(`/rest/v1/store_products?id=eq.${encodeURIComponent(productId)}`, {
+    method: 'PATCH',
+    headers: { ...supabaseHeaders(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(payload),
+  });
+}
+
+async function uploadBeatAudio(user, req, res) {
+  if (!user.isAdmin) {
+    const err = new Error('Solo admin puede subir beats.');
+    err.status = 403;
+    throw err;
+  }
+  const productId = beatCoverProductId(req);
+  const sourceName = safeBeatUploadName(req.headers['x-file-name']);
+  const contentLength = Number(req.headers['content-length'] || 0);
+  if (contentLength > BEAT_PREVIEW_MAX_UPLOAD_BYTES) {
+    const err = new Error('El audio supera el limite permitido.');
+    err.status = 413;
+    throw err;
+  }
+
+  let temp;
+  const uploadId = productId || crypto.randomUUID();
+  const root = await getRealRoot(beatStoreRoot());
+  const originalRelative = beatManagedPath('originals', uploadId, `${sourceName.base}${sourceName.ext}`);
+  const previewRelative = beatManagedPath('previews', uploadId, 'preview.mp3');
+  const originalPath = path.resolve(root, originalRelative);
+  const previewPath = path.resolve(root, previewRelative);
+  assertInsideRoot(root, originalPath);
+  assertInsideRoot(root, previewPath);
+
+  try {
+    temp = await readLimitedUploadToTempNamed(req, BEAT_PREVIEW_MAX_UPLOAD_BYTES, 'hr-beat-audio-');
+    if (!temp.size) {
+      const err = new Error('Selecciona un archivo de audio valido.');
+      err.status = 400;
+      throw err;
+    }
+    await fsp.mkdir(path.dirname(originalPath), { recursive: true });
+    await fsp.rename(temp.tempPath, originalPath);
+    temp.tempPath = '';
+    await convertBeatPreview(originalPath, previewPath);
+    await patchBeatProduct(productId, {
+      file_url: `/${BEAT_STORE_DIR}/${originalRelative}`,
+      beat_original_path: originalRelative,
+      beat_preview_path: previewRelative,
+      beat_preview_status: 'ready',
+      beat_preview_error: null,
+    });
+    sendJson(res, 201, {
+      success: true,
+      file_url: `/${BEAT_STORE_DIR}/${originalRelative}`,
+      beat_original_path: originalRelative,
+      beat_preview_path: previewRelative,
+      beat_preview_status: 'ready',
+      preview_url: beatPublicPath(previewRelative),
+    });
+  } catch (err) {
+    if (!err.status || err.status === 422) err.message = 'No se pudo generar el preview MP3. El original se conservo, pero el beat no se publico.';
+    await patchBeatProduct(productId, {
+      file_url: `/${BEAT_STORE_DIR}/${originalRelative}`,
+      beat_original_path: originalRelative,
+      beat_preview_path: null,
+      beat_preview_status: 'error',
+      beat_preview_error: 'No se pudo generar el preview MP3.',
+      is_active: false,
+    }).catch((patchErr) => console.error('Beat preview status patch failed:', patchErr.message || patchErr));
+    err.status = err.status || 422;
+    err.original_file_url = `/${BEAT_STORE_DIR}/${originalRelative}`;
+    err.original_path = originalRelative;
+    throw err;
+  } finally {
+    if (temp?.tempPath) await fsp.rm(temp.tempPath, { force: true }).catch(() => {});
+    if (temp?.tempDir) await fsp.rm(temp.tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
 function downloadTokenUser(payload) {
   return {
     id: payload.uid,
@@ -745,13 +900,16 @@ async function walkBeatFiles(currentDir, rootDir, depth = 0) {
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
     const fullPath = path.join(currentDir, entry.name);
+    const relativeEntry = path.relative(rootDir, fullPath).replace(/\\/g, '/');
     if (entry.isDirectory()) {
+      if (depth === 0 && ['originals', 'covers'].includes(entry.name)) continue;
       files.push(...await walkBeatFiles(fullPath, rootDir, depth + 1));
       continue;
     }
     if (!entry.isFile()) continue;
     const ext = path.extname(entry.name).toLowerCase();
-    if (!BEAT_AUDIO_EXTENSIONS.has(ext)) continue;
+    const isPreview = relativeEntry.toLowerCase().startsWith('previews/');
+    if (isPreview ? !BEAT_PREVIEW_AUDIO_EXTENSIONS.has(ext) : !BEAT_AUDIO_EXTENSIONS.has(ext)) continue;
     const stats = await fsp.stat(fullPath);
     const relativeFile = path.relative(rootDir, fullPath).replace(/\\/g, '/');
     files.push({
@@ -767,6 +925,46 @@ async function walkBeatFiles(currentDir, rootDir, depth = 0) {
   return files;
 }
 
+async function backfillBeatPreviews(user, res) {
+  if (!user.isAdmin) {
+    const err = new Error('Solo admin puede generar previews.');
+    err.status = 403;
+    throw err;
+  }
+  const root = await getRealRoot(beatStoreRoot());
+  const candidates = (await walkBeatFiles(root, root))
+    .map((beat) => beat.file)
+    .filter((file) => !file.toLowerCase().startsWith('previews/'));
+  const results = [];
+  for (const relativeFile of candidates) {
+    try {
+      const source = await resolveBeatFile(relativeFile);
+      const id = crypto.createHash('sha1').update(relativeFile).digest('hex').slice(0, 16);
+      const previewRelative = beatManagedPath('previews', id, 'preview.mp3');
+      const previewPath = path.resolve(root, previewRelative);
+      assertInsideRoot(root, previewPath);
+      const previewStats = await fsp.stat(previewPath).catch(() => null);
+      if (!previewStats?.isFile()) await convertBeatPreview(source.resolved, previewPath);
+      const variants = [relativeFile, `/${BEAT_STORE_DIR}/${relativeFile}`];
+      for (const original of variants) {
+        await supabaseFetch(`/rest/v1/store_products?category=eq.beats&file_url=eq.${encodeURIComponent(original)}`, {
+          method: 'PATCH',
+          headers: { ...supabaseHeaders(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            beat_original_path: relativeFile,
+            beat_preview_path: previewRelative,
+            beat_preview_status: 'ready',
+            beat_preview_error: null,
+          }),
+        }).catch(() => {});
+      }
+      results.push({ file: relativeFile, preview: previewRelative, status: 'ready' });
+    } catch (err) {
+      results.push({ file: relativeFile, status: 'error', error: err.message || 'No se pudo convertir.' });
+    }
+  }
+  sendJson(res, 200, { success: true, results });
+}
 async function listBeatStore(res) {
   const root = beatStoreRoot();
   try {
@@ -1142,6 +1340,8 @@ async function route(req, res) {
     if (url.pathname.startsWith('/api/beat-store')) {
       if (req.method === 'OPTIONS') return send(res, 204, '', PUBLIC_CORS_HEADERS);
       if (req.method === 'POST' && url.pathname === '/api/beat-store/cover') return await uploadBeatCover(await requireCloudUser(req), req, res);
+      if (req.method === 'POST' && url.pathname === '/api/beat-store/upload-audio') return await uploadBeatAudio(await requireCloudUser(req), req, res);
+      if (req.method === 'POST' && url.pathname === '/api/beat-store/previews/backfill') return await backfillBeatPreviews(await requireCloudUser(req), res);
       if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/api/beat-store') return await listBeatStore(res);
       if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/api/beat-store/stream') return await streamBeatFile(req, res, url);
       return failPublic(res, 404, 'Ruta Beat Store no encontrada.');
@@ -1164,7 +1364,12 @@ async function route(req, res) {
     return serveStatic(req, res, url);
   } catch (err) {
     const status = Number(err.status || 500);
-    fail(res, status >= 400 && status < 600 ? status : 500, err.message || 'Error interno.');
+    const safeStatus = status >= 400 && status < 600 ? status : 500;
+    const body = { success: false, error: err.message || 'Error interno.' };
+    if (err.original_file_url) body.original_file_url = err.original_file_url;
+    if (err.original_path) body.beat_original_path = err.original_path;
+    if (err.original_file_url || err.original_path) body.beat_preview_status = 'error';
+    sendJson(res, safeStatus, body);
   }
 }
 

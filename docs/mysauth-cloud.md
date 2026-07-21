@@ -91,12 +91,24 @@ El frontend solo oculta botones; la autorizacion real vive en `server.js`.
 
 La tienda estatica `store/beat_store/` compra productos desde `public.store_products` con `category = beats` y reproduce previews desde Cloud sin hardcodear archivos.
 
-Endpoints publicos controlados en MysAuth Cloud:
+MysAuth Cloud conserva el archivo original y genera un preview MP3 optimizado con FFmpeg en el servidor Debian. El original queda bajo `beats_store/originals/{id}/...` para futuras compras o descargas, y el reproductor usa exclusivamente `beats_store/previews/{id}/preview.mp3` cuando `beat_preview_status = ready`.
 
-- `GET /api/beat-store`: lista archivos de audio en `/home/prodxdack/hiddenroom/beats_store`.
-- `GET /api/beat-store/stream?file=...`: streamea solo archivos de audio permitidos dentro de `beats_store`.
+Comando equivalente de conversion:
 
-El endpoint publico solo expone formatos de audio (`mp3`, `wav`, `m4a`, `ogg`, `flac`, `aac`) y valida root containment/symlinks contra `beats_store`.
+```bash
+ffmpeg -i archivo-original -vn -ar 44100 -ac 2 -b:a 160k -map_metadata -1 preview.mp3
+```
+
+Endpoints controlados en MysAuth Cloud:
+
+- `POST /api/beat-store/upload-audio`: admin, guarda el original y genera el preview MP3.
+- `POST /api/beat-store/previews/backfill`: admin, genera previews para archivos ya cargados.
+- `GET /api/beat-store`: lista previews MP3 y archivos legacy no administrados.
+- `GET /api/beat-store/stream?file=...`: streamea previews, portadas y archivos legacy permitidos dentro de `beats_store`.
+
+El streaming responde `Accept-Ranges: bytes`, `Content-Range` en respuestas parciales y `206` para solicitudes `Range`, lo que permite reproduccion progresiva y busqueda dentro del audio. Los previews no dependen de Supabase Storage; si se migran a Storage en el futuro, confirmar Range con `curl -I -H "Range: bytes=0-1" <signed-or-public-preview-url>`.
+
+Si FFmpeg falla, MysAuth Cloud no elimina el original, devuelve un error entendible y marca el producto como `beat_preview_status = error` e `is_active = false` cuando recibe un `X-Beat-Product-Id`. Para beats nuevos, el frontend guarda un producto inactivo con el estado de error si el servidor devuelve la ruta del original.
 
 
 ## Server status admin
