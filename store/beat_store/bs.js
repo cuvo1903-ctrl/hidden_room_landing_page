@@ -934,6 +934,8 @@ async function handleAdminSubmit(event) {
   try {
     const id = document.getElementById("beat-product-id").value;
     editingId = id;
+    const slug = document.getElementById("beat-slug").value.trim().toLowerCase();
+    await ensureBeatSlugAvailable(slug, id);
     const stockValue = document.getElementById("beat-stock").value;
     uploadedCoverUrl = await uploadSelectedBeatCoverFile();
     uploadedBeatAudio = await uploadSelectedBeatFile(id);
@@ -968,6 +970,19 @@ async function handleAdminSubmit(event) {
   }
 }
 
+async function ensureBeatSlugAvailable(slug, currentId = "") {
+  if (!slug) throw new Error("Define un slug para el beat.");
+  const { data, error } = await supabase
+    .from("store_products")
+    .select("id, name, is_active")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (error) throw new Error(error.message || "No se pudo validar el slug.");
+  if (data?.id && data.id !== currentId) {
+    const status = data.is_active === false ? "inactivo" : "activo";
+    throw new Error(`El slug \"${slug}\" ya existe en el beat \"${data.name || "sin nombre"}\" (${status}). Edita ese beat o usa otro slug.`);
+  }
+}
 function beatProductPayload({ uploadedCoverUrl = null, uploadedBeatAudio = null, isActive = true, stockValue = "" } = {}) {
   const payload = {
     name: document.getElementById("beat-name").value.trim(),
