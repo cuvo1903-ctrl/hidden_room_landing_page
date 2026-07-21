@@ -82,7 +82,7 @@
             <input id="beat-product-id" type="hidden">
             <h3 id="beat-form-title">Nuevo beat</h3>
             <div class="field hr-field"><label class="hr-label" for="beat-name">Nombre</label><input class="hr-input" id="beat-name" required maxlength="160"></div>
-            <div class="field hr-field"><label class="hr-label" for="beat-slug">Slug</label><input class="hr-input" id="beat-slug" required pattern="[a-z0-9-]+" maxlength="160"></div>
+            <div class="field hr-field"><label class="hr-label" for="beat-slug">Slug</label><input class="hr-input" id="beat-slug" required pattern="[a-z0-9\-]+" maxlength="160"></div>
             <div class="field hr-field"><label class="hr-label" for="beat-description">Descripcion</label><textarea class="hr-textarea" id="beat-description" rows="4"></textarea></div>
             <div class="field hr-field"><label class="hr-label" for="beat-producer">Productor</label><input class="hr-input" id="beat-producer" maxlength="160" placeholder="Nombre del productor"></div>
             <div class="beat-admin__music-fields">
@@ -192,7 +192,7 @@
   </footer>
 
   <script src="../../site.js?v=20260721-beat-previews"></script>
-  <script type="module" src="bs.js?v=20260721-beat-previews"></script>
+  <script type="module" src="bs.js?v=20260721-beat-upload-fix"></script>
 </body>
 </html>
 

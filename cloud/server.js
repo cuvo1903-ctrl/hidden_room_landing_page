@@ -21,7 +21,7 @@ const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const CLOUD_ROOT = process.env.CLOUD_HIDDENROOM_ROOT || process.env.CLOUD_ROOT;
 const PORT = Number(process.env.CLOUD_PORT || process.env.PORT || 3001);
 const MAX_UPLOAD_BYTES = Number(process.env.CLOUD_MAX_UPLOAD_BYTES || 100 * 1024 * 1024);
-const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg';
+const FFMPEG_PATH = process.env.FFMPEG_PATH || resolveFfmpegStaticPath() || 'ffmpeg';
 const BEAT_PREVIEW_MAX_UPLOAD_BYTES = Number(process.env.BEAT_PREVIEW_MAX_UPLOAD_BYTES || MAX_UPLOAD_BYTES);
 const BEAT_COVER_MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
 const BEAT_COVER_MAX_DIMENSION = 8000;
@@ -85,6 +85,9 @@ if (!SUPABASE_URL || !SERVICE_ROLE_KEY || !CLOUD_ROOT) {
   process.exit(1);
 }
 
+function resolveFfmpegStaticPath() {
+  try { return require('ffmpeg-static'); } catch { return ''; }
+}
 function loadEnv(filePath) {
   if (!fs.existsSync(filePath)) return;
   const raw = fs.readFileSync(filePath, 'utf8');
@@ -651,8 +654,11 @@ async function convertBeatPreview(inputPath, outputPath) {
         '-b:a', '160k',
         '-map_metadata', '-1',
         tempOutput,
-      ], { timeout: Number(process.env.BEAT_PREVIEW_FFMPEG_TIMEOUT_MS || 180000) }, (error) => {
-        if (error) return reject(error);
+      ], { timeout: Number(process.env.BEAT_PREVIEW_FFMPEG_TIMEOUT_MS || 180000) }, (error, stdout, stderr) => {
+        if (error) {
+          error.ffmpegStderr = String(stderr || '').slice(-2000);
+          return reject(error);
+        }
         resolve();
       });
     });
@@ -724,6 +730,12 @@ async function uploadBeatAudio(user, req, res) {
       preview_url: beatPublicPath(previewRelative),
     });
   } catch (err) {
+    console.error('Beat preview conversion failed:', {
+      original: originalRelative,
+      ffmpegPath: FFMPEG_PATH,
+      message: err.message || String(err),
+      stderr: err.ffmpegStderr || '',
+    });
     if (!err.status || err.status === 422) err.message = 'No se pudo generar el preview MP3. El original se conservo, pero el beat no se publico.';
     await patchBeatProduct(productId, {
       file_url: `/${BEAT_STORE_DIR}/${originalRelative}`,
