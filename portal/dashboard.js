@@ -6110,6 +6110,15 @@ function renderDownloadOpsForm(memberships = []) {
         <small class="db-field__hint">Se guardara en la carpeta downloads del usuario seleccionado.</small>
       </label>
       <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
+      <div class="db-upload-progress" data-download-upload-progress hidden>
+        <div class="db-upload-progress__head">
+          <span data-download-upload-progress-label>Esperando archivo</span>
+          <strong data-download-upload-progress-value>0%</strong>
+        </div>
+        <div class="db-upload-progress__track" aria-hidden="true">
+          <span data-download-upload-progress-bar style="width:0%"></span>
+        </div>
+      </div>
       ${renderOperationCreateActions('CREAR')}
     </form>
   `;
@@ -8171,11 +8180,11 @@ function isAllowedBeatAudioFile(file) {
   return BEAT_AUDIO_EXTENSIONS.has(fileExtension(file?.name));
 }
 
-function setBeatUploadProgress(form, percent, label) {
-  const progress = form.querySelector('[data-beat-upload-progress]');
-  const bar = form.querySelector('[data-beat-upload-progress-bar]');
-  const labelEl = form.querySelector('[data-beat-upload-progress-label]');
-  const valueEl = form.querySelector('[data-beat-upload-progress-value]');
+function setUploadProgress(form, scope, percent, label) {
+  const progress = form.querySelector(`[data-${scope}-upload-progress]`);
+  const bar = form.querySelector(`[data-${scope}-upload-progress-bar]`);
+  const labelEl = form.querySelector(`[data-${scope}-upload-progress-label]`);
+  const valueEl = form.querySelector(`[data-${scope}-upload-progress-value]`);
   const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
   if (progress) progress.hidden = false;
   if (bar) bar.style.width = `${safePercent}%`;
@@ -8183,10 +8192,41 @@ function setBeatUploadProgress(form, percent, label) {
   if (valueEl) valueEl.textContent = `${Math.round(safePercent)}%`;
 }
 
-function resetBeatUploadProgress(form) {
-  setBeatUploadProgress(form, 0, 'Esperando archivo');
-  const progress = form.querySelector('[data-beat-upload-progress]');
+function resetUploadProgress(form, scope, label = 'Esperando archivo') {
+  setUploadProgress(form, scope, 0, label);
+  const progress = form.querySelector(`[data-${scope}-upload-progress]`);
   if (progress) progress.hidden = true;
+}
+
+function setOperationFormPending(form, pending, label = 'Procesando...') {
+  const submitButtons = [...form.querySelectorAll('button[type="submit"]')];
+  submitButtons.forEach((button) => {
+    if (pending) {
+      button.dataset.originalText = button.dataset.originalText || button.textContent || '';
+      button.disabled = true;
+      button.textContent = label;
+    } else {
+      button.disabled = false;
+      if (button.dataset.originalText) button.textContent = button.dataset.originalText;
+      delete button.dataset.originalText;
+    }
+  });
+}
+
+function setBeatUploadProgress(form, percent, label) {
+  setUploadProgress(form, 'beat', percent, label);
+}
+
+function resetBeatUploadProgress(form) {
+  resetUploadProgress(form, 'beat', 'Esperando archivo');
+}
+
+function setDownloadUploadProgress(form, percent, label) {
+  setUploadProgress(form, 'download', percent, label);
+}
+
+function resetDownloadUploadProgress(form) {
+  resetUploadProgress(form, 'download', 'Esperando archivo');
 }
 
 function slugWithAttempt(slug, attempt) {
@@ -9618,6 +9658,61 @@ async function handleTaskDelete(taskId) {
 
 async function prepareDownloadValues(form, values) {
   const sourceType = String(values.source_type || 'link');
+  const releaseMode = String(values.release_mode || 'immediate');
+  values.release_mode = releaseMode === 'membership_delivery' ? 'membership_delivery' : 'immediate';
+
+  if (values.release_mode === 'membership_delivery') {
+    const membershipId = String(values.membership_id ?? '').trim();
+    const cycleNumber = Number(values.membership_cycle_number ?? 0);
+    if (!membershipId) {
+      showToast('Selecciona la membresía correspondiente a esta descarga.', 'error');
+      return false;
+    }
+    if (!Number.isFinite(cycleNumber) || cycleNumber < 1) {
+      showToast('Selecciona el ciclo de entrega.', 'error');
+      return false;
+    }
+
+    let membership = (state.data.membershipOpsOptions ?? [])
+      .find((item) => String(item.id) === membershipId);
+    if (!membership) {
+      const { data, error } = await supabase
+        .from('memberships')
+        .select('id, user_id')
+        .eq('id', membershipId)
+        .maybeSingle();
+      if (error || !data) {
+        console.error('[HR] download membership lookup:', error);
+        showToast('No se pudo validar la membresía seleccionada.', 'error');
+        return false;
+      }
+      membership = data;
+    }
+
+    const { data: delivery, error: deliveryError } = await supabase
+      .from('membership_material_deliveries')
+      .select('id')
+      .eq('membership_id', membershipId)
+      .eq('user_id', membership.user_id)
+      .eq('cycle_number', cycleNumber)
+      .maybeSingle();
+
+    if (deliveryError) {
+      console.error('[HR] download delivery lookup:', deliveryError);
+      showToast('No se pudo validar el entregable de membresía.', 'error');
+      return false;
+    }
+
+    values.user_id = membership.user_id;
+    values.membership_id = membershipId;
+    values.membership_cycle_number = cycleNumber;
+    values.membership_delivery_id = delivery?.id ?? null;
+  } else {
+    values.membership_id = null;
+    values.membership_delivery_id = null;
+    values.membership_cycle_number = null;
+  }
+
   if (sourceType === 'file') {
     const file = form.querySelector('[data-download-file]')?.files?.[0];
     if (!file) {
@@ -9634,69 +9729,17 @@ async function prepareDownloadValues(form, values) {
       return false;
     }
     const targetRoot = getUserDownloadCloudPath(userId);
+    setDownloadUploadProgress(form, 8, 'Validando archivo');
+    setDownloadUploadProgress(form, 24, 'Preparando carpeta');
     await ensureCloudFolderPath(targetRoot);
+    setDownloadUploadProgress(form, 48, 'Subiendo archivo');
     const upload = await uploadCloudFileToPath(file, targetRoot);
+    setDownloadUploadProgress(form, 78, 'Registrando descarga');
     values.storage_path = upload?.url || buildCloudFileFallbackUrl(targetRoot, file.name);
   }
-  const releaseMode = String(values.release_mode || 'immediate');
-  values.release_mode = releaseMode === 'membership_delivery' ? 'membership_delivery' : 'immediate';
 
-  if (values.release_mode === 'immediate') {
-    values.membership_id = null;
-    values.membership_delivery_id = null;
-    values.membership_cycle_number = null;
-    return true;
-  }
-
-  const membershipId = String(values.membership_id ?? '').trim();
-  const cycleNumber = Number(values.membership_cycle_number ?? 0);
-  if (!membershipId) {
-    showToast('Selecciona la membresía correspondiente a esta descarga.', 'error');
-    return false;
-  }
-  if (!Number.isFinite(cycleNumber) || cycleNumber < 1) {
-    showToast('Selecciona el ciclo de entrega.', 'error');
-    return false;
-  }
-
-  let membership = (state.data.membershipOpsOptions ?? [])
-    .find((item) => String(item.id) === membershipId);
-  if (!membership) {
-    const { data, error } = await supabase
-      .from('memberships')
-      .select('id, user_id')
-      .eq('id', membershipId)
-      .maybeSingle();
-    if (error || !data) {
-      console.error('[HR] download membership lookup:', error);
-      showToast('No se pudo validar la membresía seleccionada.', 'error');
-      return false;
-    }
-    membership = data;
-  }
-
-  values.user_id = membership.user_id;
-  values.membership_id = membershipId;
-  values.membership_cycle_number = cycleNumber;
-
-  const { data: delivery, error: deliveryError } = await supabase
-    .from('membership_material_deliveries')
-    .select('id')
-    .eq('membership_id', membershipId)
-    .eq('user_id', membership.user_id)
-    .eq('cycle_number', cycleNumber)
-    .maybeSingle();
-
-  if (deliveryError) {
-    console.error('[HR] download delivery lookup:', deliveryError);
-    showToast('No se pudo validar el entregable de membresía.', 'error');
-    return false;
-  }
-
-  values.membership_delivery_id = delivery?.id ?? null;
   return true;
 }
-
 async function handleErpForm(form) {
   const type = form.dataset.form;
   const values = formValues(form);
@@ -9734,7 +9777,26 @@ async function handleErpForm(form) {
   }
 
   if (type === 'download-create') {
-    const prepared = await prepareDownloadValues(form, values);
+    const isFileDownload = String(values.source_type || 'link') === 'file';
+    if (isFileDownload) {
+      setOperationFormPending(form, true, 'Subiendo...');
+    }
+    let prepared = false;
+    let uploadFailed = false;
+    try {
+      prepared = await prepareDownloadValues(form, values);
+    } catch (err) {
+      uploadFailed = true;
+      console.error('[HR] download upload:', err);
+      if (isFileDownload) setDownloadUploadProgress(form, 100, 'Error al subir');
+      showToast(err?.message || 'No se pudo preparar la descarga.', 'error');
+      return;
+    } finally {
+      if (!prepared) {
+        setOperationFormPending(form, false);
+        if (isFileDownload && !uploadFailed) resetDownloadUploadProgress(form);
+      }
+    }
     if (!prepared) return;
   }
 
@@ -9880,9 +9942,21 @@ async function handleErpForm(form) {
       );
       await handleOperationReceipt(form, { sharePreferred: true });
     }
+    if (type === 'download-create' && String(values.source_type || 'link') === 'file') {
+      setDownloadUploadProgress(form, 100, 'Descarga creada');
+    }
     form.reset();
-    if (type === 'download-create') updateDownloadMembershipFields(form);
+    if (type === 'download-create') {
+      updateDownloadMembershipFields(form);
+      setOperationFormPending(form, false);
+      setTimeout(() => resetDownloadUploadProgress(form), 1200);
+    }
     delete form.dataset.operationAction;
+  } else if (type === 'download-create') {
+    if (String(values.source_type || 'link') === 'file') {
+      setDownloadUploadProgress(form, 100, 'Error al guardar');
+    }
+    setOperationFormPending(form, false);
   }
 }
 
