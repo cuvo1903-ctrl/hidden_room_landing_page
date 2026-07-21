@@ -55,7 +55,7 @@ const BEAT_MIME_TYPES = {
 const PUBLIC_CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Authorization, Range, Content-Type, X-Beat-Product-Id, X-Beat-Crop, X-File-Name',
+  'Access-Control-Allow-Headers': 'Authorization, Range, Content-Type, X-Beat-Product-Id, X-Beat-Slug, X-Beat-Crop, X-File-Name',
   'Access-Control-Expose-Headers': 'Accept-Ranges, Content-Length, Content-Range, Content-Disposition',
 };
 const API_CORS_HEADERS = {
@@ -618,6 +618,22 @@ async function uploadBeatCover(user, req, res) {
   }
 }
 
+function safeBeatSlug(rawSlug, fallback) {
+  const slug = String(rawSlug || fallback || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 96);
+  if (!slug) {
+    const err = new Error('Slug de beat requerido.');
+    err.status = 400;
+    throw err;
+  }
+  return slug;
+}
 function safeBeatUploadName(rawName) {
   const decoded = decodeURIComponent(String(rawName || 'beat').trim());
   const ext = path.extname(decoded).toLowerCase();
@@ -641,11 +657,12 @@ function beatManagedPath(kind, id, name) {
 }
 
 async function moveUploadIntoPlace(fromPath, toPath) {
+  await fsp.rm(toPath, { force: true }).catch(() => {});
   try {
     await fsp.rename(fromPath, toPath);
   } catch (err) {
     if (err?.code !== 'EXDEV') throw err;
-    await fsp.copyFile(fromPath, toPath, fs.constants.COPYFILE_EXCL);
+    await fsp.copyFile(fromPath, toPath);
     await fsp.unlink(fromPath);
   }
 }
@@ -695,6 +712,7 @@ async function uploadBeatAudio(user, req, res) {
   }
   const productId = beatCoverProductId(req);
   const sourceName = safeBeatUploadName(req.headers['x-file-name']);
+  const beatSlug = safeBeatSlug(req.headers['x-beat-slug'], sourceName.base);
   const contentLength = Number(req.headers['content-length'] || 0);
   if (contentLength > BEAT_PREVIEW_MAX_UPLOAD_BYTES) {
     const err = new Error('El audio supera el limite permitido.');
@@ -703,10 +721,9 @@ async function uploadBeatAudio(user, req, res) {
   }
 
   let temp;
-  const uploadId = productId || crypto.randomUUID();
   const root = await getRealRoot(beatStoreRoot());
-  const originalRelative = beatManagedPath('originals', uploadId, `${sourceName.base}${sourceName.ext}`);
-  const previewRelative = beatManagedPath('previews', uploadId, 'preview.mp3');
+  const originalRelative = beatManagedPath('originals', beatSlug, `${beatSlug}${sourceName.ext}`);
+  const previewRelative = beatManagedPath('previews', beatSlug, 'preview.mp3');
   const originalPath = path.resolve(root, originalRelative);
   const previewPath = path.resolve(root, previewRelative);
   assertInsideRoot(root, originalPath);

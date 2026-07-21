@@ -938,7 +938,7 @@ async function handleAdminSubmit(event) {
     await ensureBeatSlugAvailable(slug, id);
     const stockValue = document.getElementById("beat-stock").value;
     uploadedCoverUrl = await uploadSelectedBeatCoverFile();
-    uploadedBeatAudio = await uploadSelectedBeatFile(id);
+    uploadedBeatAudio = await uploadSelectedBeatFile(id, slug);
 
     const payload = beatProductPayload({
       uploadedCoverUrl,
@@ -1274,7 +1274,7 @@ async function uploadSelectedBeatCoverFile() {
   setUploadStatus(`Portada procesada: ${file.name}`);
   return result;
 }
-async function uploadSelectedBeatFile(productId = "") {
+async function uploadSelectedBeatFile(productId = "", beatSlug = "") {
   const file = beatUploadInput?.files?.[0];
   if (!file) return null;
   if (!file.type.startsWith("audio/") && !/\.(mp3|wav|m4a|aac|ogg|flac|aif|aiff)$/i.test(file.name)) {
@@ -1292,6 +1292,7 @@ async function uploadSelectedBeatFile(productId = "") {
       "X-File-Name": encodeURIComponent(file.name),
       "Content-Type": file.type || "application/octet-stream",
       ...(productId ? { "X-Beat-Product-Id": productId } : {}),
+      ...(beatSlug ? { "X-Beat-Slug": beatSlug } : {}),
     },
     body: file,
   }, { retries: 1, retryDelayMs: 900, label: "subir audio" });
