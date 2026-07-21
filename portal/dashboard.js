@@ -1182,14 +1182,14 @@ const TABLE_EDITOR_CONFIG = {
   services: {
     label: 'Servicios',
     primaryKey: 'id',
-    select: 'id, key, name, status, sort_order, created_at',
+    select: 'id, key, name, status, sort_order, show_in_finance, show_in_session, session_cost, session_minutes, created_at',
     defaultSort: { field: 'sort_order', direction: 'asc' },
     lockedFields: ['id', 'created_at'],
-    editableFields: ['key', 'name', 'status', 'sort_order'],
+    editableFields: ['key', 'name', 'status', 'sort_order', 'show_in_finance', 'show_in_session', 'session_cost', 'session_minutes'],
     hiddenColumns: ['id'],
-    summaryFields: ['key', 'name', 'status', 'sort_order'],
-    pdfColumns: ['key', 'name', 'status', 'sort_order'],
-    pdfColumnLabels: { key: 'Clave', name: 'Nombre', status: 'Status', sort_order: 'Orden' },
+    summaryFields: ['key', 'name', 'status', 'sort_order', 'show_in_finance', 'show_in_session', 'session_cost', 'session_minutes'],
+    pdfColumns: ['key', 'name', 'status', 'sort_order', 'show_in_finance', 'show_in_session', 'session_cost', 'session_minutes'],
+    pdfColumnLabels: { key: 'Clave', name: 'Nombre', status: 'Status', sort_order: 'Orden', show_in_finance: 'Finanzas', show_in_session: 'Sesion', session_cost: 'Costo sesion', session_minutes: 'Minutos sesion' },
   },
 };
 
@@ -5806,14 +5806,14 @@ async function renderErpOps() {
           <label class="db-field"><span>Concepto</span><input name="concept" data-session-concept required /></label>
           <div class="db-form__row">
             <label class="db-field"><span>Status</span><select name="status">${ERP_STATUS_OPTIONS.map((status) => optionHTML(status, status, 'sin apartado')).join('')}</select></label>
-            <label class="db-field"><span>Tipo</span><select name="type" data-session-type required>${SESSION_TYPE_OPTIONS.map((item) => optionHTML(item.value, item.label, '')).join('')}</select></label>
+            <label class="db-field"><span>Tipo</span><select name="type" data-session-type required>${renderSessionTypeOptions(services)}</select></label>
           </div>
           <div class="db-form__row">
             <label class="db-field"><span>Hora de inicio</span><select name="hour" data-session-start required>${renderHalfHourOptions()}</select></label>
             <label class="db-field"><span>Hora de final</span><input name="sc_end" data-session-end type="time" readonly /></label>
           </div>
           <div class="db-form__row">
-            <label class="db-field"><span>Costo</span><input name="cost" data-session-cost type="number" step="0.01" value="${SESSION_TYPE_OPTIONS[0].cost}" readonly /></label>
+            <label class="db-field"><span>Costo</span><input name="cost" data-session-cost type="number" step="0.01" value="${defaultSessionServiceCost(services)}" readonly /></label>
             <label class="db-field"><span>Promo</span><input name="promo" /></label>
           </div>
           <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
@@ -6013,6 +6013,14 @@ function renderServiceOpsForm() {
       <div class="db-form__row">
         <label class="db-field"><span>Status</span><select name="status"><option value="active" selected>active</option><option value="inactive">inactive</option></select></label>
         <label class="db-field"><span>Orden</span><input name="sort_order" type="number" step="1" value="100" required /></label>
+      </div>
+      <div class="db-form__row">
+        <label class="db-check"><input name="show_in_finance" type="checkbox" value="true" checked /> <span>Mostrar en finanzas</span></label>
+        <label class="db-check"><input name="show_in_session" type="checkbox" value="true" /> <span>Mostrar en sesión</span></label>
+      </div>
+      <div class="db-form__row">
+        <label class="db-field"><span>Costo sesión</span><input name="session_cost" type="number" step="0.01" min="0" /></label>
+        <label class="db-field"><span>Minutos sesión</span><input name="session_minutes" type="number" step="1" min="1" /></label>
       </div>
       <button class="btn-primary" type="submit">Crear servicio</button>
     </form>
@@ -6507,7 +6515,7 @@ async function fetchServices() {
 
   const { data, error } = await supabase
     .from('services')
-    .select('id, key, name, status, sort_order')
+    .select('id, key, name, status, sort_order, show_in_finance, show_in_session, session_cost, session_minutes')
     .eq('status', 'active')
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true });
@@ -6544,16 +6552,52 @@ function renderPaymentMethodOptions(methods = [], selectedValue = '') {
   return [optionHTML('', 'Seleccionar', normalizedSelected), ...activeOptions].join('');
 }
 
+function visibleFinanceServices(services = []) {
+  return (services ?? []).filter((service) => service.show_in_finance !== false);
+}
+
+function visibleSessionServices(services = []) {
+  return (services ?? []).filter((service) => service.show_in_session === true);
+}
+
 function renderServiceOptions(services = [], selectedValue = '') {
   const normalizedSelected = String(selectedValue ?? '');
-  const source = (services ?? []).length
-    ? services.map((service) => service.name)
+  const financeServices = visibleFinanceServices(services);
+  const source = financeServices.length
+    ? financeServices.map((service) => service.name)
     : SERVICE_OPTIONS;
   const activeOptions = source.map((serviceName) => optionHTML(serviceName, serviceName, normalizedSelected));
   if (normalizedSelected && !source.some((serviceName) => String(serviceName) === normalizedSelected)) {
     activeOptions.unshift(optionHTML(normalizedSelected, `${normalizedSelected} (existente)`, normalizedSelected));
   }
   return [optionHTML('', 'Seleccionar', normalizedSelected), ...activeOptions].join('');
+}
+
+function renderSessionTypeOptions(services = [], selectedValue = '') {
+  const normalizedSelected = String(selectedValue ?? '');
+  const sessionServices = visibleSessionServices(services);
+  const source = sessionServices.length
+    ? sessionServices.map((service) => service.name)
+    : SESSION_TYPE_OPTIONS.map((item) => item.value);
+  const activeOptions = source.map((serviceName) => optionHTML(serviceName, serviceName, normalizedSelected));
+  if (normalizedSelected && !source.some((serviceName) => String(serviceName) === normalizedSelected)) {
+    activeOptions.unshift(optionHTML(normalizedSelected, `${normalizedSelected} (existente)`, normalizedSelected));
+  }
+  return activeOptions.join('');
+}
+
+function serviceSessionConfig(service) {
+  return {
+    value: service?.name ?? '',
+    label: service?.name ?? '',
+    minutes: Number(service?.session_minutes || 0),
+    cost: Number(service?.session_cost || 0),
+  };
+}
+
+function defaultSessionServiceCost(services = []) {
+  const first = visibleSessionServices(services)[0];
+  return first ? serviceSessionConfig(first).cost : SESSION_TYPE_OPTIONS[0].cost;
 }
 
 function eventConceptOptionFor(value = '') {
@@ -7923,6 +7967,12 @@ async function ensureUsersLoaded() {
   }
 }
 
+function parseBooleanField(value) {
+  if (typeof value === 'boolean') return value;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return ['true', '1', 'yes', 'si', 'sí', 'on', 'active'].includes(normalized);
+}
+
 function formValues(form) {
   const values = Object.fromEntries(new FormData(form).entries());
   for (const key of Object.keys(values)) {
@@ -7959,7 +8009,15 @@ function todayDateInputValue() {
 }
 
 function sessionTypeConfig(value) {
+  const rawValue = String(value ?? '').trim();
+  const services = visibleSessionServices(state.data.services ?? []);
+  const exactService = services.find((service) => String(service.name) === rawValue);
+  if (exactService) return serviceSessionConfig(exactService);
+
   const canonicalValue = canonicalSessionTypeValue(value);
+  const canonicalService = services.find((service) => canonicalSessionTypeValue(service.name) === canonicalValue || String(service.name) === canonicalValue);
+  if (canonicalService) return serviceSessionConfig(canonicalService);
+
   return SESSION_TYPE_OPTIONS.find((item) => item.value === canonicalValue) ?? SESSION_TYPE_OPTIONS[0];
 }
 
@@ -9686,7 +9744,7 @@ async function handleErpForm(form) {
     delete values.concept_custom;
   }
   if (type === 'session-create') {
-    values.type = canonicalSessionTypeValue(values.type);
+    values.type = canonicalServiceValue(values.type);
     if (isMembershipValue(values.type)) {
       values.type = MEMBERSHIP_CANONICAL;
       values.concept = MEMBERSHIP_CANONICAL;
@@ -9705,6 +9763,16 @@ async function handleErpForm(form) {
     values.name = String(values.name ?? '').trim();
     values.status = String(values.status || 'active').toLowerCase();
     values.sort_order = Number(values.sort_order || 100);
+    if (type === 'service-create') {
+      values.show_in_finance = values.show_in_finance === 'true' || values.show_in_finance === 'on';
+      values.show_in_session = values.show_in_session === 'true' || values.show_in_session === 'on';
+      values.session_cost = values.session_cost == null ? null : Number(values.session_cost);
+      values.session_minutes = values.session_minutes == null ? null : Number(values.session_minutes);
+      if (!values.show_in_session) {
+        values.session_cost = null;
+        values.session_minutes = null;
+      }
+    }
     if (!values.key || !values.name) {
       showToast('Ingresa una clave y nombre validos.', 'error');
       return;
@@ -9774,7 +9842,8 @@ async function handleErpForm(form) {
       state.data.paymentMethods = null;
     } else if (type === 'service-create') {
       state.data.services = null;
-      setPersistedDataValue('erpOpsForm', 'transaction');
+      const nextServiceForm = operationPayload.show_in_session && !operationPayload.show_in_finance ? 'session' : 'transaction';
+      setPersistedDataValue('erpOpsForm', nextServiceForm);
       form.reset();
       delete form.dataset.operationAction;
       navigate('erp-ops');
@@ -11179,10 +11248,16 @@ async function handleAdminTableUpdate(form) {
 
 async function saveAdminTableRow(tableName, config, original, payload, options = {}) {
   if (tableName === 'payment_methods' || tableName === 'services') {
-    if ('key' in payload) payload.key = String(payload.key ?? '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+    if ('key' in payload) payload.key = String(payload.key ?? '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
     if ('name' in payload) payload.name = String(payload.name ?? '').trim();
     if ('status' in payload) payload.status = String(payload.status || 'active').toLowerCase();
     if ('sort_order' in payload) payload.sort_order = Number(payload.sort_order || 100);
+    if (tableName === 'services') {
+      if ('show_in_finance' in payload) payload.show_in_finance = parseBooleanField(payload.show_in_finance);
+      if ('show_in_session' in payload) payload.show_in_session = parseBooleanField(payload.show_in_session);
+      if ('session_cost' in payload) payload.session_cost = payload.session_cost === '' || payload.session_cost == null ? null : Number(payload.session_cost);
+      if ('session_minutes' in payload) payload.session_minutes = payload.session_minutes === '' || payload.session_minutes == null ? null : Number(payload.session_minutes);
+    }
   }
 
   if (tableName === 'users' && 'occupations' in payload) {
