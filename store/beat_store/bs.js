@@ -1832,6 +1832,7 @@ function errorState(message) {
 function showNotice(message) {
   const notice = document.getElementById("store-notice");
   if (!notice) return;
+  elevateStoreNotice(notice);
   notice.className = "notice hr-toast hr-toast--success visible hr-toast--visible";
   notice.innerHTML = '<span class="hr-toast__dot" aria-hidden="true"></span><span class="hr-toast__message"></span>';
   notice.querySelector(".hr-toast__message").textContent = message;
@@ -1839,6 +1840,18 @@ function showNotice(message) {
   showNotice.timeout = window.setTimeout(() => {
     notice.classList.remove("visible", "hr-toast--visible");
   }, 2200);
+}
+
+function elevateStoreNotice(notice) {
+  document.body.append(notice);
+  Object.assign(notice.style, {
+    position: "fixed",
+    right: "max(16px, env(safe-area-inset-right))",
+    bottom: "calc(var(--hr-beat-player-offset, 0px) + max(16px, env(safe-area-inset-bottom)))",
+    zIndex: "2147483647",
+    display: "grid",
+    pointerEvents: "auto",
+  });
 }
 
 function escapeHtml(value) {

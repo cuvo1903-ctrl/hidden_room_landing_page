@@ -28,6 +28,8 @@ async function initProducerPage() {
   state.assignments = await fetchBeatLicenseAssignments(state.products.map((product) => product.id));
   renderBeats();
   grid.addEventListener("click", handleGridClick);
+  grid.addEventListener("keydown", handleGridKeydown);
+  window.addEventListener("hr:beat-player-state", syncBeatCardPlayState);
   modal?.addEventListener("click", handleModalClick);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && modal && !modal.hidden) closeLicensesModal();
@@ -130,8 +132,11 @@ function musicMetaMarkup(meta) {
 
 function coverMarkup(product) {
   const imageUrl = coverUrlForProduct(product);
-  if (imageUrl) return `<div class="beat-card__cover"><img src="${escapeHtml(imageUrl)}" alt="" loading="lazy"><span class="beat-card__cover-fallback" hidden>${escapeHtml(initials(product.name))}</span></div>`;
-  return `<div class="beat-card__cover beat-card__cover--empty"><span>${escapeHtml(initials(product.name))}</span></div>`;
+  const canPreview = Boolean(previewUrlForProduct(product));
+  const playAttrs = canPreview ? ` role="button" tabindex="0" data-play-beat="${escapeHtml(product.id)}" aria-label="Preview ${escapeHtml(product.name)}"` : "";
+  const playOverlay = canPreview ? '<span class="beat-card__cover-play" aria-hidden="true">&#9658;</span>' : "";
+  if (imageUrl) return `<div class="beat-card__cover"${playAttrs} aria-label="Portada de ${escapeHtml(product.name)}"><img src="${escapeHtml(imageUrl)}" alt="" loading="lazy" onerror="this.hidden=true;this.parentElement.classList.add('beat-card__cover--empty');this.nextElementSibling.hidden=false"><span class="beat-card__cover-fallback" hidden>${escapeHtml(initials(product.name))}</span>${playOverlay}</div>`;
+  return `<div class="beat-card__cover beat-card__cover--empty"${playAttrs}><span>${escapeHtml(initials(product.name))}</span>${playOverlay}</div>`;
 }
 
 function coverUrlForProduct(product) {
@@ -141,10 +146,88 @@ function coverUrlForProduct(product) {
   const clean = raw.replaceAll("\\", "/").replace(/^\/+/, "").replace(/^beats_store\//i, "");
   return new URL(`/api/beat-store/stream?file=${encodeURIComponent(clean)}`, CLOUD_ORIGIN).href;
 }
+function previewUrlForProduct(product) {
+  const preview = beatPreviewRelativeFile(product?.beat_preview_path);
+  if (preview && product?.beat_preview_status !== "error") {
+    return new URL(`/api/beat-store/stream?file=${encodeURIComponent(preview)}`, CLOUD_ORIGIN).href;
+  }
+  return "";
+}
+
+function beatPreviewRelativeFile(value) {
+  const clean = beatRelativeFile(value);
+  if (!clean) return "";
+  return clean.toLowerCase().startsWith("previews/") && /\.mp3$/i.test(clean) ? clean : "";
+}
+
+function beatRelativeFile(value) {
+  let clean = String(value || "").trim();
+  if (!clean) return "";
+  if (/^https?:\/\//i.test(clean)) {
+    try {
+      const url = new URL(clean);
+      clean = url.searchParams.get("file") || url.pathname;
+    } catch {
+      return "";
+    }
+  }
+  clean = clean.replaceAll("\\", "/").replace(/^\/+/, "");
+  return clean.replace(/^beats_store\//i, "");
+}
 
 function handleGridClick(event) {
+  const playButton = event.target.closest("[data-play-beat]");
+  if (playButton) {
+    toggleBeatPreview(playButton.dataset.playBeat);
+    return;
+  }
   const button = event.target.closest("[data-add-beat]");
   if (button) openLicensesModal(button.dataset.addBeat);
+}
+
+function handleGridKeydown(event) {
+  const playTarget = event.target.closest("[data-play-beat]");
+  if (!playTarget || (event.key !== "Enter" && event.key !== " ")) return;
+  event.preventDefault();
+  toggleBeatPreview(playTarget.dataset.playBeat);
+}
+
+function toggleBeatPreview(productId) {
+  const product = state.products.find((candidate) => candidate.id === productId);
+  const previewUrl = previewUrlForProduct(product);
+  if (!product || !previewUrl) return;
+  if (window.HiddenRoomBeatPlayer?.src === previewUrl && window.HiddenRoomBeatPlayer?.isPlaying) {
+    window.dispatchEvent(new CustomEvent("hr:beat-preview-toggle", { detail: { action: "pause" } }));
+    return;
+  }
+  playBeat(productId);
+}
+
+function playBeat(productId) {
+  const product = state.products.find((candidate) => candidate.id === productId);
+  const previewUrl = previewUrlForProduct(product);
+  if (!product || !previewUrl) return;
+  window.dispatchEvent(new CustomEvent("hr:beat-preview", {
+    detail: {
+      src: previewUrl,
+      title: product.name || "Beat",
+      detail: producerDisplayName(state.profile.display_name),
+      cover: coverUrlForProduct(product),
+    },
+  }));
+}
+
+function syncBeatCardPlayState(event) {
+  const activeSrc = event.detail?.src || "";
+  const isPlaying = Boolean(event.detail?.isPlaying);
+  document.querySelectorAll(".beat-card__cover[data-play-beat]").forEach((cover) => {
+    const product = state.products.find((candidate) => candidate.id === cover.dataset.playBeat);
+    const isActive = previewUrlForProduct(product) === activeSrc;
+    cover.classList.toggle("is-playing", isActive && isPlaying);
+    cover.closest(".beat-card")?.classList.toggle("is-active", isActive);
+    const icon = cover.querySelector(".beat-card__cover-play");
+    if (icon) icon.innerHTML = isActive && isPlaying ? "&#10074;&#10074;" : "&#9658;";
+  });
 }
 
 function openLicensesModal(productId) {
@@ -235,6 +318,18 @@ function initials(value) {
   return String(value || "HR").trim().split(/\s+/).slice(0, 2).map((word) => word[0] || "").join("").toUpperCase();
 }
 
+function elevateStoreNotice(notice) {
+  document.body.append(notice);
+  Object.assign(notice.style, {
+    position: "fixed",
+    right: "max(16px, env(safe-area-inset-right))",
+    bottom: "calc(var(--hr-beat-player-offset, 0px) + max(16px, env(safe-area-inset-bottom)))",
+    zIndex: "2147483647",
+    display: "grid",
+    pointerEvents: "auto",
+  });
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#039;", '"': "&quot;" }[char]));
 }
@@ -250,6 +345,7 @@ function errorState(message) {
 function showNotice(message) {
   const notice = document.getElementById("store-notice");
   if (!notice) return;
+  elevateStoreNotice(notice);
   notice.className = "notice hr-toast hr-toast--success visible hr-toast--visible";
   notice.textContent = message;
   window.clearTimeout(showNotice.timer);

@@ -504,6 +504,14 @@ body.beat-admin-mode .beat-admin {
   cursor: grabbing;
 }
 
+
+.beat-store-page #store-notice.notice,
+.beat-store-page #store-notice.hr-toast {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(var(--hr-beat-player-offset, 0px) + max(16px, env(safe-area-inset-bottom)));
+  z-index: calc(var(--hr-z-toast, 10004) + 10);
+}
 /* Beat license modal */
 .beat-license-modal {
   position: fixed;
