@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Catálogo de productor en Hidden Room Beat Store.">
+  <title>Productor | Hidden Room Beat Store</title>
+  <link rel="icon" type="image/webp" href="../../assets/img/orange_logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../styles.css?v=20260718-wavesurfer-global">
+  <link rel="stylesheet" href="../store.css?v=20260718-beat-admin-fields">
+  <link rel="stylesheet" href="bs.css?v=20260722-producer-page-chrome">
+</head>
+<body class="store-page beat-store-page producer-page hr-page" data-page="beat-producer" data-hr-chrome data-hr-context="store">
+  <div id="hr-global-nav"></div>
+
+  <main>
+    <section class="producer-profile-hero" id="producer-hero">
+      <div class="producer-profile-hero__cover" id="producer-cover"></div>
+      <div class="producer-profile-hero__content hr-container">
+        <div class="producer-profile-hero__avatar" id="producer-avatar">HR</div>
+        <div>
+          <a class="producer-profile-hero__back" href="./">Beat Store</a>
+          <h1 id="producer-name">Productor</h1>
+          <p id="producer-bio">Cargando perfil...</p>
+          <div class="producer-profile-hero__links" id="producer-links"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="catalog-section hr-section" aria-labelledby="producer-beats-title">
+      <div class="hr-container hr-stack hr-stack-xl">
+        <div class="section-heading hr-section-heading">
+          <div>
+          <span class="eyebrow hr-eyebrow">Catálogo</span>
+          <h2 id="producer-beats-title" class="hr-section-title">Beats del productor</h2>
+          </div>
+        </div>
+        <div id="producer-beat-grid" class="product-grid beat-grid"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="store-notice" class="notice hr-toast" role="status" aria-live="polite"></div>
+  <div id="beat-license-modal" class="beat-license-modal" hidden>
+    <div class="beat-license-modal__backdrop" data-license-modal-close></div>
+    <section class="beat-license-modal__panel" role="dialog" aria-modal="true" aria-labelledby="beat-license-modal-title">
+      <button class="beat-license-modal__close" type="button" data-license-modal-close aria-label="Cerrar">X</button>
+      <p class="eyebrow hr-eyebrow" id="beat-license-modal-subtitle">Productor</p>
+      <h3 id="beat-license-modal-title">Licencias</h3>
+      <div id="beat-license-modal-content"></div>
+    </section>
+  </div>
+
+  <script src="../../site.js?v=20260722-mojibake-fix"></script>
+  <script type="module" src="producer.js?v=20260722-mojibake-fix"></script>
+</body>
+</html>

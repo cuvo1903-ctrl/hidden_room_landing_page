@@ -1,5 +1,5 @@
-﻿const SITE_STATUS = "BETA Sitio en construcción";
-const SITE_VERSION = "V. 2.2.2";
+const SITE_STATUS = "BETA Sitio en construcción";
+const SITE_VERSION = "V. 2.2.3";
 const GA_MEASUREMENT_ID = "G-VNHC1Z3FXZ";
 const HR_SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 const HR_SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
@@ -160,7 +160,7 @@ function renderNavActions(module) {
         aria-haspopup="true" aria-expanded="false"
         aria-controls="js-user-menu js-sidebar" aria-label="Abrir menú">
         <span class="hr-nav__avatar" id="js-user-avatar" aria-hidden="true"></span>
-        <span class="hr-nav__hello" id="js-user-display-name">—</span>
+        <span class="hr-nav__hello" id="js-user-display-name">â€”</span>
       </button>
       <nav class="db-user-menu" id="js-user-menu" aria-label="Menú de usuario" hidden>
         <ul class="db-user-menu__list" role="list">
@@ -198,7 +198,7 @@ function renderGlobalDrawer(activeModule) {
     ? `
           <div class="hr-global-drawer__guest hr-global-drawer__guest--portal">
             <button type="button" data-global-nav-action="settings">Ajustes</button>
-            <button type="button" data-global-nav-action="logout">Cerrar sesion</button>
+            <button type="button" data-global-nav-action="logout">Cerrar sesión</button>
           </div>
         `
     : `
@@ -577,7 +577,7 @@ async function attachGlobalSessionSync() {
       window.setTimeout(hydrateGlobalInstagramUsernamePrompt, 0);
     });
   } catch (error) {
-    console.info("[HR] No fue posible sincronizar la sesion global:", error?.message || error);
+    console.info("[HR] No fue posible sincronizar la sesión global:", error?.message || error);
   }
 }
 
@@ -1113,7 +1113,7 @@ function renderGlobalNav() {
         <button type="button" data-hr-notifications-close aria-label="Cerrar notificaciones">×</button>
       </header>
       <ul data-hr-notifications-list>
-        <li class="hr-global-notifications__empty">Cargando notificaciones…</li>
+        <li class="hr-global-notifications__empty">Cargando notificacionesâ€¦</li>
       </ul>
     </aside>
     ${renderGlobalBeatPlayer()}

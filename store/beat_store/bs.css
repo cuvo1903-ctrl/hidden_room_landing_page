@@ -226,7 +226,9 @@ body.beat-admin-mode .beat-admin {
   opacity: .45;
   cursor: not-allowed;
 }
-`r`n
+
+
+
 .beat-card .primary-button {
   min-height: 42px;
   padding-inline: 12px;
@@ -742,6 +744,40 @@ body.beat-admin-mode .beat-admin {
   grid-column: 1 / -1;
 }
 
+.beat-ad-input {
+  position: relative;
+  min-width: 0;
+}
+
+.beat-ad-input .hr-input {
+  padding-right: 48px;
+}
+
+.beat-ad-badge {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgba(20, 184, 166, .16);
+  color: #0f766e;
+  border: 1px solid rgba(20, 184, 166, .34);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.beat-ad-badge[hidden] {
+  display: none;
+}
+
 .beat-autodetect-button {
   min-height: 42px;
   padding: 10px 12px;
@@ -773,6 +809,140 @@ body.beat-admin-mode .beat-admin {
 
 @media (max-width: 620px) {
   .beat-autodetect-field {
+    grid-template-columns: 1fr;
+  }
+}
+/* Producer profiles */
+.beat-card__producer a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid currentColor;
+}
+
+.beat-card__producer a:hover,
+.beat-card__producer a:focus-visible {
+  color: var(--teal);
+}
+
+.producer-page {
+  gap: 28px;
+}
+
+.producer-profile-hero {
+  position: relative;
+  min-height: 360px;
+  padding-top: var(--hr-nav-height, 78px);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  background: #101010;
+  color: var(--white);
+}
+
+.producer-profile-hero__cover {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(20, 184, 166, .22), rgba(8, 8, 8, .94)), #171717;
+  background-size: cover;
+  background-position: center;
+}
+
+.producer-profile-hero__cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, .12), rgba(0, 0, 0, .78));
+}
+
+.producer-profile-hero__content {
+  position: relative;
+  z-index: 1;
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 88px 0 36px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 22px;
+  align-items: end;
+}
+
+.producer-profile-hero__avatar {
+  width: 112px;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #0f766e;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid rgba(255, 255, 255, .4);
+  font: 800 32px/1 var(--font-display, inherit);
+}
+
+.producer-profile-hero__back,
+.producer-profile-hero__links a {
+  color: rgba(255, 255, 255, .82);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.producer-profile-hero__back:hover,
+.producer-profile-hero__links a:hover {
+  color: var(--white);
+}
+
+.producer-profile-hero h1 {
+  margin: 8px 0 10px;
+  font-size: clamp(36px, 8vw, 84px);
+  line-height: .95;
+}
+
+.producer-profile-hero p {
+  max-width: 680px;
+  margin: 0;
+  color: rgba(255, 255, 255, .78);
+}
+
+.producer-profile-hero__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+@media (max-width: 620px) {
+  .producer-profile-hero {
+    min-height: 320px;
+  }
+
+  .producer-profile-hero__content {
+    grid-template-columns: 1fr;
+    padding-top: 72px;
+  }
+
+  .producer-profile-hero__avatar {
+    width: 84px;
+  }
+}
+
+.beat-producer-field__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.beat-producer-profile-button,
+.beat-producer-username-button {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .beat-producer-field__row {
     grid-template-columns: 1fr;
   }
 }

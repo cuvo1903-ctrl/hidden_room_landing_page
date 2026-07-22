@@ -47,3 +47,8 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/ig-analyze-comments/index.ts"
 
+[functions.analyze-beat-audio]
+enabled = true
+# Admin-only. Forwards audio to the private Debian Essentia analyzer.
+verify_jwt = false
+entrypoint = "./functions/analyze-beat-audio/index.ts"

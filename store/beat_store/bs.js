@@ -5,11 +5,12 @@ const SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
 const CART_STORAGE_KEY = "hidden_room_store_cart";
 const CLOUD_ORIGIN = "https://cloud.hiddenroom.mx";
 const BEAT_STORE_ENDPOINT = `${CLOUD_ORIGIN}/api/beat-store`;
+const ANALYZE_BEAT_AUDIO_ENDPOINT = `${SUPABASE_URL}/functions/v1/analyze-beat-audio`;
 const BEAT_STORE_CLOUD_PATH = "/beats_store";
 const supabase = window.HiddenRoomSupabase?.getClient
   ? await window.HiddenRoomSupabase.getClient()
   : createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const state = { products: [], adminProducts: [], beats: [], items: [], licenses: [], assignments: [], durationDetections: new Set(), isAdmin: false, currentUserId: null, hasBeatMetadata: true, hasBeatLicenses: true, hasBeatPreviews: true };
+const state = { products: [], adminProducts: [], beats: [], items: [], licenses: [], assignments: [], producerProfiles: [], durationDetections: new Set(), isAdmin: false, currentUserId: null, currentUsername: "", hasBeatMetadata: true, hasBeatLicenses: true, hasBeatPreviews: true, hasBeatAutodetectFlags: true };
 
 const grid = document.getElementById("beat-grid");
 const searchInput = document.getElementById("beat-search");
@@ -25,6 +26,8 @@ const beatUploadInput = document.getElementById("beat-upload-file");
 const beatCoverInput = document.getElementById("beat-cover-file");
 const beatUploadStatus = document.getElementById("beat-upload-status");
 const beatSubmitButton = document.getElementById("beat-submit-button");
+const beatProducerProfileButton = document.querySelector("[data-producer-profile-current]");
+const beatProducerUsernameButton = document.querySelector("[data-use-current-username]");
 const beatCoverEditor = document.getElementById("beat-cover-editor");
 const beatCoverPreview = document.getElementById("beat-cover-preview");
 const beatCoverStage = document.querySelector(".beat-cover-editor__stage");
@@ -52,11 +55,12 @@ initBeatStore().catch((error) => {
 async function initBeatStore() {
   updateCartCount();
   state.isAdmin = await currentUserIsAdmin();
-  const [products, beats, licenses] = await Promise.all([fetchBeatProducts(state.isAdmin), fetchCloudBeats(), fetchBeatLicenses(state.isAdmin)]);
+  const [products, beats, licenses, producerProfiles] = await Promise.all([fetchBeatProducts(state.isAdmin), fetchCloudBeats(), fetchBeatLicenses(state.isAdmin), fetchProducerProfiles(state.isAdmin)]);
   state.products = products;
   state.adminProducts = state.isAdmin ? products : [];
   state.beats = beats;
   state.licenses = licenses;
+  state.producerProfiles = producerProfiles;
   state.assignments = await fetchBeatLicenseAssignments(products.map((product) => product.id), state.isAdmin);
   state.items = mergeProductsAndBeats(products, beats);
   renderGenreOptions();
@@ -84,7 +88,11 @@ async function initBeatStore() {
   cancelEditButton?.addEventListener("click", resetAdminForm);
   beatCoverInput?.addEventListener("change", handleBeatCoverSelection);
   beatUploadInput?.addEventListener("change", handleBeatAudioSelection);
-  adminForm?.addEventListener("click", handleBeatAutodetectSoonClick);
+  document.getElementById("beat-bpm")?.addEventListener("input", handleManualBeatMetadataInput);
+  document.getElementById("beat-key")?.addEventListener("input", handleManualBeatMetadataInput);
+  adminForm?.addEventListener("click", handleBeatAutodetectClick);
+  beatProducerProfileButton?.addEventListener("click", createOrOpenCurrentProducerProfile);
+  beatProducerUsernameButton?.addEventListener("click", useCurrentUsernameAsProducer);
   beatCoverStage?.addEventListener("pointerdown", handleBeatCoverPointerDown);
   beatCoverStage?.addEventListener("pointermove", handleBeatCoverPointerMove);
   beatCoverStage?.addEventListener("pointerup", handleBeatCoverPointerEnd);
@@ -106,8 +114,8 @@ function ensureAdminMusicFields() {
   wrapper.className = "beat-admin__music-fields";
   wrapper.innerHTML = `
     <div class="field hr-field"><label class="hr-label" for="beat-genre-input">Género</label><input class="hr-input" id="beat-genre-input" maxlength="80" placeholder="Trap, Boom bap, Reggaeton..."></div>
-    <div class="field hr-field beat-autodetect-field"><label class="hr-label" for="beat-bpm">BPM</label><input class="hr-input" id="beat-bpm" type="number" min="1" max="300" step="1"><button class="secondary-button beat-autodetect-button" type="button" data-autodetect-soon="BPM">Autodetectar</button></div>
-    <div class="field hr-field beat-autodetect-field"><label class="hr-label" for="beat-key">Tonalidad</label><input class="hr-input" id="beat-key" maxlength="24" placeholder="Cm, F# minor..."><button class="secondary-button beat-autodetect-button" type="button" data-autodetect-soon="tonalidad">Autodetectar</button></div>
+    <div class="field hr-field beat-autodetect-field"><label class="hr-label" for="beat-bpm">BPM</label><div class="beat-ad-input"><input class="hr-input" id="beat-bpm" type="number" min="1" max="300" step="1"><span class="beat-ad-badge" data-ad-badge="bpm" hidden>AD</span></div><button class="secondary-button beat-autodetect-button" type="button" data-autodetect="bpm">Autodetectar</button></div>
+    <div class="field hr-field beat-autodetect-field"><label class="hr-label" for="beat-key">Tonalidad</label><div class="beat-ad-input"><input class="hr-input" id="beat-key" maxlength="24" placeholder="Cm, F# minor..."><span class="beat-ad-badge" data-ad-badge="key" hidden>AD</span></div><button class="secondary-button beat-autodetect-button" type="button" data-autodetect="key">Autodetectar</button></div>
     <input id="beat-duration" type="hidden">
   `;
   producerField.insertAdjacentElement("afterend", wrapper);
@@ -116,8 +124,8 @@ function ensureAdminMusicFields() {
 function adminProductMetaText(product) {
   return [
     product.beat_genre || null,
-    product.beat_bpm ? `${product.beat_bpm} BPM` : null,
-    product.beat_key || null,
+    product.beat_bpm ? `${product.beat_bpm} BPM${product.beat_bpm_autodetected ? " (AD)" : ""}` : null,
+    product.beat_key ? `${product.beat_key}${product.beat_key_autodetected ? " (AD)" : ""}` : null,
     product.beat_duration_seconds ? formatDuration(product.beat_duration_seconds) : null,
   ].filter(Boolean).join(" / ");
 }
@@ -200,20 +208,23 @@ async function currentUserIsAdmin() {
 
   const { data: profile, error } = await supabase
     .from("users")
-    .select("roles")
+    .select("roles, username")
     .eq("id", session.user.id)
     .maybeSingle();
 
   if (error) return false;
+  state.currentUsername = String(profile?.username || "").trim();
+  syncProducerUsernameButton();
   return String(profile?.roles ?? "")
     .split(",")
     .map((role) => role.trim().toLowerCase())
     .includes("admin");
 }
 
-const BEAT_PRODUCT_BASE_SELECT = "id, slug, name, description, category, price, currency, image_url, beat_cover_path, beat_thumb_path, file_url, producer, stock, is_digital, featured, is_active, created_at";
+const BEAT_PRODUCT_BASE_SELECT = "id, slug, name, description, category, price, currency, image_url, beat_cover_path, beat_thumb_path, file_url, producer, producer_profile_id, stock, is_digital, featured, is_active, created_at";
 const BEAT_PRODUCT_META_SELECT = `${BEAT_PRODUCT_BASE_SELECT}, producer_user_id, beat_genre, beat_bpm, beat_key, beat_duration_seconds`;
-const BEAT_PRODUCT_PREVIEW_SELECT = `${BEAT_PRODUCT_META_SELECT}, beat_original_path, beat_preview_path, beat_preview_status, beat_preview_error`;
+const BEAT_PRODUCT_AUTODETECT_SELECT = `${BEAT_PRODUCT_META_SELECT}, beat_bpm_autodetected, beat_key_autodetected`;
+const BEAT_PRODUCT_PREVIEW_SELECT = `${state.hasBeatAutodetectFlags ? BEAT_PRODUCT_AUTODETECT_SELECT : BEAT_PRODUCT_META_SELECT}, beat_original_path, beat_preview_path, beat_preview_status, beat_preview_error`;
 
 async function fetchBeatProducts(includeInactive = false) {
   const columns = state.hasBeatPreviews
@@ -225,7 +236,18 @@ async function fetchBeatProducts(includeInactive = false) {
 
   if (state.hasBeatPreviews && isMissingBeatPreviewError(error)) {
     state.hasBeatPreviews = false;
-    const fallback = await runBeatProductQuery(includeInactive, state.hasBeatMetadata ? BEAT_PRODUCT_META_SELECT : BEAT_PRODUCT_BASE_SELECT);
+    const fallbackColumns = state.hasBeatMetadata ? (state.hasBeatAutodetectFlags ? BEAT_PRODUCT_AUTODETECT_SELECT : BEAT_PRODUCT_META_SELECT) : BEAT_PRODUCT_BASE_SELECT;
+    const fallback = await runBeatProductQuery(includeInactive, fallbackColumns);
+    if (!fallback.error) return fallback.data ?? [];
+    throw new Error(`No se pudieron cargar productos: ${fallback.error.message}`);
+  }
+
+  if (state.hasBeatAutodetectFlags && isMissingBeatAutodetectFlagError(error)) {
+    state.hasBeatAutodetectFlags = false;
+    const fallbackColumns = state.hasBeatPreviews
+      ? `${BEAT_PRODUCT_META_SELECT}, beat_original_path, beat_preview_path, beat_preview_status, beat_preview_error`
+      : BEAT_PRODUCT_META_SELECT;
+    const fallback = await runBeatProductQuery(includeInactive, fallbackColumns);
     if (!fallback.error) return fallback.data ?? [];
     throw new Error(`No se pudieron cargar productos: ${fallback.error.message}`);
   }
@@ -257,9 +279,14 @@ function isMissingBeatPreviewError(error) {
   return error?.code === "42703" && ["beat_original_path", "beat_preview_path", "beat_preview_status", "beat_preview_error"].some((column) => message.includes(column));
 }
 
+function isMissingBeatAutodetectFlagError(error) {
+  const message = String(error?.message || error?.details || "").toLowerCase();
+  return error?.code === "42703" && ["beat_bpm_autodetected", "beat_key_autodetected"].some((column) => message.includes(column));
+}
+
 function isMissingBeatMetadataError(error) {
   const message = String(error?.message || error?.details || "").toLowerCase();
-  return error?.code === "42703" || ["beat_genre", "beat_bpm", "beat_key", "beat_duration_seconds", "producer_user_id"].some((column) => message.includes(column));
+  return error?.code === "42703" || ["beat_genre", "beat_bpm", "beat_key", "beat_duration_seconds", "producer_user_id", "producer_profile_id"].some((column) => message.includes(column));
 }
 
 async function fetchBeatLicenses(includeInactive = false) {
@@ -280,6 +307,16 @@ async function fetchBeatLicenses(includeInactive = false) {
   return data ?? [];
 }
 
+async function fetchProducerProfiles(includeInactive = false) {
+  let query = supabase
+    .from("producer_profiles")
+    .select("id, user_id, slug, display_name, bio, avatar_url, cover_url, social_links, is_active, created_at")
+    .order("display_name", { ascending: true });
+  if (!includeInactive) query = query.eq("is_active", true);
+  const { data, error } = await query;
+  if (error) return [];
+  return data ?? [];
+}
 async function fetchBeatLicenseAssignments(beatIds, includeDisabled = false) {
   if (!state.hasBeatLicenses || !beatIds.length) return [];
   let query = supabase
@@ -410,7 +447,7 @@ function detectAudioDurationFromUrl(url) {
     audio.onloadedmetadata = () => {
       const seconds = Math.round(audio.duration || 0);
       if (Number.isFinite(seconds) && seconds > 0) resolve(seconds);
-      else reject(new Error("Duracion invalida"));
+      else reject(new Error("Duración inválida"));
     };
     audio.onerror = () => reject(new Error("No se pudo leer el audio"));
     audio.src = url;
@@ -449,7 +486,7 @@ function beatCardMarkup(item) {
       ${coverMarkup(item)}
       <div class="beat-card__body">
         <h3>${escapeHtml(title)}</h3>
-        <p class="beat-card__producer">${escapeHtml(producer || "Productor por confirmar")}</p>
+        <p class="beat-card__producer">${producerLinkMarkup(item, producer)}</p>
         <div class="beat-card__meta-slot">${musicMetaMarkup(meta)}</div>
       </div>
       <div class="beat-card__actions">
@@ -473,13 +510,13 @@ function beatLicensesContentMarkup(item) {
             <strong>${escapeHtml(formatPrice(license.price, item.product.currency))}</strong>
           </header>
           <dl>
-            <div><dt>Limite</dt><dd>${escapeHtml(license.streams)}</dd></div>
+            <div><dt>Límite</dt><dd>${escapeHtml(license.streams)}</dd></div>
             ${license.format ? `<div><dt>Formato</dt><dd>${escapeHtml(license.format)}</dd></div>` : ""}
           </dl>
           ${license.terms ? `<p class="beat-license-terms">${escapeHtml(license.terms)}</p>` : ""}
           <div class="beat-license-actions">
-            <button class="secondary-button" type="button" data-license-soon data-license-id="${escapeHtml(license.id)}">Comprar proximamente</button>
-            <button class="secondary-button" type="button" data-license-soon data-license-id="${escapeHtml(license.id)}">Anadir al carrito proximamente</button>
+            <button class="secondary-button" type="button" data-license-soon data-license-id="${escapeHtml(license.id)}">Comprar próximamente</button>
+            <button class="secondary-button" type="button" data-license-soon data-license-id="${escapeHtml(license.id)}">Añadir al carrito próximamente</button>
           </div>
         </article>
       `).join("")}
@@ -988,7 +1025,7 @@ function beatProductPayload({ uploadedCoverUrl = null, uploadedBeatAudio = null,
     name: document.getElementById("beat-name").value.trim(),
     slug: document.getElementById("beat-slug").value.trim().toLowerCase(),
     description: document.getElementById("beat-description").value.trim() || null,
-    producer: document.getElementById("beat-producer").value.trim() || null,
+    producer: producerStorageName(document.getElementById("beat-producer").value) || null,
     category: "beats",
     price: 0,
     currency: "MXN",
@@ -1006,6 +1043,10 @@ function beatProductPayload({ uploadedCoverUrl = null, uploadedBeatAudio = null,
     payload.beat_bpm = nullableNumberFromInput("beat-bpm");
     payload.beat_key = document.getElementById("beat-key").value.trim() || null;
     payload.beat_duration_seconds = nullableNumberFromInput("beat-duration");
+    if (state.hasBeatAutodetectFlags) {
+      payload.beat_bpm_autodetected = Boolean(payload.beat_bpm && document.getElementById("beat-bpm")?.dataset.autodetected === "true");
+      payload.beat_key_autodetected = Boolean(payload.beat_key && document.getElementById("beat-key")?.dataset.autodetected === "true");
+    }
   }
   if (state.hasBeatPreviews && uploadedBeatAudio) {
     payload.beat_original_path = uploadedBeatAudio.beat_original_path || null;
@@ -1071,11 +1112,119 @@ async function saveBeatLicenseAssignments(beatId) {
     if (error) throw new Error(error.message);
   }
 }
-function handleBeatAutodetectSoonClick(event) {
-  const button = event.target.closest("[data-autodetect-soon]");
+async function handleBeatAutodetectClick(event) {
+  const button = event.target.closest("[data-autodetect]");
   if (!button) return;
-  showNotice(`Autodetectar ${button.dataset.autodetectSoon} proximamente`);
+  const target = button.dataset.autodetect;
+  if (target !== "bpm" && target !== "key") return;
+
+  const file = beatUploadInput?.files?.[0];
+  const existingAudioPath = currentEditingBeatAudioPath();
+  if (!file && !existingAudioPath) {
+    setUploadStatus("Selecciona un archivo de audio o edita un beat que ya tenga audio en Cloud.", true);
+    return;
+  }
+  if (file && !file.type.startsWith("audio/") && !/\.(mp3|wav|m4a|aac|ogg|flac|aif|aiff)$/i.test(file.name)) {
+    setUploadStatus("Selecciona un archivo de audio valido para autodetectar.", true);
+    return;
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    setUploadStatus("Sesión requerida para autodetectar audio.", true);
+    return;
+  }
+
+  setBeatAutodetectLoading(button, true);
+  setUploadStatus(`Autodetectando ${target === "bpm" ? "BPM" : "tonalidad"}...`);
+  try {
+    const request = beatAudioAnalysisRequest({ file, existingAudioPath, target, token: session.access_token });
+    const response = await safeFetch(ANALYZE_BEAT_AUDIO_ENDPOINT, request, { retries: 1, retryDelayMs: 900, label: "autodetectar audio" });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "No se pudo autodetectar el audio.");
+
+    applyBeatAudioAnalysis(result, target);
+    setUploadStatus(beatAudioAnalysisMessage(result, target));
+  } catch (error) {
+    setUploadStatus(error.message || "No se pudo autodetectar el audio.", true);
+  } finally {
+    setBeatAutodetectLoading(button, false);
+  }
 }
+
+function applyBeatAudioAnalysis(result, target = "all") {
+  if ((target === "bpm" || target === "all") && Number.isFinite(Number(result.bpm))) {
+    const input = document.getElementById("beat-bpm");
+    input.value = String(Math.round(Number(result.bpm)));
+    input.dataset.autodetected = "true";
+    syncBeatAdBadge("bpm");
+  }
+  if ((target === "key" || target === "all") && result.key) {
+    const input = document.getElementById("beat-key");
+    input.value = String(result.key);
+    input.dataset.autodetected = "true";
+    syncBeatAdBadge("key");
+  }
+}
+
+function beatAudioAnalysisMessage(result, target) {
+  if (target === "bpm" && result.bpm) return `BPM detectado: ${Math.round(Number(result.bpm))}.`;
+  if (target === "key" && result.key) return `Tonalidad detectada: ${result.key}.`;
+  return "Análisis de audio completado.";
+}
+
+function setBeatAutodetectLoading(button, isLoading) {
+  if (!button) return;
+  button.disabled = Boolean(isLoading);
+  button.classList.toggle("is-loading", Boolean(isLoading));
+  button.textContent = isLoading ? "Detectando..." : "Autodetectar";
+}
+
+function handleManualBeatMetadataInput(event) {
+  if (!event?.isTrusted || !event.target) return;
+  event.target.dataset.autodetected = "false";
+  syncBeatAdBadge(event.target.id === "beat-bpm" ? "bpm" : "key");
+}
+
+function syncBeatAdBadge(target) {
+  const input = document.getElementById(target === "bpm" ? "beat-bpm" : "beat-key");
+  const badge = document.querySelector(`[data-ad-badge="${target}"]`);
+  if (!input || !badge) return;
+  badge.hidden = input.dataset.autodetected !== "true" || !input.value;
+}
+
+function currentEditingBeatAudioPath() {
+  const id = document.getElementById("beat-product-id")?.value || "";
+  if (!id) return "";
+  const product = state.adminProducts.find((candidate) => candidate.id === id);
+  return product?.beat_original_path || product?.file_url || document.getElementById("beat-file-url")?.value.trim() || "";
+}
+
+function beatAudioAnalysisRequest({ file, existingAudioPath, target, token }) {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    apikey: SUPABASE_ANON_KEY,
+    "X-Analyze-Target": target,
+  };
+  if (file) {
+    return {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": file.type || "application/octet-stream",
+        "X-File-Name": encodeURIComponent(file.name),
+      },
+      body: file,
+    };
+  }
+  return {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ audio_path: existingAudioPath }),
+  };
+}
+
 
 function handleBeatAudioSelection() {
   const file = beatUploadInput?.files?.[0];
@@ -1085,7 +1234,7 @@ function handleBeatAudioSelection() {
   detectAudioDuration(file)
     .then((seconds) => {
       durationInput.value = String(seconds);
-      setUploadStatus(`Duracion detectada: ${formatDuration(seconds)}.`);
+      setUploadStatus(`Duración detectada: ${formatDuration(seconds)}.`);
     })
     .catch(() => {
       setUploadStatus("No se pudo detectar la duracion automaticamente.", true);
@@ -1102,7 +1251,7 @@ function detectAudioDuration(file) {
       cleanup();
       const seconds = Math.round(audio.duration || 0);
       if (Number.isFinite(seconds) && seconds > 0) resolve(seconds);
-      else reject(new Error("Duracion invalida"));
+      else reject(new Error("Duración inválida"));
     };
     audio.onerror = () => {
       cleanup();
@@ -1329,7 +1478,7 @@ async function safeFetch(url, options = {}, retryOptions = {}) {
 function networkErrorMessage(error, label) {
   const message = String(error?.message || error || "");
   if (/failed to fetch|load failed|networkerror|typeerror/i.test(message)) {
-    return `No se pudo ${label}. Revisa tu conexion, sesion o intenta de nuevo.`;
+    return `No se pudo ${label}. Revisa tu conexión, sesión o intenta de nuevo.`;
   }
   return message || `No se pudo ${label}.`;
 }
@@ -1348,6 +1497,7 @@ async function handleAdminListClick(event) {
   const toggleButton = event.target.closest("[data-toggle-beat]");
   const featuredButton = event.target.closest("[data-feature-beat]");
   const deleteButton = event.target.closest("[data-delete-beat]");
+  const producerProfileButton = event.target.closest("[data-producer-profile-beat]");
 
   if (editButton) {
     editAdminProduct(editButton.dataset.editBeat);
@@ -1359,6 +1509,10 @@ async function handleAdminListClick(event) {
   }
   if (featuredButton) {
     await updateAdminProduct(featuredButton.dataset.featureBeat, { featured: featuredButton.dataset.featured !== "true" });
+    return;
+  }
+  if (producerProfileButton) {
+    await createOrOpenProducerProfile(producerProfileButton.dataset.producerProfileBeat);
     return;
   }
   if (deleteButton && window.confirm("¿Eliminar este beat de productos? Dejará de existir para clientes, pero no se borra el archivo de Cloud.")) {
@@ -1387,8 +1541,12 @@ function editAdminProduct(id) {
   document.getElementById("beat-description").value = product.description ?? "";
   document.getElementById("beat-producer").value = product.producer ?? "";
   document.getElementById("beat-genre-input").value = product.beat_genre ?? "";
-  document.getElementById("beat-bpm").value = product.beat_bpm ?? "";
-  document.getElementById("beat-key").value = product.beat_key ?? "";
+  const bpmInput = document.getElementById("beat-bpm");
+  const keyInput = document.getElementById("beat-key");
+  bpmInput.value = product.beat_bpm ?? "";
+  bpmInput.dataset.autodetected = product.beat_bpm_autodetected ? "true" : "false";
+  keyInput.value = product.beat_key ?? "";
+  keyInput.dataset.autodetected = product.beat_key_autodetected ? "true" : "false";
   document.getElementById("beat-duration").value = product.beat_duration_seconds ?? "";
   document.getElementById("beat-image-url").value = product.image_url ?? "";
   if (beatCoverEditor) beatCoverEditor.hidden = true;
@@ -1400,6 +1558,7 @@ function editAdminProduct(id) {
   document.getElementById("beat-form-title").textContent = "Editar beat";
   cancelEditButton.hidden = false;
   renderBeatLicenseAssignmentFields();
+  syncProducerProfileButton(product);
   adminForm.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -1413,9 +1572,12 @@ function resetAdminForm() {
   document.getElementById("beat-active").checked = true;
   document.getElementById("beat-digital").checked = true;
   document.getElementById("beat-form-title").textContent = "Nuevo beat";
+  document.getElementById("beat-bpm").dataset.autodetected = "false";
+  document.getElementById("beat-key").dataset.autodetected = "false";
   cancelEditButton.hidden = true;
   adminError.textContent = "";
   renderBeatLicenseAssignmentFields();
+  syncProducerProfileButton(null);
 }
 
 async function reloadBeatStore(options = {}) {
@@ -1424,6 +1586,7 @@ async function reloadBeatStore(options = {}) {
   state.products = products;
   state.adminProducts = state.isAdmin ? products : [];
   state.licenses = await fetchBeatLicenses(state.isAdmin);
+  state.producerProfiles = await fetchProducerProfiles(state.isAdmin);
   state.assignments = await fetchBeatLicenseAssignments(products.map((product) => product.id), state.isAdmin);
   state.items = mergeProductsAndBeats(products, state.beats);
   renderGenreOptions();
@@ -1431,6 +1594,7 @@ async function reloadBeatStore(options = {}) {
   renderAdminProducts();
   renderBeatLicenseAdmin();
   renderBeatLicenseAssignmentFields();
+  syncProducerProfileButton();
 }
 
 function getCart() {
@@ -1470,6 +1634,125 @@ function itemTitle(item) {
   return item.product?.name || item.beat?.title || "Beat";
 }
 
+function syncProducerUsernameButton() {
+  if (!beatProducerUsernameButton) return;
+  beatProducerUsernameButton.hidden = !state.currentUsername;
+  beatProducerUsernameButton.textContent = state.currentUsername ? `Usar @${state.currentUsername}` : "Usar mi username";
+  beatProducerUsernameButton.title = state.currentUsername ? `Usar @${state.currentUsername} como productor` : "No hay username disponible en tu usuario.";
+}
+
+function useCurrentUsernameAsProducer() {
+  const input = document.getElementById("beat-producer");
+  if (!input || !state.currentUsername) return;
+  input.value = producerStorageName(state.currentUsername);
+  input.focus();
+}
+function currentEditingProduct() {
+  const productId = document.getElementById("beat-product-id")?.value || "";
+  return state.adminProducts.find((candidate) => candidate.id === productId) || null;
+}
+
+function syncProducerProfileButton(product = currentEditingProduct()) {
+  syncProducerUsernameButton();
+  if (!beatProducerProfileButton) return;
+  beatProducerProfileButton.hidden = !state.isAdmin;
+  const profile = producerProfileForProduct(product);
+  beatProducerProfileButton.textContent = profile ? "Ver perfil" : "Crear perfil";
+  beatProducerProfileButton.disabled = !product;
+  beatProducerProfileButton.title = product
+    ? (profile ? "Abrir catálogo del productor" : "Crear catálogo del productor")
+    : "Guarda el beat primero para crear el perfil.";
+}
+
+async function createOrOpenCurrentProducerProfile() {
+  const product = currentEditingProduct();
+  if (!product) {
+    if (adminStatus) adminStatus.textContent = "Guarda el beat primero para crear y vincular el perfil del productor.";
+    syncProducerProfileButton(null);
+    return;
+  }
+  await createOrOpenProducerProfile(product.id);
+}
+function producerProfileForProduct(product = {}) {
+  if (!product) return null;
+  return state.producerProfiles.find((profile) => profile.id === product.producer_profile_id)
+    || state.producerProfiles.find((profile) => profile.slug === normalizeKey(product.producer || ""))
+    || null;
+}
+
+function producerLinkMarkup(item, fallbackName = "") {
+  const product = item?.product || {};
+  const profile = producerProfileForProduct(product);
+  const name = producerDisplayName(profile?.display_name || fallbackName || "Productor por confirmar");
+  if (!profile?.slug || profile.is_active === false) return escapeHtml(name);
+  return `<a href="producer.html?producer=${encodeURIComponent(profile.slug)}">${escapeHtml(name)}</a>`;
+}
+
+async function createOrOpenProducerProfile(productId) {
+  const product = state.adminProducts.find((candidate) => candidate.id === productId);
+  if (!product) return;
+  const existing = producerProfileForProduct(product);
+  if (existing?.slug) {
+    await linkMatchingProducerProducts(existing.id, product);
+    window.open(`producer.html?producer=${encodeURIComponent(existing.slug)}`, "_blank", "noopener");
+    return;
+  }
+  const displayName = producerStorageName(product.producer || product.name || "Productor");
+  const slug = uniqueProducerSlug(displayName);
+  const payload = {
+    slug,
+    display_name: displayName,
+    user_id: product.producer_user_id || state.currentUserId || null,
+    is_active: true,
+  };
+  const { data, error } = await supabase.from("producer_profiles").insert(payload).select("id, slug, display_name, is_active").single();
+  if (error) {
+    adminStatus.textContent = error.message;
+    return;
+  }
+  const linkedBeatIds = await linkMatchingProducerProducts(data.id, product);
+  showNotice(`Perfil de productor creado y vinculado a ${linkedBeatIds.length} beat${linkedBeatIds.length === 1 ? "" : "s"}`);
+  window.open(`producer.html?producer=${encodeURIComponent(data.slug)}`, "_blank", "noopener");
+}
+
+async function linkMatchingProducerProducts(profileId, product = {}) {
+  const linkedBeatIds = matchingProducerProductIds(product);
+  const { error } = await supabase.from("store_products").update({ producer_profile_id: profileId }).in("id", linkedBeatIds);
+  if (error) {
+    if (adminStatus) adminStatus.textContent = error.message;
+    throw new Error(error.message);
+  }
+  await reloadBeatStore();
+  return linkedBeatIds;
+}
+
+function matchingProducerProductIds(product = {}) {
+  const producerKey = normalizeKey(product.producer || "");
+  const matches = state.adminProducts
+    .filter((candidate) => candidate?.category === "beats")
+    .filter((candidate) => normalizeKey(candidate.producer || "") === producerKey)
+    .map((candidate) => candidate.id)
+    .filter(Boolean);
+  if (!matches.includes(product.id)) matches.push(product.id);
+  return [...new Set(matches)];
+}
+function producerStorageName(value) {
+  return String(value || "").trim().replace(/^@+/, "");
+}
+
+function producerDisplayName(value) {
+  const clean = producerStorageName(value);
+  if (!clean || clean === "Productor por confirmar") return clean || "Productor por confirmar";
+  return `@${clean}`;
+}
+function uniqueProducerSlug(name) {
+  const base = normalizeKey(name) || "productor";
+  const used = new Set(state.producerProfiles.map((profile) => profile.slug));
+  if (!used.has(base)) return base;
+  let index = 2;
+  while (used.has(`${base}-${index}`)) index += 1;
+  return `${base}-${index}`;
+}
 function productProducer(item) {
   return item.product?.producer || item.beat?.producer || "";
 }
@@ -1485,10 +1768,12 @@ function itemMusicMeta(item) {
   const key = product.beat_key || beat.key;
   const genre = product.beat_genre || beat.genre;
   const duration = product.beat_duration_seconds || beat.duration_seconds || beat.duration;
+  const bpmText = bpm ? `${bpm}${product.beat_bpm_autodetected ? " (AD)" : ""}` : "";
+  const keyText = key ? `${key}${product.beat_key_autodetected ? " (AD)" : ""}` : "";
   return [
     genre ? { label: "Género", value: genre } : null,
-    bpm ? { label: "BPM", value: `${bpm}` } : null,
-    key ? { label: "Tonalidad", value: key } : null,
+    bpmText ? { label: "BPM", value: bpmText } : null,
+    keyText ? { label: "Tonalidad", value: keyText } : null,
     duration ? { label: "Duración", value: formatDuration(duration) } : null,
   ].filter(Boolean);
 }
@@ -1564,39 +1849,3 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

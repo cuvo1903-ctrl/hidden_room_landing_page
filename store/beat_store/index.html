@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../../styles.css?v=20260718-wavesurfer-global">
   <link rel="stylesheet" href="../store.css?v=20260718-beat-admin-fields">
-  <link rel="stylesheet" href="bs.css?v=20260720-beat-licenses-modal">
+  <link rel="stylesheet" href="bs.css?v=20260722-producer-username">
 </head>
 <body class="store-page beat-store-page hr-page" data-page="beat-store" data-hr-chrome data-hr-context="store">
   <div id="hr-global-nav"></div>
@@ -25,7 +25,7 @@
           <p class="hero-copy hr-subtitle">Explora beats y licencias disponibles.</p>
           <div class="beat-hero__actions hr-cluster">
             <a class="primary-button hr-btn hr-btn-primary" href="#beat-grid">Explorar beats</a>
-            <a class="secondary-button hr-btn" href="../cart.html">Carrito proximamente</a>
+            <a class="secondary-button hr-btn" href="../cart.html">Carrito próximamente</a>
           </div>
         </div>
       </div>
@@ -35,7 +35,7 @@
       <div class="hr-container hr-stack hr-stack-xl">
         <div class="section-heading hr-grid hr-grid-2">
           <div>
-            <p class="eyebrow hr-eyebrow">Catalogo</p>
+            <p class="eyebrow hr-eyebrow">Catálogo</p>
             <h2 id="beats-title" class="hr-section-title">Beats disponibles</h2>
           </div>
         </div>
@@ -83,12 +83,12 @@
             <h3 id="beat-form-title">Nuevo beat</h3>
             <div class="field hr-field"><label class="hr-label" for="beat-name">Nombre</label><input class="hr-input" id="beat-name" required maxlength="160"></div>
             <div class="field hr-field"><label class="hr-label" for="beat-slug">Slug</label><input class="hr-input" id="beat-slug" required pattern="[a-z0-9\-]+" maxlength="160"></div>
-            <div class="field hr-field"><label class="hr-label" for="beat-description">Descripcion</label><textarea class="hr-textarea" id="beat-description" rows="4"></textarea></div>
-            <div class="field hr-field"><label class="hr-label" for="beat-producer">Productor</label><input class="hr-input" id="beat-producer" maxlength="160" placeholder="Nombre del productor"></div>
+            <div class="field hr-field"><label class="hr-label" for="beat-description">Descripción</label><textarea class="hr-textarea" id="beat-description" rows="4"></textarea></div>
+            <div class="field hr-field beat-producer-field"><label class="hr-label" for="beat-producer">Productor</label><div class="beat-producer-field__row"><input class="hr-input" id="beat-producer" maxlength="160" placeholder="Nombre del productor"><button class="secondary-button beat-producer-username-button" type="button" data-use-current-username hidden>Usar mi username</button><button class="secondary-button beat-producer-profile-button" type="button" data-producer-profile-current disabled title="Guarda el beat primero para crear el perfil.">Crear perfil</button></div></div>
             <div class="beat-admin__music-fields">
               <div class="field hr-field"><label class="hr-label" for="beat-genre-input">Género</label><input class="hr-input" id="beat-genre-input" maxlength="80" placeholder="Trap, Boom bap, Reggaeton..."></div>
-              <div class="field hr-field beat-autodetect-field"><label class="hr-label" for="beat-bpm">BPM</label><input class="hr-input" id="beat-bpm" type="number" min="1" max="300" step="1"><button class="secondary-button beat-autodetect-button" type="button" data-autodetect-soon="BPM">Autodetectar</button></div>
-              <div class="field hr-field beat-autodetect-field"><label class="hr-label" for="beat-key">Tonalidad</label><input class="hr-input" id="beat-key" maxlength="24" placeholder="Cm, F# minor..."><button class="secondary-button beat-autodetect-button" type="button" data-autodetect-soon="tonalidad">Autodetectar</button></div>
+              <div class="field hr-field beat-autodetect-field"><label class="hr-label" for="beat-bpm">BPM</label><div class="beat-ad-input"><input class="hr-input" id="beat-bpm" type="number" min="1" max="300" step="1"><span class="beat-ad-badge" data-ad-badge="bpm" hidden>AD</span></div><button class="secondary-button beat-autodetect-button" type="button" data-autodetect="bpm">Autodetectar</button></div>
+              <div class="field hr-field beat-autodetect-field"><label class="hr-label" for="beat-key">Tonalidad</label><div class="beat-ad-input"><input class="hr-input" id="beat-key" maxlength="24" placeholder="Cm, F# minor..."><span class="beat-ad-badge" data-ad-badge="key" hidden>AD</span></div><button class="secondary-button beat-autodetect-button" type="button" data-autodetect="key">Autodetectar</button></div>
               <input id="beat-duration" type="hidden">
             </div>
             <div class="field hr-field"><label class="hr-label" for="beat-cover-file">Portada cuadrada</label><input class="hr-input" id="beat-cover-file" type="file" accept="image/*,.jpg,.jpeg,.png,.webp"></div>
@@ -141,13 +141,13 @@
               <h3 id="beat-license-form-title">Nueva licencia</h3>
               <div class="field hr-field"><label class="hr-label" for="beat-license-name">Nombre</label><input class="hr-input" id="beat-license-name" required maxlength="120"></div>
               <div class="beat-admin__music-fields">
-                <div class="field hr-field"><label class="hr-label" for="beat-license-min-price">Precio minimo</label><input class="hr-input" id="beat-license-min-price" type="number" min="0" step="0.01" required></div>
-                <div class="field hr-field"><label class="hr-label" for="beat-license-max-price">Precio maximo</label><input class="hr-input" id="beat-license-max-price" type="number" min="0" step="0.01" required></div>
+                <div class="field hr-field"><label class="hr-label" for="beat-license-min-price">Precio mínimo</label><input class="hr-input" id="beat-license-min-price" type="number" min="0" step="0.01" required></div>
+                <div class="field hr-field"><label class="hr-label" for="beat-license-max-price">Precio máximo</label><input class="hr-input" id="beat-license-max-price" type="number" min="0" step="0.01" required></div>
               </div>
-              <div class="field hr-field"><label class="hr-label" for="beat-license-description">Descripcion</label><textarea class="hr-textarea" id="beat-license-description" rows="3" required></textarea></div>
-              <div class="field hr-field"><label class="hr-label" for="beat-license-terms">Terminos y condiciones</label><textarea class="hr-textarea" id="beat-license-terms" rows="3"></textarea></div>
+              <div class="field hr-field"><label class="hr-label" for="beat-license-description">Descripción</label><textarea class="hr-textarea" id="beat-license-description" rows="3" required></textarea></div>
+              <div class="field hr-field"><label class="hr-label" for="beat-license-terms">Términos y condiciones</label><textarea class="hr-textarea" id="beat-license-terms" rows="3"></textarea></div>
               <div class="beat-admin__music-fields">
-                <div class="field hr-field"><label class="hr-label" for="beat-license-stream-limit">Limite de streams</label><input class="hr-input" id="beat-license-stream-limit" type="number" min="0" step="1"></div>
+                <div class="field hr-field"><label class="hr-label" for="beat-license-stream-limit">Límite de streams</label><input class="hr-input" id="beat-license-stream-limit" type="number" min="0" step="1"></div>
                 <div class="field hr-field"><label class="hr-label" for="beat-license-format">Formato incluido</label><input class="hr-input" id="beat-license-format" maxlength="80" placeholder="MP3 + WAV"></div>
               </div>
               <div class="check-grid hr-grid hr-grid-2">
@@ -191,8 +191,8 @@
     <a href="../">Volver a la tienda</a>
   </footer>
 
-  <script src="../../site.js?v=20260721-beat-previews"></script>
-  <script type="module" src="bs.js?v=20260721-beat-readable-paths"></script>
+  <script src="../../site.js?v=20260722-mojibake-fix"></script>
+  <script type="module" src="bs.js?v=20260722-mojibake-fix"></script>
 </body>
 </html>
 
