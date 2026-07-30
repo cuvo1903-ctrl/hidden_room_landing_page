@@ -472,7 +472,6 @@ function isPdfFile(file) {
 }
 
 function canDownloadContentFile(file) {
-  if (state.isAdmin) return true;
   return state.downloadAccess.some((grant) => String(grant.content_id) === String(file?.content_id) && ["active", "completed"].includes(grant.status));
 }
 
