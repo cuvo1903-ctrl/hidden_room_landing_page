@@ -2,6 +2,8 @@
 
 Este agente procesa los jobs en `cloud_jobs` y ejecuta las operaciones sobre el filesystem de Debian en `/home/prodxdack/hiddenroom`.
 
+Las carpetas bajo `users/` deben nombrarse con `public.users.user_id` (ID operativo Hidden Room), no con `auth.users.id`/`public.users.id` UUID. Ejemplo: `/home/prodxdack/hiddenroom/users/112045__jeshumk/downloads/`.
+
 ## Requisitos
 
 - Debian / Ubuntu con Node.js 20+ instalado.

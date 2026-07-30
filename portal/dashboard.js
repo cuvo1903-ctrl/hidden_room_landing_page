@@ -1230,7 +1230,7 @@ async function fetchAllTableEditorRows(tableName, select, defaultSort = null, op
 async function fetchComputedMembershipDashboardRows(selectedUserId = '') {
   const usersResult = await fetchAllTableEditorRows(
     'users',
-    'user_id, display_name, email, username',
+    'id, user_id, display_name, email, username',
     { field: 'display_name', direction: 'asc' },
     {
       maxRows: ADMIN_TABLE_INITIAL_ROW_LIMIT,
@@ -3498,7 +3498,7 @@ async function renderCollabTasks(contextLabel = 'Colaborador') {
   const [{ data: users, error: usersError }, eventsResult] = await Promise.all([
     supabase
       .from('users')
-      .select('user_id, display_name, username, email, passline_tracking')
+      .select('id, user_id, display_name, username, email, passline_tracking')
       .order('display_name', { ascending: true }),
     fetchScrumEvents(),
   ]);
@@ -3734,6 +3734,7 @@ function userPickerSearchText(user) {
     user.email,
     user.username,
     user.user_id,
+    user.id,
   ].filter((item) => item !== null && item !== undefined).join(' '));
 }
 
@@ -7987,7 +7988,7 @@ async function ensureUsersLoaded() {
   try {
     const users = await fetchAllTableEditorRows(
       'users',
-      'user_id, display_name, username, email, passline_tracking',
+      'id, user_id, display_name, username, email, passline_tracking',
       { field: 'display_name', direction: 'asc' }
     );
     state.data.users = uniqueUsers(users);
@@ -8145,10 +8146,21 @@ function updateDownloadMembershipFields(form) {
   }
 }
 
+function resolveOperationalUserId(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const user = (state.data.users ?? []).find((item) => (
+    String(item.user_id ?? '') === raw
+    || String(item.id ?? '') === raw
+  ));
+  return String(user?.user_id ?? raw).trim();
+}
+
 function getUserDownloadCloudPath(userId) {
-  const user = (state.data.users ?? []).find((item) => String(item.user_id) === String(userId));
-  const slugSource = user?.username || user?.display_name || user?.email || userId;
-  return `/users/${sanitizeCloudSegment(userId)}__${sanitizeCloudSegment(slugSource)}/downloads`;
+  const operationalUserId = resolveOperationalUserId(userId);
+  const user = (state.data.users ?? []).find((item) => String(item.user_id) === operationalUserId);
+  const slugSource = user?.username || user?.display_name || user?.email || operationalUserId;
+  return `/users/${sanitizeCloudSegment(operationalUserId)}__${sanitizeCloudSegment(slugSource)}/downloads`;
 }
 
 function sanitizeCloudSegment(value) {

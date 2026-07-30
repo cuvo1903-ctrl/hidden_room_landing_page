@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
 
   const { data: callerProfile, error: callerProfileError } = await adminClient
     .from('users')
-    .select('roles')
+    .select('roles,user_id')
     .eq('id', callerData.user.id)
     .maybeSingle();
 
@@ -143,6 +143,7 @@ Deno.serve(async (req) => {
       path: requestedPath,
       payload: { type: itemType, name: itemName },
       created_by: callerData.user.id,
+      business_user_id: callerProfile.user_id ?? null,
     });
 
     const result = await waitForJobResult(adminClient, jobId);

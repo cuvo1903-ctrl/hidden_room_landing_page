@@ -19,6 +19,7 @@ sharp.concurrency(Number(process.env.SHARP_CONCURRENCY || 1));
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const CLOUD_ROOT = process.env.CLOUD_HIDDENROOM_ROOT || process.env.CLOUD_ROOT;
+const CLOUD_HIDDENROOM_URL = process.env.CLOUD_HIDDENROOM_URL || 'https://cloud.hiddenroom.mx';
 const PORT = Number(process.env.CLOUD_PORT || process.env.PORT || 3001);
 const MAX_UPLOAD_BYTES = Number(process.env.CLOUD_MAX_UPLOAD_BYTES || 100 * 1024 * 1024);
 const FFMPEG_PATH = process.env.FFMPEG_PATH || resolveFfmpegStaticPath() || 'ffmpeg';
@@ -305,9 +306,10 @@ async function requireCloudUser(req) {
 }
 
 function getUserCloudRoot(user) {
-  const label = user.profile?.username || user.profile?.display_name || user.profile?.email || user.id;
+  const operationalUserId = user.profile?.user_id || user.id;
+  const label = user.profile?.username || user.profile?.display_name || user.profile?.email || operationalUserId;
   const slug = slugifyUsername(label, 'user');
-  return path.join(path.resolve(CLOUD_ROOT), 'users', `${user.id}__${slug}`);
+  return path.join(path.resolve(CLOUD_ROOT), 'users', `${operationalUserId}__${slug}`);
 }
 
 async function ensureUserCloudFolder(user) {
@@ -1334,38 +1336,45 @@ async function downloadPublic(req, res, url) {
   return downloadFile(user, req, res, tokenUrl);
 }
 
-async function assertAcademiaFileAccess(req, storagePath) {
+async function assertAcademiaFileAccess(req, storagePaths) {
   const token = getBearerToken(req);
   if (!token) { const err = new Error('Sesion requerida.'); err.status = 401; throw err; }
-  const encodedStoragePath = encodeURIComponent(storagePath);
-  const rows = await supabaseFetch(`/rest/v1/academy_content_files?select=id&storage_path=eq.${encodedStoragePath}&limit=1`, {
-    headers: {
-      apikey: SERVICE_ROLE_KEY,
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-    },
-  }).catch((err) => {
-    const accessError = new Error(err.message || 'No se pudo validar acceso Academia.');
-    accessError.status = 403;
-    throw accessError;
-  });
-  if (!Array.isArray(rows) || !rows.length) {
-    const err = new Error('No tienes acceso a este archivo de Academia.');
-    err.status = 403;
-    throw err;
+  for (const storagePath of Array.isArray(storagePaths) ? storagePaths : [storagePaths]) {
+    const encodedStoragePath = encodeURIComponent(storagePath);
+    const rows = await supabaseFetch(`/rest/v1/academy_content_files?select=id&storage_path=eq.${encodedStoragePath}&limit=1`, {
+      headers: {
+        apikey: SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+    }).catch((err) => {
+      const accessError = new Error(err.message || 'No se pudo validar acceso Academia.');
+      accessError.status = 403;
+      throw accessError;
+    });
+    if (Array.isArray(rows) && rows.length) return;
   }
+  const err = new Error('No tienes acceso a este archivo de Academia.');
+  err.status = 403;
+  throw err;
 }
 
 async function downloadAcademiaFile(user, req, res, url) {
-  const requestedPath = normalizeCloudPath(url.searchParams.get('path'));
+  let requestedPath = normalizeCloudPath(url.searchParams.get('path'));
+  if (requestedPath.startsWith('/files/academia/')) requestedPath = normalizeCloudPath(requestedPath.slice('/files'.length));
   if (!requestedPath.startsWith('/academia/')) {
     const err = new Error('Ruta Academia no permitida.');
     err.status = 403;
     throw err;
   }
   const name = safeChildName(url.searchParams.get('name'));
-  const storageUrl = `${CLOUD_HIDDENROOM_URL.replace(/\/$/, '')}${(requestedPath === '/' ? `/${name}` : `${requestedPath}/${name}`).split('/').map(encodeURIComponent).join('/')}`;
-  await assertAcademiaFileAccess(req, storageUrl);
+  const filePath = requestedPath === '/' ? `/${name}` : `${requestedPath}/${name}`;
+  const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
+  const cloudBaseUrl = CLOUD_HIDDENROOM_URL.replace(/\/$/, '');
+  await assertAcademiaFileAccess(req, [
+    `${cloudBaseUrl}${encodedPath}`,
+    `${cloudBaseUrl}/files${encodedPath}`,
+  ]);
   const { child } = await resolveSafeChild(path.resolve(CLOUD_ROOT), requestedPath, name, { mustExist: true });
   const stats = await fsp.stat(child);
   if (!stats.isFile()) throw new Error('El elemento no es archivo.');

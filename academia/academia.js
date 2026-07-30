@@ -173,8 +173,18 @@ function sanitizeCloudSegment(value, fallback = "item") {
     .slice(0, 80) || fallback;
 }
 
+function safeCloudFileName(fileName) {
+  const raw = String(fileName || "archivo").replace(/[\\/]/g, "_");
+  const dotIndex = raw.lastIndexOf(".");
+  const base = dotIndex > 0 ? raw.slice(0, dotIndex) : raw;
+  const ext = dotIndex > 0 ? raw.slice(dotIndex + 1) : "";
+  const safeBase = sanitizeCloudSegment(base, "archivo");
+  const safeExt = ext.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 16);
+  return safeExt ? `${safeBase}.${safeExt}` : safeBase;
+}
+
 function buildCloudStagingPath(userId, fileName) {
-  const safeFileName = String(fileName || "archivo").replace(/[\\/]/g, "_").replace(/[\u0000-\u001f\u007f]/g, "").trim() || "archivo";
+  const safeFileName = safeCloudFileName(fileName);
   const uniquePart = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
   return `${userId}/${Date.now()}-${uniquePart}-${safeFileName}`;
 }
@@ -201,6 +211,45 @@ async function cloudApiFetch(url, options = {}) {
   return fetch(url, { ...options, headers });
 }
 
+function setUploadProgress(form, scope, percent, label) {
+  const progress = form?.querySelector(`[data-${scope}-upload-progress]`);
+  const bar = form?.querySelector(`[data-${scope}-upload-progress-bar]`);
+  const labelEl = form?.querySelector(`[data-${scope}-upload-progress-label]`);
+  const valueEl = form?.querySelector(`[data-${scope}-upload-progress-value]`);
+  const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+  if (progress) progress.hidden = false;
+  if (bar) bar.style.width = `${safePercent}%`;
+  if (labelEl) labelEl.textContent = label;
+  if (valueEl) valueEl.textContent = `${Math.round(safePercent)}%`;
+}
+
+function resetUploadProgress(form, scope, label = "Esperando archivo") {
+  setUploadProgress(form, scope, 0, label);
+  const progress = form?.querySelector(`[data-${scope}-upload-progress]`);
+  if (progress) progress.hidden = true;
+}
+
+function setContentUploadProgress(form, percent, label) {
+  setUploadProgress(form, "content", percent, label);
+}
+
+function resetContentUploadProgress(form) {
+  resetUploadProgress(form, "content", "Esperando archivo");
+}
+
+function setFormPending(form, pending, label = "Procesando...") {
+  form?.querySelectorAll('button[type="submit"]').forEach((button) => {
+    if (pending) {
+      button.dataset.originalText = button.dataset.originalText || button.textContent || "";
+      button.disabled = true;
+      button.textContent = label;
+    } else {
+      button.disabled = false;
+      if (button.dataset.originalText) button.textContent = button.dataset.originalText;
+      delete button.dataset.originalText;
+    }
+  });
+}
 async function uploadAcademiaCloudFile(file, targetPath) {
   if (!file || !Number.isFinite(file.size) || file.size <= 0) throw new Error("Selecciona un archivo valido.");
   const { data: { user } } = await state.supabase.auth.getUser();
@@ -340,24 +389,50 @@ function cloudDownloadRequestFromHref(href) {
   const url = new URL(href, window.location.href);
   const cloudRoot = new URL(CLOUD_HIDDENROOM_URL);
   if (url.origin !== cloudRoot.origin) return null;
-  const parts = decodeURIComponent(url.pathname).split("/").filter(Boolean);
+  let parts = decodeURIComponent(url.pathname).split("/").filter(Boolean);
+  if (parts[0] === "files") parts = parts.slice(1);
   const name = parts.pop();
   if (!name) return null;
   return { path: normalizeCloudPath(`/${parts.join("/")}`), name };
 }
 
-async function downloadAcademiaCloudFile(link) {
+async function fetchAcademiaCloudBlob(link, accept = "application/octet-stream") {
   const request = cloudDownloadRequestFromHref(link?.href);
   if (!request) throw new Error("Ruta de archivo Cloud invalida.");
   const apiUrl = `${CLOUD_HIDDENROOM_URL.replace(/\/$/, "")}/api/academy-download?path=${encodeURIComponent(request.path)}&name=${encodeURIComponent(request.name)}`;
+  const response = await cloudApiFetch(apiUrl, { headers: { Accept: accept } });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `No se pudo abrir el archivo (${response.status}).`);
+  }
+  return { request, blob: await response.blob() };
+}
+
+async function viewAcademiaCloudFile(link) {
+  const viewer = window.open("", "_blank");
+  if (!viewer) throw new Error("El navegador bloqueo la pestana de visualizacion.");
+  viewer.document.title = "Cargando PDF...";
+  viewer.document.body.innerHTML = "<p style='font-family:sans-serif;padding:24px'>Cargando PDF...</p>";
   link.setAttribute("aria-busy", "true");
   try {
-    const response = await cloudApiFetch(apiUrl, { headers: { Accept: "application/octet-stream" } });
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      throw new Error(detail || `No se pudo descargar el archivo (${response.status}).`);
-    }
-    const blob = await response.blob();
+    const { blob } = await fetchAcademiaCloudBlob(link, "application/pdf");
+    const pdfBlob = blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" });
+    const objectUrl = URL.createObjectURL(pdfBlob);
+    viewer.location.href = objectUrl;
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    setStatus("PDF abierto en una nueva pestana.");
+  } catch (error) {
+    viewer.close();
+    throw error;
+  } finally {
+    link.removeAttribute("aria-busy");
+  }
+}
+
+async function downloadAcademiaCloudFile(link) {
+  link.setAttribute("aria-busy", "true");
+  try {
+    const { request, blob } = await fetchAcademiaCloudBlob(link);
     const objectUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = objectUrl;
@@ -371,19 +446,34 @@ async function downloadAcademiaCloudFile(link) {
     link.removeAttribute("aria-busy");
   }
 }
-function renderAcademiaDownloadAction(file) {
-  if (!file?.storage_path) return "";
-  return `<a class="academia-button secondary academia-download-action" href="${escapeHtml(file.storage_path)}" data-academia-cloud-download="true">Descargar archivo</a>`;
+
+function isPdfFile(file) {
+  return String(file?.mime_type || "").toLowerCase().includes("pdf") || String(file?.file_name || file?.storage_path || "").toLowerCase().endsWith(".pdf");
 }
+
+function renderAcademiaFileActions(file) {
+  if (!file?.storage_path) return "";
+  const href = escapeHtml(file.storage_path);
+  return `
+    <div class="academia-file-actions">
+      ${isPdfFile(file) ? `<a class="academia-button academia-download-action" href="${href}" data-academia-cloud-view="true" target="_blank" rel="noopener">Ver</a>` : ""}
+      <a class="academia-button secondary academia-download-action" href="${href}" data-academia-cloud-download="true">Descargar archivo</a>
+    </div>
+  `;
+}
+
 function contentCard(content) {
+  const file = contentFileFor(content.id);
   return `
     <div class="academia-content">
       <div class="academia-row">
         <strong>${escapeHtml(content.title)}</strong>
         <span class="academia-kicker">${escapeHtml(content.content_type)}</span>
       </div>
+      ${file ? `<div class="academia-content__meta"><span>${escapeHtml(file.file_name)}</span></div>` : ""}
       ${content.body ? `<p>${escapeHtml(content.body)}</p>` : ""}
       ${content.url ? `<a class="academia-button secondary" href="${escapeHtml(content.url)}" target="_blank" rel="noopener">Abrir material</a>` : ""}
+      ${file ? renderAcademiaFileActions(file) : ""}
     </div>
   `;
 }
@@ -652,6 +742,13 @@ function renderAdmin() {
         <label><span>Titulo</span><input name="title" required /></label>
         <label><span>Tipo</span><select name="content_type" data-content-type-select><option value="text">Texto</option><option value="video">Video</option><option value="link">Link</option><option value="file">Archivo</option></select></label>
         <label data-content-file-field hidden><span>Archivo</span><input name="content_file" type="file" data-content-file /><small class="academia-hint">Se guardara en Cloud como contenido general del curso.</small></label>
+        <div class="db-upload-progress" data-content-upload-progress hidden>
+          <div class="db-upload-progress__head">
+            <span data-content-upload-progress-label>Esperando archivo</span>
+            <strong data-content-upload-progress-value>0%</strong>
+          </div>
+          <div class="db-upload-progress__track" aria-hidden="true"><span data-content-upload-progress-bar style="width:0%"></span></div>
+        </div>
         <label><span>URL</span><input name="url" type="url" /></label>
         <label><span>Contenido</span><textarea name="body" rows="5"></textarea></label>
         <label><span>Orden</span><input name="position" type="number" min="1" value="1" /></label>
@@ -751,28 +848,46 @@ async function handleAdminSubmit(form) {
   if (kind === "content") {
     const contentType = data.content_type || "text";
     const file = form.querySelector("[data-content-file]")?.files?.[0] || null;
+    let contentRow = null;
     if (contentType === "file" && !file) throw new Error("Selecciona un archivo para subir a Cloud.");
-    const payload = { module_id: data.module_id, title: data.title, content_type: contentType, url: data.url || null, body: data.body || null, position: Number(data.position || 1), created_by: state.user.id };
-    const { data: contentRow, error } = await state.supabase.from("academy_module_contents").insert(payload).select("id,module_id,title").maybeSingle();
-    if (error) throw error;
-    if (contentType === "file" && file && contentRow?.id) {
-      const module = state.modules.find((item) => item.id === data.module_id);
-      const course = state.courses.find((item) => item.id === module?.course_id);
-      const upload = await uploadAcademiaCloudFile(file, academyContentCloudPath(course, module));
-      const filePayload = {
-        content_id: contentRow.id,
-        file_name: upload.fileName,
-        storage_path: upload.url,
-        cloud_path: upload.cloudPath,
-        mime_type: upload.mimeType,
-        file_size: upload.fileSize,
-        uploaded_by: state.user.id,
-      };
-      const { error: fileError } = await state.supabase.from("academy_content_files").insert(filePayload);
-      if (fileError) throw fileError;
+    try {
+      if (contentType === "file") {
+        setFormPending(form, true, "Subiendo...");
+        setContentUploadProgress(form, 6, "Validando archivo");
+      }
+      const payload = { module_id: data.module_id, title: data.title, content_type: contentType, url: data.url || null, body: data.body || null, position: Number(data.position || 1), created_by: state.user.id };
+      const { data: insertedContent, error } = await state.supabase.from("academy_module_contents").insert(payload).select("id,module_id,title").maybeSingle();
+      if (error) throw error;
+      contentRow = insertedContent;
+      if (contentType === "file" && file && contentRow?.id) {
+        const module = state.modules.find((item) => item.id === data.module_id);
+        const course = state.courses.find((item) => item.id === module?.course_id);
+        setContentUploadProgress(form, 18, "Preparando Cloud");
+        setContentUploadProgress(form, 42, "Subiendo archivo");
+        const upload = await uploadAcademiaCloudFile(file, academyContentCloudPath(course, module));
+        setContentUploadProgress(form, 78, "Registrando archivo");
+        const filePayload = {
+          content_id: contentRow.id,
+          file_name: upload.fileName,
+          storage_path: upload.url,
+          cloud_path: upload.cloudPath,
+          mime_type: upload.mimeType,
+          file_size: upload.fileSize,
+          uploaded_by: state.user.id,
+        };
+        const { error: fileError } = await state.supabase.from("academy_content_files").insert(filePayload);
+        if (fileError) throw fileError;
+        setContentUploadProgress(form, 100, "Archivo cargado");
+      }
+      form.reset();
+      setFormPending(form, false);
+      await reloadAfterMutation("Contenido guardado.");
+    } catch (error) {
+      if (contentType === "file") setContentUploadProgress(form, 100, "Error al subir");
+      if (contentRow?.id) await state.supabase.from("academy_module_contents").delete().eq("id", contentRow.id).catch(() => {});
+      setFormPending(form, false);
+      throw error;
     }
-    form.reset();
-    await reloadAfterMutation("Contenido guardado.");
   }
   if (kind === "access") {
     if (!data.user_id) throw new Error("Selecciona un usuario de la lista.");
@@ -871,6 +986,7 @@ function syncContentFileField(form) {
   const input = form.querySelector("[data-content-file]");
   if (field) field.hidden = type !== "file";
   if (input) input.required = type === "file";
+  if (type !== "file") resetContentUploadProgress(form);
 }
 function bindEvents() {
   document.addEventListener("click", (event) => {
@@ -884,6 +1000,13 @@ function bindEvents() {
       if (search) search.value = userOption.dataset.userDisplay || userName(user);
       picker?.querySelector(".db-user-picker__menu")?.setAttribute("hidden", "");
       syncAccessSelectors(picker?.closest("form"));
+      return;
+    }
+
+    const cloudView = event.target.closest("[data-academia-cloud-view]");
+    if (cloudView) {
+      event.preventDefault();
+      viewAcademiaCloudFile(cloudView).catch((error) => { console.error("Academia cloud view failed", error); setStatus(supabaseErrorMessage(error), "error"); });
       return;
     }
 

@@ -1,5 +1,5 @@
-﻿const SITE_STATUS = "BETA Sitio en construcciÃƒÂ³n";
-const SITE_VERSION = "V. 2.3.0";
+const SITE_STATUS = "BETA Sitio en construcción";
+const SITE_VERSION = "V. 2.3.1";
 const GA_MEASUREMENT_ID = "G-VNHC1Z3FXZ";
 const HR_SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 const HR_SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
@@ -79,7 +79,7 @@ function renderSubNav(module) {
   if (module === "media") {
     return [
       item("/media/", "Publicaciones", !path.includes("/admin")),
-      item("/media/#media-filters", "CategorÃƒÂ­as"),
+      item("/media/#media-filters", "Categorías"),
       item(
         "/media/admin.html",
         "CMS",
@@ -131,7 +131,7 @@ function renderSubNav(module) {
   if (module === "media" && document.body.classList.contains("media-admin")) {
     return `
       <a class="hr-nav__action" href="/media/" target="_blank" rel="noopener">Ver Media</a>
-      <button class="hr-nav__action" id="logout-button" type="button">Cerrar sesiÃƒÂ³n</button>
+      <button class="hr-nav__action" id="logout-button" type="button">Cerrar sesión</button>
     `;
   }
 
@@ -169,16 +169,16 @@ function renderNavActions(module) {
       </button>
       <button class="hr-nav__account hr-nav__account--button" id="js-user-menu-toggle"
         aria-haspopup="true" aria-expanded="false"
-        aria-controls="js-user-menu js-sidebar" aria-label="Abrir menÃƒÂº">
+        aria-controls="js-user-menu js-sidebar" aria-label="Abrir menú">
         <span class="hr-nav__avatar" id="js-user-avatar" aria-hidden="true"></span>
-        <span class="hr-nav__hello" id="js-user-display-name">ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â</span>
+        <span class="hr-nav__hello" id="js-user-display-name">-</span>
       </button>
-      <nav class="db-user-menu" id="js-user-menu" aria-label="MenÃƒÂº de usuario" hidden>
+      <nav class="db-user-menu" id="js-user-menu" aria-label="Menú de usuario" hidden>
         <ul class="db-user-menu__list" role="list">
           <li><a class="db-user-menu__item" href="/">Volver al sitio</a></li>
           <li><button class="db-user-menu__item" data-action="profile">Perfil</button></li>
           <li><button class="db-user-menu__item" data-action="settings">Ajustes</button></li>
-          <li><button class="db-user-menu__item db-user-menu__item--danger" data-action="logout">Cerrar sesiÃƒÂ³n</button></li>
+          <li><button class="db-user-menu__item db-user-menu__item--danger" data-action="logout">Cerrar sesión</button></li>
         </ul>
       </nav>
     `;
@@ -209,7 +209,7 @@ function renderGlobalDrawer(activeModule) {
     ? `
           <div class="hr-global-drawer__guest hr-global-drawer__guest--portal">
             <button type="button" data-global-nav-action="settings">Ajustes</button>
-            <button type="button" data-global-nav-action="logout">Cerrar sesiÃƒÂ³n</button>
+            <button type="button" data-global-nav-action="logout">Cerrar sesión</button>
           </div>
         `
     : `
@@ -221,18 +221,18 @@ function renderGlobalDrawer(activeModule) {
 
   return `
     <button class="hr-global-drawer__backdrop" type="button"
-      data-global-drawer-close aria-label="Cerrar menÃƒÂº" hidden></button>
+      data-global-drawer-close aria-label="Cerrar menú" hidden></button>
     <aside class="hr-global-drawer" id="hr-global-drawer"
-      aria-label="MenÃƒÂº principal" aria-hidden="true" hidden>
+      aria-label="Menú principal" aria-hidden="true" hidden>
       <header class="hr-global-drawer__header">
         <a class="hr-global-drawer__brand" href="/" aria-label="Hidden Room, inicio">
           <img src="/assets/img/white_logo.webp" alt="Hidden Room">
         </a>
         <button class="hr-global-drawer__close" type="button"
-          data-global-drawer-close aria-label="Cerrar menÃƒÂº">Ãƒâ€”</button>
+          data-global-drawer-close aria-label="Cerrar menú">x</button>
       </header>
       <p class="hr-global-drawer__label">Ecosistema</p>
-      <nav class="hr-global-drawer__links" aria-label="NavegaciÃƒÂ³n mÃƒÂ³vil">
+      <nav class="hr-global-drawer__links" aria-label="Navegación móvil">
         ${ECOSYSTEM_LINKS.map(([key, href, label, adminOnly]) => `
           <a href="${href}"${adminOnly ? ' data-admin-nav-link hidden' : ""}${(key === activeModule && !(activeModule === "store" && window.location.pathname.startsWith("/store/beat_store/"))) || (key === "beat-store" && window.location.pathname.startsWith("/store/beat_store/")) ? ' aria-current="page"' : ""}>
             <span>${label}</span>
@@ -452,7 +452,7 @@ function renderGlobalNotifications(items) {
     ? items.map((item) => `
         <li class="hr-notice hr-notice--${escapeNavText(item.type || "info")} hr-global-notifications__item${item.read ? " is-read" : ""}">
           <span class="hr-notice__dot hr-global-notifications__dot" aria-hidden="true"></span>
-          <span class="hr-notice__message hr-global-notifications__message">${escapeNavText(item.message || "NotificaciÃƒÂ³n")}</span>
+          <span class="hr-notice__message hr-global-notifications__message">${escapeNavText(item.message || "Notificación")}</span>
           <time class="hr-notice__time">${escapeNavText(globalNotificationTime(item.created_at))}</time>
         </li>
       `).join("")
@@ -566,7 +566,7 @@ async function hydrateGlobalSession() {
     renderGlobalNotifications(notifications);
     showGlobalInstagramUsernamePrompt(profile, user, supabase);
   } catch (error) {
-    console.info("[HR] No fue posible hidratar la sesiÃƒÂ³n global:", error?.message || error);
+    console.info("[HR] No fue posible hidratar la sesión global:", error?.message || error);
   }
 }
 
@@ -597,7 +597,7 @@ async function attachGlobalSessionSync() {
       window.setTimeout(hydrateGlobalInstagramUsernamePrompt, 0);
     });
   } catch (error) {
-    console.info("[HR] No fue posible sincronizar la sesiÃƒÂ³n global:", error?.message || error);
+    console.info("[HR] No fue posible sincronizar la sesión global:", error?.message || error);
   }
 }
 
@@ -1109,18 +1109,18 @@ function renderGlobalNav() {
           <img src="/assets/img/white_logo.webp" alt="">
           <span>Hidden Room</span>
         </a>
-        <nav class="hr-nav__links" aria-label="NavegaciÃƒÂ³n principal">
+        <nav class="hr-nav__links" aria-label="Navegación principal">
           ${ECOSYSTEM_LINKS.map(([key, href, label, adminOnly]) => `
             <a href="${href}"${adminOnly ? ' data-admin-nav-link hidden' : ""}${(key === activeModule && !(activeModule === "store" && navPath.startsWith("/store/beat_store/"))) || (key === "beat-store" && navPath.startsWith("/store/beat_store/")) ? ' aria-current="page"' : ""}>${label}</a>
           `).join("")}
         </nav>
         <div class="${actionsClass}">${renderNavActions(module)}</div>
-        <button class="hr-nav__mobile-toggle" type="button" aria-label="Abrir menÃƒÂº"
+        <button class="hr-nav__mobile-toggle" type="button" aria-label="Abrir menú"
           aria-controls="hr-global-drawer" aria-expanded="false">
           <span></span><span></span><span></span>
         </button>
       </div>
-      ${subnav ? `<nav class="hr-nav__sub" aria-label="NavegaciÃƒÂ³n contextual">${subnav}</nav>` : ""}
+      ${subnav ? `<nav class="hr-nav__sub" aria-label="Navegación contextual">${subnav}</nav>` : ""}
     </header>
     ${renderGlobalDrawer(activeModule)}
     <aside class="hr-global-notifications" id="hr-global-notifications"
@@ -1130,10 +1130,10 @@ function renderGlobalNav() {
           <span>Cuenta</span>
           <strong>Notificaciones</strong>
         </div>
-        <button type="button" data-hr-notifications-close aria-label="Cerrar notificaciones">Ãƒâ€”</button>
+        <button type="button" data-hr-notifications-close aria-label="Cerrar notificaciones">x</button>
       </header>
       <ul data-hr-notifications-list>
-        <li class="hr-global-notifications__empty">Cargando notificacionesÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</li>
+        <li class="hr-global-notifications__empty">Cargando notificaciones...</li>
       </ul>
     </aside>
     ${renderGlobalBeatPlayer()}

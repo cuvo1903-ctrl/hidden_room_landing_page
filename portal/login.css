@@ -1,4 +1,4 @@
-﻿
+
 
 /* ================================================================
    27. LOGIN PAGE
@@ -354,4 +354,70 @@
 
 .password-toggle {
   cursor: pointer;
+}
+
+.recovery-popup[hidden] {
+  display: none;
+}
+
+.recovery-popup {
+  position: fixed;
+  inset: 0;
+  z-index: var(--hr-z-modal, 1000);
+  display: grid;
+  place-items: center;
+  padding: var(--hr-space-lg, 24px);
+}
+
+.recovery-popup__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, .72);
+  backdrop-filter: blur(8px);
+}
+
+.recovery-popup__dialog {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: var(--hr-space-md, 16px);
+  width: min(100%, 420px);
+  border: 1px solid var(--hr-border-strong, rgba(255, 255, 255, .18));
+  border-radius: var(--hr-radius-none, 0);
+  background: var(--hr-surface, #101010);
+  color: var(--hr-text, #fff);
+  box-shadow: var(--hr-shadow-lg, 0 24px 80px rgba(0, 0, 0, .48));
+  padding: var(--hr-space-xl, 32px);
+}
+
+.recovery-popup__dialog:focus {
+  outline: none;
+  box-shadow: var(--hr-shadow-lg, 0 24px 80px rgba(0, 0, 0, .48)), var(--hr-focus-ring, 0 0 0 2px rgba(230, 0, 0, .55));
+}
+
+.recovery-popup__eyebrow {
+  margin: 0;
+  color: var(--hr-red, #e60000);
+  font-family: var(--hr-font-mono, monospace);
+  font-size: var(--hr-text-xs, .75rem);
+  text-transform: uppercase;
+}
+
+.recovery-popup__dialog h2,
+.recovery-popup__dialog p {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.recovery-popup__dialog h2 {
+  font-size: 1.2rem;
+}
+
+.recovery-popup__dialog p {
+  color: var(--hr-muted, #cfcfcf);
+  line-height: 1.5;
+}
+
+.recovery-popup-open {
+  overflow: hidden;
 }

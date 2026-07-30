@@ -462,3 +462,60 @@ input[data-user-search] {
   opacity: .7;
   pointer-events: none;
 }
+.db-upload-progress {
+  display: grid;
+  gap: var(--hr-space-xs, 6px);
+  padding: var(--hr-space-sm, 10px);
+  border: 1px solid var(--hr-border, rgba(255, 255, 255, .12));
+  border-radius: var(--hr-radius-sm, 6px);
+  background: var(--hr-surface-2, rgba(255, 255, 255, .06));
+}
+
+.db-upload-progress[hidden] {
+  display: none;
+}
+
+.db-upload-progress__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hr-space-sm, 10px);
+  color: var(--hr-muted, #bdbdbd);
+  font-family: var(--hr-font-mono, monospace);
+  font-size: var(--hr-text-xs, .75rem);
+  text-transform: uppercase;
+}
+
+.db-upload-progress__head strong {
+  color: var(--hr-text, #fff);
+}
+
+.db-upload-progress__track {
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid var(--hr-border, rgba(255, 255, 255, .12));
+  background: rgba(0, 0, 0, .28);
+}
+
+.db-upload-progress__track span {
+  display: block;
+  height: 100%;
+  background: var(--hr-red, #e60000);
+  transition: width var(--hr-duration-normal, 240ms) ease;
+}
+
+.academia-form button[disabled] {
+  opacity: .68;
+  cursor: progress;
+}
+.academia-file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.academia-download-action[aria-busy="true"] {
+  opacity: .68;
+  pointer-events: none;
+}
