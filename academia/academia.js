@@ -265,24 +265,36 @@ async function uploadAcademiaCloudFile(file, targetPath) {
   const { data: { user } } = await state.supabase.auth.getUser();
   if (!user) throw new Error("Sesion de Supabase no disponible.");
   const storagePath = buildCloudStagingPath(user.id, file.name);
-  const { error: storageError } = await state.supabase.storage.from(CLOUD_STAGING_BUCKET).upload(storagePath, file, {
-    contentType: file.type || "application/octet-stream",
-    upsert: false,
-  });
-  if (storageError) throw new Error(`No se pudo preparar el archivo: ${storageError.message}`);
+  let storageResult;
+  try {
+    storageResult = await state.supabase.storage.from(CLOUD_STAGING_BUCKET).upload(storagePath, file, {
+      contentType: file.type || "application/octet-stream",
+      upsert: false,
+    });
+  } catch (error) {
+    throw new Error(`No se pudo preparar el archivo en Storage: ${error?.message || error}`);
+  }
+  const storageError = storageResult?.error;
+  if (storageError) throw new Error(`No se pudo preparar el archivo en Storage: ${storageError.message}`);
 
   const currentPath = normalizeCloudPath(targetPath);
-  const response = await cloudApiFetch(`${CLOUD_FUNCTION_BASE}/cloud-upload`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      path: currentPath,
-      filename: file.name,
-      storage_path: storagePath,
-      size: file.size,
-      mime_type: file.type || "application/octet-stream",
-    }),
-  });
+  let response;
+  try {
+    response = await cloudApiFetch(`${CLOUD_FUNCTION_BASE}/cloud-upload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: currentPath,
+        filename: file.name,
+        storage_path: storagePath,
+        size: file.size,
+        mime_type: file.type || "application/octet-stream",
+      }),
+    });
+  } catch (error) {
+    await state.supabase.storage.from(CLOUD_STAGING_BUCKET).remove([storagePath]).catch(() => {});
+    throw new Error(`No se pudo contactar Cloud Upload: ${error?.message || error}`);
+  }
   if (!response.ok) {
     const error = await response.json().catch(() => null);
     if (response.status >= 400 && response.status < 500) await state.supabase.storage.from(CLOUD_STAGING_BUCKET).remove([storagePath]).catch(() => {});
