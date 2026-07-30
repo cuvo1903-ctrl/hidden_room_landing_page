@@ -8,6 +8,7 @@ const state = {
   contents: [],
   courseAccess: [],
   moduleAccess: [],
+  downloadAccess: [],
   contentFiles: [],
   users: [],
   tableEditorTable: "academy_courses",
@@ -108,6 +109,14 @@ const ACADEMY_TABLE_EDITOR_CONFIG = {
     editableFields: ["module_id", "user_id", "status", "expires_at"],
     hiddenColumns: ["id", "granted_by"],
   },
+  academy_content_download_access: {
+    label: "Acceso descargas",
+    source: "downloadAccess",
+    primaryKey: "id",
+    lockedFields: ["id", "granted_by", "granted_at"],
+    editableFields: ["content_id", "user_id", "status", "expires_at"],
+    hiddenColumns: ["id", "granted_by"],
+  },
 };
 
 function tableEditorConfig(tableName = state.tableEditorTable) {
@@ -124,6 +133,7 @@ function academyTableFieldLabel(field) {
     id: "ID",
     course_id: "Curso",
     module_id: "Modulo",
+    content_id: "Contenido",
     user_id: "Usuario",
     title: "Titulo",
     summary: "Resumen",
@@ -330,6 +340,15 @@ function moduleContents(moduleId) {
     .sort((a, b) => Number(a.position || 0) - Number(b.position || 0));
 }
 
+function moduleFileContents(moduleId) {
+  return moduleContents(moduleId).filter((content) => contentFileFor(content.id));
+}
+
+function contentOptionLabel(content) {
+  const file = contentFileFor(content.id);
+  return `${content.title}${file?.file_name ? ` - ${file.file_name}` : ""}`;
+}
+
 function canSeeCourse(course) {
   if (state.isAdmin || course.status === "published") return true;
   return state.courseAccess.some((grant) => grant.course_id === course.id && ["active", "completed"].includes(grant.status));
@@ -396,10 +415,11 @@ function cloudDownloadRequestFromHref(href) {
   return { path: normalizeCloudPath(`/${parts.join("/")}`), name };
 }
 
-async function fetchAcademiaCloudBlob(link, accept = "application/octet-stream") {
+async function fetchAcademiaCloudBlob(link, accept = "application/octet-stream", mode = "view") {
   const request = cloudDownloadRequestFromHref(link?.href);
   if (!request) throw new Error("Ruta de archivo Cloud invalida.");
-  const apiUrl = `${CLOUD_HIDDENROOM_URL.replace(/\/$/, "")}/api/academy-download?path=${encodeURIComponent(request.path)}&name=${encodeURIComponent(request.name)}`;
+  const safeMode = mode === "download" ? "download" : "view";
+  const apiUrl = `${CLOUD_HIDDENROOM_URL.replace(/\/$/, "")}/api/academy-download?path=${encodeURIComponent(request.path)}&name=${encodeURIComponent(request.name)}&mode=${safeMode}`;
   const response = await cloudApiFetch(apiUrl, { headers: { Accept: accept } });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
@@ -415,7 +435,7 @@ async function viewAcademiaCloudFile(link) {
   viewer.document.body.innerHTML = "<p style='font-family:sans-serif;padding:24px'>Cargando PDF...</p>";
   link.setAttribute("aria-busy", "true");
   try {
-    const { blob } = await fetchAcademiaCloudBlob(link, "application/pdf");
+    const { blob } = await fetchAcademiaCloudBlob(link, "application/pdf", "view");
     const pdfBlob = blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" });
     const objectUrl = URL.createObjectURL(pdfBlob);
     viewer.location.href = objectUrl;
@@ -432,7 +452,7 @@ async function viewAcademiaCloudFile(link) {
 async function downloadAcademiaCloudFile(link) {
   link.setAttribute("aria-busy", "true");
   try {
-    const { request, blob } = await fetchAcademiaCloudBlob(link);
+    const { request, blob } = await fetchAcademiaCloudBlob(link, "application/octet-stream", "download");
     const objectUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = objectUrl;
@@ -451,13 +471,19 @@ function isPdfFile(file) {
   return String(file?.mime_type || "").toLowerCase().includes("pdf") || String(file?.file_name || file?.storage_path || "").toLowerCase().endsWith(".pdf");
 }
 
+function canDownloadContentFile(file) {
+  if (state.isAdmin) return true;
+  return state.downloadAccess.some((grant) => String(grant.content_id) === String(file?.content_id) && ["active", "completed"].includes(grant.status));
+}
+
 function renderAcademiaFileActions(file) {
   if (!file?.storage_path) return "";
   const href = escapeHtml(file.storage_path);
+  const canDownload = canDownloadContentFile(file);
   return `
     <div class="academia-file-actions">
       ${isPdfFile(file) ? `<a class="academia-button academia-download-action" href="${href}" data-academia-cloud-view="true" target="_blank" rel="noopener">Ver</a>` : ""}
-      <a class="academia-button secondary academia-download-action" href="${href}" data-academia-cloud-download="true">Descargar archivo</a>
+      ${canDownload ? `<a class="academia-button secondary academia-download-action" href="${href}" data-academia-cloud-download="true">Descargar</a>` : ""}
     </div>
   `;
 }
@@ -598,13 +624,16 @@ function syncContentModuleSelect(form) {
 function syncAccessSelectors(form) {
   if (!form) return;
   const type = form.querySelector("[data-access-type]")?.value || "course";
+  const needsModule = type === "module" || type === "download";
   const userId = form.querySelector('.db-user-picker input[type="hidden"][name="user_id"]')?.value || "";
   const courseSelect = form.querySelector("[data-access-course-select]");
   const cycleField = form.querySelector("[data-access-cycle-field]");
   const cycleSelect = form.querySelector("[data-access-cycle-select]");
   const moduleField = form.querySelector("[data-access-module-field]");
   const moduleSelect = form.querySelector("[data-access-module-select]");
-  const availableCourses = type === "module" && userId
+  const contentField = form.querySelector("[data-access-content-field]");
+  const contentSelect = form.querySelector("[data-access-content-select]");
+  const availableCourses = needsModule && userId
     ? activeCourseAccessForUser(userId).map((grant) => state.courses.find((course) => course.id === grant.course_id)).filter(Boolean)
     : state.courses;
   const previousCourse = courseSelect?.value || "";
@@ -613,16 +642,26 @@ function syncAccessSelectors(form) {
   const selectedCourse = courseSelect?.value || availableCourses[0]?.id || "";
   const previousCycle = cycleSelect?.value || "";
   const cycles = courseCycles(selectedCourse);
-  if (cycleField) cycleField.hidden = type !== "module";
+  if (cycleField) cycleField.hidden = !needsModule;
   if (cycleSelect) {
     cycleSelect.innerHTML = cycles.map((cycle) => `<option value="${escapeHtml(cycle)}">${escapeHtml(cycle)}</option>`).join("");
     if (cycles.includes(previousCycle)) cycleSelect.value = previousCycle;
   }
   const selectedCycle = cycleSelect?.value || cycles[0] || "";
-  if (moduleField) moduleField.hidden = type !== "module";
+  const previousModule = moduleSelect?.value || "";
+  const modules = courseModules(selectedCourse, selectedCycle);
+  if (moduleField) moduleField.hidden = !needsModule;
   if (moduleSelect) {
-    moduleSelect.required = type === "module";
-    setSelectOptions(moduleSelect, courseModules(selectedCourse, selectedCycle), (module) => module.title);
+    moduleSelect.required = needsModule;
+    setSelectOptions(moduleSelect, modules, (module) => module.title);
+    if (modules.some((module) => module.id === previousModule)) moduleSelect.value = previousModule;
+  }
+  const selectedModule = moduleSelect?.value || modules[0]?.id || "";
+  const contents = moduleFileContents(selectedModule);
+  if (contentField) contentField.hidden = type !== "download";
+  if (contentSelect) {
+    contentSelect.required = type === "download";
+    setSelectOptions(contentSelect, contents, contentOptionLabel);
   }
 }
 
@@ -757,10 +796,11 @@ function renderAdmin() {
       <form class="academia-form" data-admin-form="access">
         <h3>Dar acceso</h3>
         ${renderUserPicker("user_id", "Usuario")}
-        <label><span>Tipo de acceso</span><select name="access_type" data-access-type><option value="course">Curso</option><option value="module">Modulo</option></select></label>
+        <label><span>Tipo de acceso</span><select name="access_type" data-access-type><option value="course">Curso</option><option value="module">Modulo</option><option value="download">Descarga</option></select></label>
         <label><span>Curso</span><select name="course_id" data-access-course-select required>${optionList(state.courses, (course) => course.title)}</select></label>
         <label data-access-cycle-field hidden><span>CICLO</span><select name="access_cycle" data-access-cycle-select>${courseCycles(state.courses[0]?.id).map((cycle) => `<option value="${escapeHtml(cycle)}">${escapeHtml(cycle)}</option>`).join("")}</select></label>
         <label data-access-module-field hidden><span>Modulo</span><select name="module_id" data-access-module-select>${optionList(courseModules(state.courses[0]?.id, courseCycles(state.courses[0]?.id)[0] || ""), (module) => module.title)}</select></label>
+        <label data-access-content-field hidden><span>Contenido</span><select name="content_id" data-access-content-select></select></label>
         <label><span>Estado</span><select name="status"><option value="active">Activo</option><option value="revoked">Revocado</option><option value="completed">Completado</option></select></label>
         <button class="academia-button" type="submit">Asignar acceso</button>
       </form>
@@ -787,15 +827,16 @@ async function loadAcademia() {
     els.user.textContent = "Sesion no iniciada";
   }
 
-  const [coursesRes, modulesRes, contentsRes, contentFilesRes, courseAccessRes, moduleAccessRes] = await Promise.all([
+  const [coursesRes, modulesRes, contentsRes, contentFilesRes, courseAccessRes, moduleAccessRes, downloadAccessRes] = await Promise.all([
     state.supabase.from("academy_courses").select("*").order("created_at", { ascending: false }),
     state.supabase.from("academy_course_modules").select("*").order("position", { ascending: true }),
     state.supabase.from("academy_module_contents").select("*").order("position", { ascending: true }),
     state.supabase.from("academy_content_files").select("*").order("created_at", { ascending: false }),
     state.user ? state.supabase.from("academy_course_access").select("*") : Promise.resolve({ data: [] }),
     state.user ? state.supabase.from("academy_module_access").select("*") : Promise.resolve({ data: [] }),
+    state.user ? state.supabase.from("academy_content_download_access").select("*") : Promise.resolve({ data: [] }),
   ]);
-  const error = firstError([coursesRes, modulesRes, contentsRes, contentFilesRes, courseAccessRes, moduleAccessRes]);
+  const error = firstError([coursesRes, modulesRes, contentsRes, contentFilesRes, courseAccessRes, moduleAccessRes, downloadAccessRes]);
   if (error) throw error;
 
   state.courses = coursesRes.data || [];
@@ -804,6 +845,7 @@ async function loadAcademia() {
   state.contentFiles = contentFilesRes.data || [];
   state.courseAccess = courseAccessRes.data || [];
   state.moduleAccess = moduleAccessRes.data || [];
+  state.downloadAccess = downloadAccessRes.data || [];
 
   if (state.isAdmin) {
     const { data: users, error: usersError } = await state.supabase.from("users").select("id,user_id,email,display_name,username").order("display_name", { ascending: true });
@@ -891,6 +933,14 @@ async function handleAdminSubmit(form) {
   }
   if (kind === "access") {
     if (!data.user_id) throw new Error("Selecciona un usuario de la lista.");
+    if (data.access_type === "download") {
+      if (!data.content_id) throw new Error("Selecciona un contenido con archivo.");
+      const payload = { content_id: data.content_id, user_id: data.user_id, status: data.status || "active", granted_by: state.user.id };
+      const { error } = await state.supabase.from("academy_content_download_access").upsert(payload, { onConflict: "content_id,user_id" });
+      if (error) throw error;
+      await reloadAfterMutation("Descarga habilitada.");
+      return;
+    }
     if (data.access_type === "module") {
       if (!data.module_id) throw new Error("Selecciona un modulo.");
       const payload = { module_id: data.module_id, user_id: data.user_id, status: data.status || "active", granted_by: state.user.id };
@@ -1044,7 +1094,7 @@ function bindEvents() {
       syncContentModuleSelect(contentCourse.closest("form"));
       return;
     }
-    const accessControl = event.target.closest("[data-access-type], [data-access-course-select], [data-access-cycle-select]");
+    const accessControl = event.target.closest("[data-access-type], [data-access-course-select], [data-access-cycle-select], [data-access-module-select]");
     if (accessControl) syncAccessSelectors(accessControl.closest("form"));
   });
 

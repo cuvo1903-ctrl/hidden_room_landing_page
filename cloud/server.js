@@ -1341,7 +1341,7 @@ async function assertAcademiaFileAccess(req, storagePaths) {
   if (!token) { const err = new Error('Sesion requerida.'); err.status = 401; throw err; }
   for (const storagePath of Array.isArray(storagePaths) ? storagePaths : [storagePaths]) {
     const encodedStoragePath = encodeURIComponent(storagePath);
-    const rows = await supabaseFetch(`/rest/v1/academy_content_files?select=id&storage_path=eq.${encodedStoragePath}&limit=1`, {
+    const rows = await supabaseFetch(`/rest/v1/academy_content_files?select=id,content_id&storage_path=eq.${encodedStoragePath}&limit=1`, {
       headers: {
         apikey: SERVICE_ROLE_KEY,
         Authorization: `Bearer ${token}`,
@@ -1352,9 +1352,30 @@ async function assertAcademiaFileAccess(req, storagePaths) {
       accessError.status = 403;
       throw accessError;
     });
-    if (Array.isArray(rows) && rows.length) return;
+    if (Array.isArray(rows) && rows.length) return rows[0];
   }
   const err = new Error('No tienes acceso a este archivo de Academia.');
+  err.status = 403;
+  throw err;
+}
+
+async function assertAcademiaFileDownloadAccess(req, contentId) {
+  const token = getBearerToken(req);
+  if (!token) { const err = new Error('Sesion requerida.'); err.status = 401; throw err; }
+  const encodedContentId = encodeURIComponent(contentId);
+  const rows = await supabaseFetch(`/rest/v1/academy_content_download_access?select=id&content_id=eq.${encodedContentId}&limit=1`, {
+    headers: {
+      apikey: SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  }).catch((err) => {
+    const accessError = new Error(err.message || 'No se pudo validar descarga Academia.');
+    accessError.status = 403;
+    throw accessError;
+  });
+  if (Array.isArray(rows) && rows.length) return;
+  const err = new Error('No tienes permiso de descarga para este contenido.');
   err.status = 403;
   throw err;
 }
@@ -1371,10 +1392,12 @@ async function downloadAcademiaFile(user, req, res, url) {
   const filePath = requestedPath === '/' ? `/${name}` : `${requestedPath}/${name}`;
   const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
   const cloudBaseUrl = CLOUD_HIDDENROOM_URL.replace(/\/$/, '');
-  await assertAcademiaFileAccess(req, [
+  const accessMode = url.searchParams.get('mode') === 'view' ? 'view' : 'download';
+  const academyFile = await assertAcademiaFileAccess(req, [
     `${cloudBaseUrl}${encodedPath}`,
     `${cloudBaseUrl}/files${encodedPath}`,
   ]);
+  if (accessMode === 'download') await assertAcademiaFileDownloadAccess(req, academyFile.content_id);
   const { child } = await resolveSafeChild(path.resolve(CLOUD_ROOT), requestedPath, name, { mustExist: true });
   const stats = await fsp.stat(child);
   if (!stats.isFile()) throw new Error('El elemento no es archivo.');
