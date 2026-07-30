@@ -503,7 +503,7 @@ function renderDetail(courseId) {
       <div>
         <span class="academia-kicker">Curso</span>
         <h2>${escapeHtml(course.title)}</h2>
-        <p>${escapeHtml(course.description || course.summary || "Contenido en preparacion.")}</p>
+        ${course.description || course.summary ? `<p>${escapeHtml(course.description || course.summary)}</p>` : ""}
       </div>
       <button class="academia-button secondary" type="button" data-action="close-detail">Cerrar</button>
     </div>
