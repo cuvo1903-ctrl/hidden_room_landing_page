@@ -147,9 +147,7 @@ Deno.serve(async (req) => {
     .select('roles')
     .eq('id', callerData.user.id)
     .maybeSingle();
-
   if (callerProfileError) return error(callerProfileError.message ?? 'Failed to verify user', 500);
-  if (!callerProfile || !hasAdminRole(callerProfile.roles)) return error('Forbidden', 403);
 
   const body = await req.json().catch(() => null);
   const requestedPath = normalizeRequestPath((body as any)?.path);
@@ -157,6 +155,19 @@ Deno.serve(async (req) => {
   const storagePath = String((body as any)?.storage_path || '').trim();
   const size = Number((body as any)?.size);
   const mimeType = String((body as any)?.mime_type || 'application/octet-stream').trim();
+  const isAdmin = Boolean(callerProfile && hasAdminRole(callerProfile.roles));
+  let hasAcademiaAdmin = false;
+  if (!isAdmin && requestedPath.startsWith('/academia/')) {
+    const { data: permissionRows, error: permissionError } = await adminClient
+      .from('user_permissions')
+      .select('permission_key')
+      .eq('user_id', callerData.user.id)
+      .eq('permission_key', 'academia.admin')
+      .limit(1);
+    if (permissionError) return error(permissionError.message ?? 'Failed to verify permissions', 500);
+    hasAcademiaAdmin = Array.isArray(permissionRows) && permissionRows.length > 0;
+  }
+  if (!isAdmin && !hasAcademiaAdmin) return error('Forbidden', 403);
 
   if (!isSafeFileName(filename)) return error('El nombre del archivo no es válido.', 400);
   if (!isOwnedStoragePath(storagePath, callerData.user.id)) {

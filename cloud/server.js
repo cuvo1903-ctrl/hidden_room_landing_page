@@ -1334,6 +1334,51 @@ async function downloadPublic(req, res, url) {
   return downloadFile(user, req, res, tokenUrl);
 }
 
+async function assertAcademiaFileAccess(req, storagePath) {
+  const token = getBearerToken(req);
+  if (!token) { const err = new Error('Sesion requerida.'); err.status = 401; throw err; }
+  const encodedStoragePath = encodeURIComponent(storagePath);
+  const rows = await supabaseFetch(`/rest/v1/academy_content_files?select=id&storage_path=eq.${encodedStoragePath}&limit=1`, {
+    headers: {
+      apikey: SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  }).catch((err) => {
+    const accessError = new Error(err.message || 'No se pudo validar acceso Academia.');
+    accessError.status = 403;
+    throw accessError;
+  });
+  if (!Array.isArray(rows) || !rows.length) {
+    const err = new Error('No tienes acceso a este archivo de Academia.');
+    err.status = 403;
+    throw err;
+  }
+}
+
+async function downloadAcademiaFile(user, req, res, url) {
+  const requestedPath = normalizeCloudPath(url.searchParams.get('path'));
+  if (!requestedPath.startsWith('/academia/')) {
+    const err = new Error('Ruta Academia no permitida.');
+    err.status = 403;
+    throw err;
+  }
+  const name = safeChildName(url.searchParams.get('name'));
+  const storageUrl = `${CLOUD_HIDDENROOM_URL.replace(/\/$/, '')}${(requestedPath === '/' ? `/${name}` : `${requestedPath}/${name}`).split('/').map(encodeURIComponent).join('/')}`;
+  await assertAcademiaFileAccess(req, storageUrl);
+  const { child } = await resolveSafeChild(path.resolve(CLOUD_ROOT), requestedPath, name, { mustExist: true });
+  const stats = await fsp.stat(child);
+  if (!stats.isFile()) throw new Error('El elemento no es archivo.');
+  const encoded = encodeURIComponent(name).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+  const safeName = name.replace(/["\r\n]/g, '_');
+  return streamFile(req, res, child, stats, {
+    ...API_CORS_HEADERS,
+    'Content-Type': 'application/octet-stream',
+    'Content-Disposition': `attachment; filename="${safeName}"; filename*=UTF-8''${encoded}`,
+    'Cache-Control': 'private, no-store',
+    'X-Content-Type-Options': 'nosniff',
+  });
+}
 async function downloadFile(user, req, res, url) {
   const baseRoot = getCloudBaseRoot(user);
   const { name, child } = await resolveDownloadChild(user, baseRoot, url.searchParams.get('path'), url.searchParams.get('name'));
@@ -1396,6 +1441,7 @@ async function route(req, res) {
       if (req.method === 'POST' && url.pathname === '/api/rename') return await renameItem(user, req, res);
       if (req.method === 'DELETE' && url.pathname === '/api/item') return await deleteItem(user, res, url);
       if (req.method === 'GET' && url.pathname === '/api/download-link') return await createDownloadLink(user, res, url);
+      if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/api/academy-download') return await downloadAcademiaFile(user, req, res, url);
       if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/api/download') return await downloadFile(user, req, res, url);
       return fail(res, 404, 'Ruta API no encontrada.');
     }
