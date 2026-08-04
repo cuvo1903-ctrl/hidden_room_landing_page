@@ -1,9 +1,6 @@
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+import { getSupabaseClient } from "./supabase-config.js";
 
-const supabase = createClient(
-  "https://rpcunbkstadgngqrjafp.supabase.co",
-  "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
-);
+const supabase = await getSupabaseClient();
 
 const form = document.getElementById("recovery-form");
 const statusEl = document.getElementById("recovery-status");
