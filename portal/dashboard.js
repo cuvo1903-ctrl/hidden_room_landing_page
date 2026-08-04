@@ -23,29 +23,7 @@
    Section 1  SUPABASE CLIENT
 ================================================================ */
 
-const SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
-const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
-
-async function getSupabaseClient() {
-  if (window.HiddenRoomSupabase?.getClient) {
-    return window.HiddenRoomSupabase.getClient();
-  }
-
-  if (window.__hiddenRoomSupabaseClient) {
-    return window.__hiddenRoomSupabaseClient;
-  }
-
-  if (!window.__hiddenRoomSupabaseClientPromise) {
-    window.__hiddenRoomSupabaseClientPromise = import(SUPABASE_CDN).then(({ createClient }) => {
-      window.__hiddenRoomSupabaseClient = window.__hiddenRoomSupabaseClient
-        || createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      return window.__hiddenRoomSupabaseClient;
-    });
-  }
-
-  return window.__hiddenRoomSupabaseClientPromise;
-}
+import { getSupabaseClient, SUPABASE_URL } from "./supabase-config.js";
 
 const supabase = await getSupabaseClient();
 
