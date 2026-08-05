@@ -12128,3 +12128,92 @@ body.hr-global-menu-open .hr-beat-player {
   .hr-card-body { padding: 18px; }
   .hr-form-grid { gap: 18px; }
 }
+/* Media uses the shared Hidden Room red accent. */
+body[data-hr-context="media"],
+body[data-hr-accent="media"] {
+  --hr-accent: var(--red);
+  --hr-accent-hover: var(--red-hover);
+  --hr-accent-dim: var(--red-dim);
+  --hr-accent-ghost: var(--red-ghost);
+  --hr-media-accent: var(--red);
+  --hr-focus-ring: 0 0 0 3px var(--red-ghost);
+}
+body[data-hr-context="media"] .hr-nav[data-accent="media"] {
+  --hr-accent: var(--red);
+  --hr-accent-hover: var(--red-hover);
+  --hr-accent-dim: var(--red-dim);
+  --hr-accent-ghost: var(--red-ghost);
+  --hr-nav-active: var(--red);
+}
+/* Responsive header/drawer alignment — 372px system */
+@media (max-width: 620px) {
+  #hr-global-nav .hr-nav__main {
+    min-height: var(--hr-nav-height-mobile, 64px);
+    padding-inline: 18px;
+    gap: 14px;
+  }
+
+  #hr-global-nav .hr-nav__brand,
+  #hr-global-nav .hr-nav__brand img {
+    width: 82px;
+  }
+
+  #hr-global-nav .hr-nav__mobile-toggle {
+    top: 15px;
+    right: 18px;
+    width: 34px;
+    height: 34px;
+    padding: 8px;
+  }
+
+  .hr-global-drawer {
+    width: 100vw;
+    max-width: none;
+    padding: max(15px, env(safe-area-inset-top)) 18px 0;
+  }
+
+  .hr-global-drawer__header {
+    min-height: 34px;
+    padding: 0 0 14px;
+  }
+
+  .hr-global-drawer__brand,
+  .hr-global-drawer__brand img {
+    width: 82px;
+  }
+
+  .hr-global-drawer__close {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  .hr-global-drawer__label {
+    margin: 18px 0 6px;
+  }
+
+  .hr-global-drawer__links a {
+    min-height: 52px;
+    padding-inline: 8px;
+    font-size: 11px;
+    letter-spacing: .12em;
+  }
+
+  .hr-global-drawer__footer {
+    margin-inline: -18px;
+    padding-inline: 18px;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+}
+@media (max-width: 620px) {
+  #hr-global-nav .hr-nav__brand img,
+  .hr-global-drawer__brand img {
+    width: 82px !important;
+    max-width: 82px !important;
+    height: auto;
+  }
+}

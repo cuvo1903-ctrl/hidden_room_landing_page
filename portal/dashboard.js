@@ -1240,7 +1240,7 @@ async function fetchComputedMembershipDashboardRows(selectedUserId = '') {
   );
   const users = uniqueUsers(usersResult ?? []);
   state.data.membershipDashboardUsers = users;
-  state.data.users = users;
+
 
   const requestedUserId = String(selectedUserId || '').trim();
   const selectedUser = users.find((user) => String(user.user_id ?? '') === requestedUserId);
@@ -3687,7 +3687,7 @@ function renderTaskCard(task, editable) {
 function renderUserPicker(name, label, value = '', options = {}) {
   const valueField = options.valueField || 'user_id';
   const limit = options.limit ?? USER_PICKER_RENDER_LIMIT;
-  const users = uniqueUsers(state.data.users)
+  const users = uniqueUsers(options.users ?? state.data.users)
     .filter((user) => !options.requiredField || String(user?.[options.requiredField] ?? '').trim());
   const selected = users.find((u) => String(u?.[valueField] ?? '') === String(value));
   const displayValue = selected
@@ -7652,17 +7652,18 @@ function renderAdminMembershipDashboardContext(rows = [], searchQuery = '') {
 }
 
 function renderMembershipDashboardUserPicker(selectedUserId = '') {
-  const users = state.data.users?.length
-    ? state.data.users
-    : uniqueUsers(state.data.membershipDashboardUsers ?? []);
+  const users = uniqueUsers(state.data.membershipDashboardUsers ?? []);
 
-  const previousUsers = state.data.users;
-  state.data.users = users;
+
+
+
+
   const picker = renderUserPicker('membership_user_id', 'Buscar usuario', selectedUserId, {
     placeholder: 'Buscar usuario',
+    users,
     emptyLabel: 'Sin usuarios encontrados.',
   }).replace('class="db-field db-user-picker"', 'class="db-field db-field--compact db-field--search db-user-picker" data-membership-user-picker="true"');
-  state.data.users = previousUsers;
+
 
   return picker;
 }
