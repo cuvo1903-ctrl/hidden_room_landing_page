@@ -3597,3 +3597,9 @@ input[data-user-search] {
     bottom: calc(var(--hr-bottom-nav-height, 66px) + var(--hr-beat-player-offset, 120px) + 12px + env(safe-area-inset-bottom, 0px));
   }
 }
+/* Portal: bottom navigation must sit above the global beat player. */
+@media (max-width: 800px) {
+  .db-body .hr-beat-player {
+    z-index: calc(var(--hr-bottom-nav-z, 120) - 1) !important;
+  }
+}
