@@ -5,7 +5,7 @@ import {
   sanitizeContent,
   slugify,
   supabase,
-} from "./config.js";
+} from "./config.js?v=20260804-shared-client";
 
 const state = {
   user: null,

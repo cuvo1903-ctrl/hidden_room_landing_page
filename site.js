@@ -1,5 +1,5 @@
 const SITE_STATUS = "BETA Sitio en construcción";
-const SITE_VERSION = "V. 2.3.1";
+const SITE_VERSION = "V. 2.4.0";
 const GA_MEASUREMENT_ID = "G-VNHC1Z3FXZ";
 const HR_SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
 const HR_SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
@@ -514,7 +514,8 @@ async function hydrateGlobalSession() {
 
   try {
     const supabase = await getHiddenRoomSupabaseClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user || null;
     if (!user) {
       sessionTargets.forEach((target) => {
         target.innerHTML = guestHeaderMarkup();
@@ -527,6 +528,9 @@ async function hydrateGlobalSession() {
       toggleGlobalNotifications(false);
       return;
     }
+
+    sessionTargets.forEach((target) => { target.innerHTML = authenticatedHeaderMarkup(null, user, 0); });
+    drawerTargets.forEach((target) => { target.innerHTML = authenticatedHeaderMarkup(null, user, 0, true); });
 
     const { data: profile } = await supabase
       .from("users")
@@ -634,6 +638,7 @@ function toggleGlobalDrawer(forceOpen) {
     : drawer.getAttribute("aria-hidden") === "true";
 
   drawer.hidden = !open;
+  if (open) drawer.scrollTop = 0;
   backdrop.hidden = !open;
   drawer.setAttribute("aria-hidden", String(!open));
   toggle.setAttribute("aria-expanded", String(open));
@@ -669,7 +674,7 @@ function renderGlobalBeatPlayer() {
   if (!shouldRenderGlobalBeatPlayer()) return "";
   document.body.classList.add("hr-has-beat-player");
   return `
-    <aside class="hr-beat-player" id="hr-beat-player" aria-label="Reproductor Beat Store" data-state="idle">
+    <aside class="hr-beat-player is-empty" id="hr-beat-player" aria-label="Reproductor Beat Store" data-state="idle">
       <button class="hr-beat-player__art" id="beat-player-art" type="button" data-beat-player-toggle aria-label="Reproducir preview" aria-pressed="false"><span>HR</span><span class="hr-beat-player__art-icon" aria-hidden="true">&#9658;</span></button>
       <div class="hr-beat-player__meta">
         <strong id="player-title">Selecciona un beat</strong>
@@ -1139,15 +1144,21 @@ function renderGlobalNav() {
     ${renderGlobalBeatPlayer()}
   `;
 
+  const globalBeatPlayer = target.querySelector("#hr-beat-player");
+  if (globalBeatPlayer) document.body.appendChild(globalBeatPlayer);
+  const globalDrawer = target.querySelector(".hr-global-drawer");
+  const globalDrawerBackdrop = target.querySelector(".hr-global-drawer__backdrop");
+  if (globalDrawerBackdrop) document.body.appendChild(globalDrawerBackdrop);
+  if (globalDrawer) document.body.appendChild(globalDrawer);
   document.body.classList.toggle("hr-has-subnav", Boolean(subnav));
 
   target.querySelector(".hr-nav__mobile-toggle")?.addEventListener("click", () => {
     toggleGlobalDrawer();
   });
-  target.querySelectorAll("[data-global-drawer-close]").forEach((control) => {
+  document.querySelectorAll("[data-global-drawer-close]").forEach((control) => {
     control.addEventListener("click", () => toggleGlobalDrawer(false));
   });
-  target.querySelector(".hr-global-drawer")?.addEventListener("click", (event) => {
+  document.querySelector(".hr-global-drawer")?.addEventListener("click", (event) => {
     const actionButton = event.target.closest("[data-global-nav-action]");
     if (actionButton) {
       const action = actionButton.dataset.globalNavAction;
@@ -1164,7 +1175,7 @@ function renderGlobalNav() {
 
     if (event.target.closest("a")) toggleGlobalDrawer(false);
   });
-  attachGlobalDrawerSwipe(target.querySelector(".hr-global-drawer"));
+  attachGlobalDrawerSwipe(globalDrawer);
   hydrateGlobalBeatPlayer();
 }
 

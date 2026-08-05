@@ -5,7 +5,7 @@ import {
   postURL,
   revealMediaAdminLink,
   supabase,
-} from "./config.js";
+} from "./config.js?v=20260804-shared-client";
 
 const PAGE_SIZE = 9;
 const state = { page: 0, loading: false, done: false };

@@ -3597,3 +3597,23 @@ input[data-user-search] {
     bottom: calc(var(--hr-bottom-nav-height, 66px) + var(--hr-beat-player-offset, 120px) + 12px + env(safe-area-inset-bottom, 0px));
   }
 }
+/* Portal: bottom navigation must sit above the global beat player. */
+@media (max-width: 800px) {
+  .db-body .hr-beat-player {
+    z-index: calc(var(--hr-bottom-nav-z, 120) - 1) !important;
+  }
+}
+/* Explicit Portal More layering over the global player. */
+@media (max-width: 800px) {
+  body.db-body #hr-beat-player {
+    z-index: 119 !important;
+  }
+
+  body.db-body .hr-portal-backdrop {
+    z-index: 10000 !important;
+  }
+
+  body.db-body #hr-portal-more {
+    z-index: 10001 !important;
+  }
+}

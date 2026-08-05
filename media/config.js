@@ -1,9 +1,4 @@
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
-
-export const supabase = createClient(
-  "https://rpcunbkstadgngqrjafp.supabase.co",
-  "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
-);
+export const supabase = await window.HiddenRoomSupabase.getClient();
 
 export async function revealMediaAdminLink() {
   const link = document.querySelector("[data-media-admin-link]");

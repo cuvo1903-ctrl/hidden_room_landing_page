@@ -6,7 +6,7 @@ import {
   sanitizeContent,
   setMeta,
   supabase,
-} from "./config.js";
+} from "./config.js?v=20260804-shared-client";
 
 const slug = new URLSearchParams(window.location.search).get("slug")?.trim();
 const article = document.getElementById("post-article");
