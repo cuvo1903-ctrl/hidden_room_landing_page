@@ -1,5 +1,5 @@
 /* ================================================================
-   HIDDEN ROOM — Global Stylesheet
+   HIDDEN ROOM â€” Global Stylesheet
    hiddenroom.mx | Una Marca de Grupo Mysauth
    ================================================================
    TABLE OF CONTENTS
@@ -22,7 +22,7 @@
    16. Footer
    17. Keyframe Animations
    18. Responsive Overrides
-   ──────────────────────────────────────────────────────────────
+   â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    MINIGAME EXTENSIONS (additive, page-scoped)
    19. Page Shell (cursor reset, wrapper)
    20. Canvas & Scanlines
@@ -36,14 +36,14 @@
 
 
 /* ================================================================
-   1. CSS CUSTOM PROPERTIES — DESIGN TOKENS
+   1. CSS CUSTOM PROPERTIES â€” DESIGN TOKENS
 ================================================================ */
 :root {
 
-  /* — Color Palette — */
+  /* â€” Color Palette â€” */
 
   /*
-   * PRIMARY ACCENT — Red
+   * PRIMARY ACCENT â€” Red
    * Current dominant brand color. Used everywhere.
    */
   --red:          #db0100;
@@ -52,14 +52,14 @@
   --red-ghost:    rgba(219,   1,   0, 0.04);
 
   /*
-   * BRAND PALETTE — registered tokens, not yet applied to UI.
+   * BRAND PALETTE â€” registered tokens, not yet applied to UI.
    * Use var(--magenta), var(--teal), var(--green), var(--maroon)
    * when assigning roles in future sections or themed pages.
    *
-   *  --magenta  →  high-energy neon; candidate for Dem00nz / drop events
-   *  --teal     →  cool contrast; candidate for Media / Live Sessions
-   *  --green    →  fresh accent; candidate for Car Culture / success states
-   *  --maroon   →  muted warm; candidate for backgrounds, borders, overlays
+   *  --magenta  â†’  high-energy neon; candidate for Dem00nz / drop events
+   *  --teal     â†’  cool contrast; candidate for Media / Live Sessions
+   *  --green    â†’  fresh accent; candidate for Car Culture / success states
+   *  --maroon   â†’  muted warm; candidate for backgrounds, borders, overlays
    */
   --magenta:        #db00db;
   --magenta-hover:  #ff00ff;
@@ -96,7 +96,7 @@
   --coupon:       #c8ff00;
   --muted:        rgba(240, 236, 228, 0.25);
 
-  /* — Typography — */
+  /* â€” Typography â€” */
   --font-mono:    'DM Mono', monospace;
   --font-display: 'Unbounded', sans-serif;
 
@@ -112,7 +112,7 @@
   --tracking-wider:    0.25em;
   --tracking-widest:   0.35em;
 
-  /* — Spacing — */
+  /* â€” Spacing â€” */
   --space-xs:    4px;
   --space-sm:    8px;
   --space-md:    16px;
@@ -126,7 +126,7 @@
   --padding-page:    48px;   /* standard horizontal page padding */
   --padding-section: 120px;  /* standard vertical section padding */
 
-  /* — Transitions — */
+  /* â€” Transitions â€” */
   --ease-standard: cubic-bezier(.25, .46, .45, .94);
   --duration-fast: 0.2s;
   --duration-base: 0.35s;
@@ -140,7 +140,7 @@
                           transform var(--duration-slow) var(--ease-standard);
   --transition-gallery:   transform 0.6s var(--ease-standard);
 
-  /* — Z-Index Scale — */
+  /* â€” Z-Index Scale â€” */
   --z-base:       0;
   --z-above:      1;
   --z-nav:        100;
@@ -152,7 +152,7 @@
   --z-cursor-ring:9998;
   --z-cursor-dot: 9999;
 
-  /* — Borders — */
+  /* â€” Borders â€” */
   --border-subtle:  1px solid var(--white-trace);
   --border-faint:   1px solid var(--white-ghost);
   --border-dim:     1px solid var(--white-faint);
@@ -369,7 +369,7 @@ body:not(:has(.cursor)) { cursor: default; }
    Base shared properties, then per-variant overrides.
 ================================================================ */
 
-/* — Shared button foundation — */
+/* â€” Shared button foundation â€” */
 .btn-primary,
 .btn-outline {
   font-family: var(--font-mono);
@@ -385,7 +385,7 @@ body:not(:has(.cursor)) { cursor: default; }
   overflow: hidden;
 }
 
-/* — Primary: solid red — */
+/* â€” Primary: solid red â€” */
 .btn-primary {
   color: var(--white);
   background: var(--red);
@@ -401,7 +401,7 @@ body:not(:has(.cursor)) { cursor: default; }
 }
 .btn-primary:hover::after { opacity: 1; }
 
-/* — Outline: ghost with dim border — */
+/* â€” Outline: ghost with dim border â€” */
 .btn-outline {
   color: var(--white-dim);
   background: transparent;
@@ -439,7 +439,7 @@ section { position: relative; }
   background: var(--red);
 }
 
-/* Muted number/text inside a label — magenta touch */
+/* Muted number/text inside a label â€” magenta touch */
 .section-num {
   font-family: var(--font-display);
   font-size: var(--text-sm);
@@ -658,7 +658,7 @@ section { position: relative; }
   align-items: center;
   gap: 40px;
 }
-.marquee-item::after { content: '✦'; font-size: 8px; color: rgba(255, 255, 255, 0.5); }
+.marquee-item::after { content: 'âœ¦'; font-size: 8px; color: rgba(255, 255, 255, 0.5); }
 .marquee-item:nth-child(even)::after { color: var(--magenta); }
 
 
@@ -851,7 +851,7 @@ section { position: relative; }
   margin-bottom: var(--space-2xl);
 }
 
-/* Spec card — reusable for pricing / stat items */
+/* Spec card â€” reusable for pricing / stat items */
 .spec-item {
   border-left: 2px solid var(--magenta);
   padding-left: var(--space-md);
@@ -996,7 +996,7 @@ section { position: relative; }
    These replace the most common inline style patterns found in the HTML.
 ================================================================ */
 
-/* Logo images in nav and footer — height controlled here, not inline */
+/* Logo images in nav and footer â€” height controlled here, not inline */
 .img-logo {
   height: 44px;
   width: auto;
@@ -1157,12 +1157,12 @@ body.hr-has-beat-player {
 
 /* ================================================================
    MINIGAME EXTENSIONS
-   Strictly additive — only affects minigame pages.
+   Strictly additive â€” only affects minigame pages.
    Shares tokens from :root above; adds no new visual direction.
 ================================================================ */
 
 /* ================================================================
-   19. PAGE SHELL — Full-viewport wrapper (minigame pages)
+   19. PAGE SHELL â€” Full-viewport wrapper (minigame pages)
 ================================================================ */
 #wrapper {
   position: relative;
@@ -1188,7 +1188,7 @@ body.hr-has-beat-player {
   height: 100%;
 }
 
-/* CRT scanlines — mirrors grain overlay aesthetic */
+/* CRT scanlines â€” mirrors grain overlay aesthetic */
 #scanlines {
   position: absolute;
   inset: 0;
@@ -1205,7 +1205,7 @@ body.hr-has-beat-player {
 
 
 /* ================================================================
-   21. HUD — Score / Lives bar
+   21. HUD â€” Score / Lives bar
 ================================================================ */
 #hud {
   position: absolute;
@@ -1236,7 +1236,7 @@ body.hr-has-beat-player {
 
 
 /* ================================================================
-   22. OVERLAY SCREENS — Start / Game Over
+   22. OVERLAY SCREENS â€” Start / Game Over
 ================================================================ */
 .screen {
   position: absolute;
@@ -1253,7 +1253,7 @@ body.hr-has-beat-player {
 }
 .screen.hidden { display: none; }
 
-/* Red eyebrow with flanking rules — mirrors .hero-eyebrow pattern */
+/* Red eyebrow with flanking rules â€” mirrors .hero-eyebrow pattern */
 .screen-label {
   font-size: var(--text-sm);
   letter-spacing: var(--tracking-widest);
@@ -1404,7 +1404,7 @@ body.hr-has-beat-player {
 }
 
 @media (max-height: 500px) {
-  /* Landscape / very short screens — compact the overlays */
+  /* Landscape / very short screens â€” compact the overlays */
   .screen       { gap: var(--space-sm); }
   .screen-title { font-size: clamp(24px, 8vw, 48px); }
   .screen-sub   { display: none; }
@@ -3347,7 +3347,7 @@ body[data-hr-chrome] .success-brand {
   .hr-page-title { font-size: clamp(32px, 12vw, 58px); }
 }
 
-/* El portal cambia a layout móvil en 800px. Entre 801px y 900px solo
+/* El portal cambia a layout mÃ³vil en 800px. Entre 801px y 900px solo
    activamos la hamburguesa global y conservamos su sidebar de escritorio. */
 @media (min-width: 801px) and (max-width: 900px) {
   .db-body .db-main {
@@ -4114,16 +4114,16 @@ body.hr-has-beat-player .db-toast-region {
 ================================================================ */
 
 /* ================================================================
-   PORTAL — login / recovery
+   PORTAL â€” login / recovery
    Source: portal/login.css
 ================================================================ */
 /* ================================================================
    27. LOGIN PAGE
    Full-viewport centered layout. No nav, no footer.
-   All classes are additive — nothing from above is overridden.
+   All classes are additive â€” nothing from above is overridden.
 ================================================================ */
 
-/* — Page shell — */
+/* â€” Page shell â€” */
 .login-page {
   min-height: 100dvh;
   display: flex;
@@ -4135,7 +4135,7 @@ body.hr-has-beat-player .db-toast-region {
   overflow-y: auto;
 }
 
-/* Subtle red radial glow behind the card — mirrors hero-bg::before */
+/* Subtle red radial glow behind the card â€” mirrors hero-bg::before */
 .login-page::before {
   content: '';
   position: fixed;
@@ -4147,7 +4147,7 @@ body.hr-has-beat-player .db-toast-region {
   z-index: var(--z-base);
 }
 
-/* — Card — */
+/* â€” Card â€” */
 .login-card {
   position: relative;
   z-index: var(--z-above);
@@ -4168,7 +4168,7 @@ body.hr-has-beat-player .db-toast-region {
   background: linear-gradient(to right, var(--red), var(--magenta));
 }
 
-/* — Card header — */
+/* â€” Card header â€” */
 .login-logo {
   display: flex;
   justify-content: center;
@@ -4208,7 +4208,7 @@ body.hr-has-beat-player .db-toast-region {
   margin-bottom: var(--space-2xl);
 }
 
-/* — Form layout — */
+/* â€” Form layout â€” */
 .login-form {
   display: flex;
   flex-direction: column;
@@ -4248,7 +4248,7 @@ body.hr-has-beat-player .db-toast-region {
   background: var(--black);
 }
 
-/* — Forgot password link — */
+/* â€” Forgot password link â€” */
 .password-field {
   position: relative;
   width: 100%;
@@ -4322,7 +4322,7 @@ body.hr-has-beat-player .db-toast-region {
   text-transform: uppercase;
 }
 
-/* — Submit button — full width variant of btn-primary — */
+/* â€” Submit button â€” full width variant of btn-primary â€” */
 .login-submit {
   width: 100%;
   text-align: center;
@@ -4350,7 +4350,7 @@ body.hr-has-beat-player .db-toast-region {
 .login-submit:hover { background: var(--red-hover); }
 .login-submit:hover::after { opacity: 1; }
 
-/* — Divider — */
+/* â€” Divider â€” */
 .login-divider {
   display: flex;
   align-items: center;
@@ -4371,7 +4371,7 @@ body.hr-has-beat-player .db-toast-region {
   color: var(--white-mark);
 }
 
-/* — Register link row — */
+/* â€” Register link row â€” */
 .login-register {
   text-align: center;
   font-size: var(--text-xs);
@@ -4387,7 +4387,7 @@ body.hr-has-beat-player .db-toast-region {
 }
 .login-register a:hover { color: var(--red-hover); }
 
-/* — Version stamp — */
+/* â€” Version stamp â€” */
 .login-version {
   font-size: var(--text-xs);
   letter-spacing: var(--tracking-wide);
@@ -4397,7 +4397,7 @@ body.hr-has-beat-player .db-toast-region {
   opacity: 0.5;
 }
 
-/* — Responsive — */
+/* â€” Responsive â€” */
 @media (max-width: 480px) {
   .login-page {
     align-items: flex-start;
@@ -4410,7 +4410,7 @@ body.hr-has-beat-player .db-toast-region {
   }
 }
 
-/* Portal access screens — opt-in bridge to the global HR system. */
+/* Portal access screens â€” opt-in bridge to the global HR system. */
 .login-page {
   color: var(--hr-text);
 }
@@ -4540,21 +4540,21 @@ body.hr-has-beat-player .db-toast-region {
 }
 
 /* ================================================================
-   PORTAL — dashboard
+   PORTAL â€” dashboard
    Source: portal/dashboard.css
 ================================================================ */
 /* ================================================================
-   HIDDEN ROOM / MYSAUTH — Dashboard Layer
+   HIDDEN ROOM / MYSAUTH â€” Dashboard Layer
    portal/dashboard.css
    ================================================================
    ADDITIVE ONLY.
-   ─────────────────────────────────────────────────────────────
-   • Inherits all tokens from ../styles.css
-   • Defines layout primitives (sidebar, topbar, main)
-   • Defines dashboard-specific components
-   • Never redefines or overrides :root tokens
-   • Never uses inline styles (see HTML)
-   ─────────────────────────────────────────────────────────────
+   â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   â€¢ Inherits all tokens from ../styles.css
+   â€¢ Defines layout primitives (sidebar, topbar, main)
+   â€¢ Defines dashboard-specific components
+   â€¢ Never redefines or overrides :root tokens
+   â€¢ Never uses inline styles (see HTML)
+   â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    TABLE OF CONTENTS
    1.  Dashboard Body Override
    2.  Layout Shell
@@ -4579,7 +4579,7 @@ body.hr-has-beat-player .db-toast-region {
 
 /* ================================================================
    1. DASHBOARD BODY OVERRIDE
-   ─────────────────────────────────────────────────────────────
+   â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    The public site uses cursor:none everywhere.
    Inside the portal we restore it; the custom cursor JS from
    site.js still runs, so both coexist.
@@ -4601,7 +4601,7 @@ body.hr-has-beat-player .db-toast-region {
 }
 
 /* mix-blend-mode:difference (from styles.css) makes the red dot
-   invisible on dark surfaces — neutralize it inside the portal */
+   invisible on dark surfaces â€” neutralize it inside the portal */
 .db-body .cursor {
   mix-blend-mode: normal !important;
 }
@@ -4779,7 +4779,7 @@ body.hr-has-beat-player .db-toast-region {
   text-transform: uppercase;
 }
 
-/* Mobile toggle — hidden on desktop */
+/* Mobile toggle â€” hidden on desktop */
 
 /* ================================================================
    5. MAIN / SECTION CONTAINER
@@ -5480,7 +5480,7 @@ body.hr-has-beat-player .db-toast-region {
   padding: 0 4px;
 }
 
-/* Role badge variants — maps to brand palette */
+/* Role badge variants â€” maps to brand palette */
 .db-badge--role        { border-radius: 0; }
 .db-badge--client      { color: var(--teal);    border-color: var(--teal-dim);    background: var(--teal-ghost); }
 .db-badge--collaborator{ color: var(--magenta); border-color: var(--magenta-dim); background: var(--magenta-ghost); }
@@ -8144,7 +8144,7 @@ input[data-user-search] {
 }
 
 /* ================================================================
-   MEDIA — public
+   MEDIA â€” public
    Source: media/media.css
 ================================================================ */
 .sr-only {
@@ -8541,7 +8541,7 @@ input[data-user-search] {
 }
 
 /* ================================================================
-   MEDIA — admin
+   MEDIA â€” admin
    Source: media/admin.css
 ================================================================ */
 .media-admin {
@@ -8922,7 +8922,7 @@ input[data-user-search] {
 }
 
 /* ================================================================
-   STORE — catalog / checkout / admin
+   STORE â€” catalog / checkout / admin
    Source: store/store.css
 ================================================================ */
 html { color-scheme: dark; }
@@ -9295,7 +9295,7 @@ body[data-hr-chrome] .success-brand { top: 72px; }
 }
 
 /* ================================================================
-   STORE — Beat Store
+   STORE â€” Beat Store
    Source: store/beat_store/bs.css
 ================================================================ */
 .beat-store-page .beat-hero {
@@ -10256,10 +10256,10 @@ body.beat-admin-mode .beat-admin {
 }
 
 /* ================================================================
-   TICKETS — public / generation / validation / print
+   TICKETS â€” public / generation / validation / print
    Source: tickets/tickets.css
 ================================================================ */
-/* Capa específica de la boletera. Todos los selectores están aislados. */
+/* Capa especÃ­fica de la boletera. Todos los selectores estÃ¡n aislados. */
 .tickets-page {
   background:
     radial-gradient(circle at 85% 5%, rgba(219, 1, 0, .16), transparent 32rem),
@@ -11782,4 +11782,187 @@ input[data-user-search] {
 .academia-download-action[aria-busy="true"] {
   opacity: .68;
   pointer-events: none;
+}
+
+/* FINAL COMPONENT CONSOLIDATION */
+:root { --hr-player-bottom:max(12px,env(safe-area-inset-bottom)); --hr-player-height:104px; --hr-nav-height-mobile:64px; --text-xs:10px; --text-sm:11px; --text-base:12px; --text-md:14px; --text-body:15px; }
+body { cursor:auto; }
+body.hr-has-beat-player { padding-bottom:calc(var(--hr-player-height) + var(--hr-player-bottom) + 24px); }
+.hr-beat-player { position:fixed; z-index:var(--hr-z-popover,1000); right:max(14px,env(safe-area-inset-right)); bottom:var(--hr-player-bottom); left:auto; width:min(680px,calc(100vw - 28px)); min-height:var(--hr-player-height); padding:14px; display:grid; grid-template-columns:58px minmax(0,1fr) 36px; grid-template-areas:"art meta more" "art controls controls"; gap:10px 14px; background:rgba(8,8,8,.94); border:1px solid rgba(240,236,228,.18); border-radius:var(--hr-radius-md,8px); box-shadow:var(--hr-shadow-md,0 18px 60px rgba(0,0,0,.52)); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); }
+.hr-beat-player.is-empty,.hr-beat-player[data-state="idle"] { min-height:72px; grid-template-columns:48px minmax(0,1fr) 32px; grid-template-areas:"art meta more"; }
+.hr-beat-player.is-empty .hr-beat-player__controls,.hr-beat-player.is-empty .hr-beat-player__time,.hr-beat-player.is-empty .hr-beat-player__wave-wrap,.hr-beat-player[data-state="idle"] .hr-beat-player__controls,.hr-beat-player[data-state="idle"] .hr-beat-player__time,.hr-beat-player[data-state="idle"] .hr-beat-player__wave-wrap { display:none; }
+#hr-global-nav { background:rgba(6,6,6,.82); border-bottom:1px solid rgba(240,236,228,.08); backdrop-filter:blur(18px) saturate(120%); -webkit-backdrop-filter:blur(18px) saturate(120%); }
+.hr-field label,.beat-card__status,.beat-card__producer,.beat-card__music dt { font-size:clamp(10px,2.7vw,11px); letter-spacing:.12em; line-height:1.35; }
+@media (hover:hover) and (pointer:fine) { body.has-custom-cursor,body.has-custom-cursor a,body.has-custom-cursor button,body.has-custom-cursor [role="button"] { cursor:none; } }
+@media (hover:none),(pointer:coarse) { .cursor-dot,.cursor-ring { display:none!important; } }
+@media (max-width:620px) { :root { --hr-player-height:96px; } body.hr-has-beat-player { padding-bottom:calc(var(--hr-player-height) + max(10px,env(safe-area-inset-bottom)) + 24px); } .hr-beat-player { right:10px; left:10px; bottom:max(10px,env(safe-area-inset-bottom)); width:auto; min-height:var(--hr-player-height); grid-template-columns:48px minmax(0,1fr) 32px; grid-template-areas:"art meta more" "controls controls controls"; padding:10px; border-radius:10px; } .hr-beat-player.is-empty,.hr-beat-player[data-state="idle"] { min-height:72px; grid-template-areas:"art meta more"; } .hr-nav__main { min-height:var(--hr-nav-height-mobile); padding-inline:18px; } .hr-nav__greeting,.hr-nav__hello { max-width:90px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; } }
+/* Mobile drawer viewport guard */
+@media (max-width: 900px) {
+  .hr-global-drawer {
+    top: 0 !important;
+    bottom: 0 !important;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow-y: auto;
+  }
+  .hr-global-drawer__links {
+    display: grid !important;
+    visibility: visible;
+    flex: 0 0 auto;
+  }
+}
+/* Layer order: mobile drawer/backdrop above the global player. */
+body.hr-global-menu-open .hr-beat-player {
+  z-index: 1 !important;
+  pointer-events: none;
+}
+@media (max-width: 900px) {
+  .hr-global-drawer__backdrop { z-index: 10001 !important; }
+  .hr-global-drawer { z-index: 10002 !important; }
+}
+/* =====================================================================
+   GLOBAL COHERENCE PASS
+===================================================================== */
+:root {
+  --hr-page-gutter: clamp(18px, 5vw, 72px);
+  --hr-content-max: 1400px;
+  --hr-section-space: clamp(64px, 9vw, 120px);
+}
+.hr-container {
+  width: min(calc(100% - (var(--hr-page-gutter) * 2)), var(--hr-content-max));
+  margin-inline: auto;
+}
+.hr-title-display {
+  font-family: var(--hr-font-display, var(--font-display));
+  font-size: clamp(42px, 9vw, 120px);
+  font-weight: 900;
+  line-height: .88;
+  letter-spacing: -.045em;
+  text-transform: uppercase;
+}
+.hr-title-section {
+  font-family: var(--hr-font-display, var(--font-display));
+  font-size: clamp(30px, 6vw, 64px);
+  font-weight: 900;
+  line-height: .95;
+  letter-spacing: -.035em;
+  text-transform: uppercase;
+}
+.hr-body-copy {
+  max-width: 62ch;
+  color: var(--hr-muted, var(--white-dim));
+  font-family: var(--hr-font-mono, var(--font-mono));
+  font-size: clamp(14px, 1.4vw, 17px);
+  line-height: 1.7;
+  letter-spacing: .015em;
+}
+.hr-eyebrow, .hr-section-label {
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+}
+.hr-section { padding-block: var(--hr-section-space); }
+.hr-editorial-block { border-radius: 0; box-shadow: none; }
+.hr-ui-panel {
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius-md, 8px);
+  background: linear-gradient(145deg, rgba(255,255,255,.03), rgba(255,255,255,.012)), var(--hr-surface, #111);
+  box-shadow: var(--hr-shadow-sm, 0 12px 32px rgba(0,0,0,.24));
+}
+.hr-nav__main {
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr) auto;
+  align-items: center;
+  min-height: var(--hr-nav-height, 72px);
+  padding-inline: var(--hr-page-gutter);
+  gap: 16px;
+}
+.hr-nav__account {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.hr-nav__icon { color: rgba(240,236,228,.58); }
+.hr-nav__icon:hover, .hr-nav__icon:focus-visible { color: var(--hr-text, var(--white)); }
+.hr-field { display: grid; gap: 9px; }
+.hr-field label {
+  color: var(--hr-muted, var(--white-dim));
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+.hr-input, .hr-select, .hr-textarea {
+  width: 100%;
+  min-height: 50px;
+  padding-inline: 15px;
+  color: var(--hr-text, var(--white));
+  font: 500 14px/1.4 var(--hr-font-mono, var(--font-mono));
+  background: rgba(0,0,0,.32);
+  border: 1px solid rgba(240,236,228,.15);
+  border-radius: var(--hr-radius-sm, 6px);
+  outline: none;
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+.hr-input:focus, .hr-select:focus, .hr-textarea:focus {
+  background: rgba(0,0,0,.52);
+  border-color: var(--hr-accent, var(--red));
+  box-shadow: var(--hr-focus-ring, 0 0 0 3px rgba(219,1,0,.18));
+}
+.hr-input::placeholder, .hr-textarea::placeholder { color: rgba(240,236,228,.28); }
+.hr-btn {
+  min-height: 48px;
+  padding-inline: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font: 700 11px/1 var(--hr-font-display, var(--font-display));
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  border-radius: var(--hr-radius-sm, 6px);
+  transition: transform .18s ease, background .18s ease, border-color .18s ease;
+}
+.hr-btn:active { transform: scale(.98); }
+.hr-btn--primary { color: #fff; background: var(--hr-accent, var(--red)); border: 1px solid var(--hr-accent, var(--red)); }
+.hr-btn--primary:hover { background: var(--hr-accent-hover, var(--red-hover)); }
+.hr-btn--secondary { color: var(--hr-text, var(--white)); background: rgba(240,236,228,.035); border: 1px solid var(--hr-border-strong); }
+.hr-btn--secondary:hover { background: rgba(240,236,228,.075); }
+
+@media (max-width: 620px) {
+  :root { --hr-page-gutter: 18px; --hr-section-space: 48px; }
+  .home-page .hero-title {
+    font-size: clamp(58px, 18vw, 78px);
+    line-height: .82;
+    letter-spacing: -.055em;
+  }
+  .hr-page-title, .beat-hero h1, .media-hero h1 {
+    font-size: clamp(42px, 14vw, 58px);
+    line-height: .92;
+  }
+  .db-body .hr-section { padding-block: 32px; }
+  .hr-global-drawer { width: 100vw; max-width: none; }
+  .hr-global-drawer__links a {
+    min-height: 52px;
+    padding: 14px 8px;
+    border-bottom: 1px solid rgba(240,236,228,.08);
+  }
+  .hr-global-drawer__links a[aria-current="page"] {
+    color: var(--hr-accent, var(--red));
+    background: transparent;
+  }
+  .hr-global-drawer__links a[aria-current="page"]::before {
+    content: "";
+    width: 22px;
+    height: 2px;
+    margin-right: 12px;
+    background: var(--hr-accent, var(--red));
+  }
+}
+@media (max-width: 420px) {
+  .hr-nav__greeting { display: none; }
+  .hr-nav__account { gap: 8px; }
 }
