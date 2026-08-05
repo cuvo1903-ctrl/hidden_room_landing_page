@@ -12217,3 +12217,19 @@ body[data-hr-context="media"] .hr-nav[data-accent="media"] {
     height: auto;
   }
 }
+/* Final responsive logo scale */
+@media (max-width: 620px) {
+  #hr-global-nav .hr-nav__brand,
+  #hr-global-nav .hr-nav__brand img {
+    width: clamp(38px, 10vw, 46px) !important;
+    max-width: clamp(38px, 10vw, 46px) !important;
+    height: auto;
+  }
+
+  .hr-global-drawer__brand,
+  .hr-global-drawer__brand img {
+    width: clamp(58px, 16vw, 70px) !important;
+    max-width: clamp(58px, 16vw, 70px) !important;
+    height: auto;
+  }
+}
