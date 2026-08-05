@@ -3603,3 +3603,17 @@ input[data-user-search] {
     z-index: calc(var(--hr-bottom-nav-z, 120) - 1) !important;
   }
 }
+/* Explicit Portal More layering over the global player. */
+@media (max-width: 800px) {
+  body.db-body #hr-beat-player {
+    z-index: 119 !important;
+  }
+
+  body.db-body .hr-portal-backdrop {
+    z-index: 10000 !important;
+  }
+
+  body.db-body #hr-portal-more {
+    z-index: 10001 !important;
+  }
+}
