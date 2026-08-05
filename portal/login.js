@@ -23,7 +23,6 @@ async function getSupabaseClient() {
 }
 
 const supabase = await getSupabaseClient();
-localStorage.removeItem("session");
 
 let registerMode = new URLSearchParams(window.location.search).get("mode") === "register";
 let passwordResetCooldownUntil = 0;
