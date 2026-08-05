@@ -11966,3 +11966,165 @@ body.hr-global-menu-open .hr-beat-player {
   .hr-nav__greeting { display: none; }
   .hr-nav__account { gap: 8px; }
 }
+
+/* =====================================================================
+   GLOBAL POLISH PASS
+   Subtle depth, component-specific shape and calmer mobile chrome.
+   The beat player remains intentionally outside this pass.
+===================================================================== */
+:root {
+  --black:      #050505;
+  --near-black: #0b0b0b;
+  --surface:    #121212;
+  --hr-bg:      var(--black);
+  --hr-panel:   var(--surface);
+  --hr-surface: #111111;
+  --hr-surface-2: #171717;
+  --hr-surface-3: #1d1d1d;
+  --hr-border: rgba(240, 236, 228, .09);
+  --hr-border-muted: rgba(240, 236, 228, .07);
+  --hr-border-strong: rgba(240, 236, 228, .16);
+  --hr-section-space: clamp(72px, 9vw, 128px);
+  --hr-radius-sm: 4px;
+  --hr-radius-md: 8px;
+  --hr-radius-lg: 12px;
+  --hr-shadow-sm: 0 12px 32px rgba(0, 0, 0, .28);
+  --hr-shadow-md: 0 20px 52px rgba(0, 0, 0, .42);
+}
+
+/* Editorial content stays quiet; UI surfaces carry the visual depth. */
+.hr-editorial-block,
+.hr-section-title,
+.hr-body-copy { position: relative; }
+
+.hr-panel,
+.hr-card,
+.hr-ui-panel {
+  border: 1px solid var(--hr-border);
+  border-radius: var(--hr-radius-lg);
+  background: var(--hr-surface);
+  box-shadow: var(--hr-shadow-sm);
+}
+
+.hr-card-header,
+.hr-card-body { padding: clamp(18px, 3vw, 28px); }
+.hr-card-header { border-bottom-color: var(--hr-border-muted); }
+.hr-card > .hr-card-body + .hr-card-body { border-top-color: var(--hr-border-muted); }
+.hr-card-grid,
+.hr-gallery,
+.hr-grid,
+.hr-grid-2,
+.hr-grid-3 { gap: clamp(18px, 2.4vw, 28px); }
+
+/* Shape is semantic: controls are compact, cards are softer, editorial is square. */
+.hr-editorial-block { border-radius: 0; box-shadow: none; }
+.hr-btn,
+.hr-btn-primary,
+.hr-btn-secondary,
+.hr-btn-outline,
+.hr-btn-ghost,
+.hr-btn-danger,
+.hr-btn-cyan,
+.btn-primary,
+.btn-outline,
+.btn-media,
+.primary-button,
+.secondary-button,
+.hr-icon-btn { border-radius: var(--hr-radius-sm); }
+
+.hr-input,
+.hr-select,
+.hr-textarea,
+.hr-search-input {
+  border: 1px solid rgba(240, 236, 228, .13);
+  border-radius: var(--hr-radius-md);
+  background: linear-gradient(180deg, rgba(255,255,255,.025), transparent), #0b0b0b;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+}
+.hr-input:hover,
+.hr-select:hover,
+.hr-textarea:hover,
+.hr-search-input:hover { border-color: rgba(240, 236, 228, .24); }
+.hr-input:focus,
+.hr-select:focus,
+.hr-textarea:focus,
+.hr-input:focus-visible,
+.hr-select:focus-visible,
+.hr-textarea:focus-visible,
+.hr-search-input:focus-visible {
+  background: #101010;
+  border-color: var(--hr-red);
+  box-shadow: 0 0 0 3px var(--red-ghost), inset 0 1px 0 rgba(255,255,255,.035);
+}
+
+/* Labels and tabs read as UI metadata, not display typography. */
+.hr-field > span,
+.hr-label,
+.hr-eyebrow,
+.hr-kicker,
+.hr-filter,
+.hr-chip,
+.hr-tab,
+.hr-nav__links a,
+.hr-nav__sub-link,
+.hr-nav__action {
+  letter-spacing: .12em;
+}
+.hr-tabs { gap: 4px; border-bottom-color: var(--hr-border-muted); }
+.hr-tab {
+  border-radius: var(--hr-radius-sm) var(--hr-radius-sm) 0 0;
+  border-width: 0 0 2px;
+  padding-inline: 14px;
+}
+.hr-filterbar { border: 0; border-radius: var(--hr-radius-md); background: var(--hr-surface-2); }
+.hr-filter,
+.hr-chip { border-radius: var(--hr-radius-sm); }
+.hr-chip { border-radius: var(--hr-radius-pill); }
+
+@media (max-width: 900px) {
+  .hr-nav {
+    border-bottom-color: var(--hr-border-muted);
+    background: rgba(5, 5, 5, .9);
+  }
+  .hr-nav__sub { border-top: 0; background: var(--near-black); }
+  .hr-nav__sub-link { padding-inline: 14px; }
+
+  .hr-global-drawer {
+    width: min(100vw, 420px);
+    padding-inline: 22px;
+    background: linear-gradient(160deg, #0f0f0f, #080808 62%);
+    box-shadow: -28px 0 80px rgba(0, 0, 0, .58);
+  }
+  .hr-global-drawer__header { padding-block: 8px 20px; border-bottom: 0; }
+  .hr-global-drawer__label { margin: 26px 0 10px; letter-spacing: .14em; }
+  .hr-global-drawer__links {
+    gap: 4px;
+    border-top: 0;
+  }
+  .hr-global-drawer__links a {
+    min-height: 60px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: var(--hr-radius-md);
+    background: rgba(255,255,255,.025);
+    letter-spacing: .1em;
+  }
+  .hr-global-drawer__links a:hover,
+  .hr-global-drawer__links a:active { background: rgba(255,255,255,.06); }
+  .hr-global-drawer__links a[aria-current="page"] {
+    padding-left: 14px;
+    border-left: 2px solid var(--hr-nav-active);
+    background: var(--red-ghost);
+  }
+  .hr-global-drawer__footer { margin-inline: -22px; padding-inline: 22px; border-top-color: var(--hr-border-muted); }
+}
+
+@media (max-width: 620px) {
+  :root { --hr-section-space: 56px; }
+  .hr-panel,
+  .hr-card,
+  .hr-ui-panel { border-radius: var(--hr-radius-md); }
+  .hr-card-header,
+  .hr-card-body { padding: 18px; }
+  .hr-form-grid { gap: 18px; }
+}
