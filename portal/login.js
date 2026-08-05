@@ -1,6 +1,29 @@
-import { getSupabaseClient } from "./supabase-config.js";
+const SUPABASE_URL = "https://rpcunbkstadgngqrjafp.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO";
+const SUPABASE_CDN = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+async function getSupabaseClient() {
+  if (window.HiddenRoomSupabase?.getClient) {
+    return window.HiddenRoomSupabase.getClient();
+  }
+
+  if (window.__hiddenRoomSupabaseClient) {
+    return window.__hiddenRoomSupabaseClient;
+  }
+
+  if (!window.__hiddenRoomSupabaseClientPromise) {
+    window.__hiddenRoomSupabaseClientPromise = import(SUPABASE_CDN).then(({ createClient }) => {
+      window.__hiddenRoomSupabaseClient = window.__hiddenRoomSupabaseClient
+        || createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      return window.__hiddenRoomSupabaseClient;
+    });
+  }
+
+  return window.__hiddenRoomSupabaseClientPromise;
+}
 
 const supabase = await getSupabaseClient();
+localStorage.removeItem("session");
 
 let registerMode = new URLSearchParams(window.location.search).get("mode") === "register";
 let passwordResetCooldownUntil = 0;
@@ -124,12 +147,35 @@ function isAlreadyRegisteredError(error) {
 }
 
 async function isRegisteredEmail(email) {
-  const { data, error } = await supabase.rpc("email_is_registered", { p_email: email });
-  if (error) {
-    console.info("[HR] recovery email check skipped:", error.message);
-    return null;
+  const rpc = await supabase.rpc("email_is_registered", { p_email: email });
+  if (!rpc.error) return Boolean(rpc.data);
+
+  console.info("[HR] recovery rpc email check skipped:", rpc.error.message);
+
+  const primary = await supabase
+    .from("users")
+    .select("id")
+    .ilike("email", email)
+    .limit(1);
+
+  if (primary.error) {
+    console.info("[HR] recovery user check users skipped:", primary.error.message);
   }
-  return Boolean(data);
+
+  if (Array.isArray(primary.data) && primary.data.length > 0) return true;
+
+  const safe = await supabase
+    .from("users_safe")
+    .select("id")
+    .ilike("email", email)
+    .limit(1);
+
+  if (safe.error) {
+    console.info("[HR] recovery user check users_safe skipped:", safe.error.message);
+    return primary.error ? null : false;
+  }
+
+  return Array.isArray(safe.data) ? safe.data.length > 0 : Boolean(safe.data);
 }
 
 function setPasswordResetCooldown(seconds = 60) {
@@ -222,17 +268,7 @@ form.addEventListener("submit", async (event) => {
   const cleanWhatsapp = whatsapp.replace(/\D/g, "");
 
   if (registerMode) {
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    alert("Ingresa un correo válido.");
-    return;
-  }
-
-  if (password.length < 8) {
-    alert("La contraseña debe tener al menos 8 caracteres.");
-    return;
-  }
-
-    if (!displayName || cleanWhatsapp.length < 10) {
+    if (!displayName || !cleanWhatsapp) {
       alert("Ingresa nombre y WhatsApp para registrarte.");
       return;
     }
@@ -256,8 +292,18 @@ form.addEventListener("submit", async (event) => {
       return;
     }
 
-    if (!signUpData?.session) {
-      alert("Registro creado. Revisa tu correo para confirmar la cuenta antes de iniciar sesión.");
+    if (signUpData?.session) {
+      window.location.href = getSafeRedirect();
+      return;
+    }
+
+    const { error: loginError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (loginError) {
+      alert("Registro creado, pero no se pudo iniciar sesion automaticamente.");
       return;
     }
 
