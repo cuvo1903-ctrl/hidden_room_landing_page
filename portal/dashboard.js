@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ================================================================
  *  HIDDEN ROOM / MYSAUTH - Dashboard Controller
  *  portal/dashboard.js
@@ -23,18 +23,18 @@
    Section 1  SUPABASE CLIENT
 ================================================================ */
 
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+import { getSupabaseClient, SUPABASE_URL } from "./supabase-config.js";
 
-const supabase = createClient(
-  "https://rpcunbkstadgngqrjafp.supabase.co",
-  "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
-);
+const supabase = await getSupabaseClient();
 
 const PROFILE_UPDATE_WHATSAPP = '5210000000000';
 const SHARE_LOGIN_WHATSAPP_FALLBACK = '5210000000000';
-const LOCAL_SCORE_SYNC_KEYS = ['dem00nz_best'];
-const NOTIFICATIONS_ENABLED = false;
+const MEMBERSHIP_SUPPORT_WHATSAPP = '5215542881737';
+const LOCAL_SCORE_SYNC_KEYS = ['dem00nz_best', 'gol_gana_record'];
+const NOTIFICATIONS_ENABLED = true;
 const ACTIVE_SECTION_STORAGE_KEY = 'hr_dashboard_active_section';
+const ADMIN_TABLE_STORAGE_KEY = 'hr_dashboard_admin_table';
+const DASHBOARD_PREFS_STORAGE_KEY = 'hr_dashboard_prefs';
 const MEMBERSHIP_CANONICAL = 'MEMBRESÍA';
 const MEMBERSHIP_WEEKLY_COST = 500;
 const ERP_TYPE_OPTIONS = ['INGRESO', 'EGRESO'];
@@ -56,6 +56,290 @@ const TRANSACTION_CONCEPT_OPTIONS = [
   'RENTA DE ESTUDIO',
   'PERSONALIZADO',
 ];
+const EVENT_FINANCE_CONCEPT_OPTIONS = ['VENUE APARTADO', 'VENUE LIQUIDACIÓN', 'FLYER', 'OTRO'];
+const CLOUD_HIDDENROOM_URL = 'https://cloud.hiddenroom.mx/';
+const CLOUD_FUNCTION_BASE = `${SUPABASE_URL}/functions/v1`;
+const CLOUD_STAGING_BUCKET = 'cloud-staging';
+const INSTAGRAM_SCRAPER_URL = 'http://127.0.0.1:4317';
+const INSTAGRAM_SCRAPER_STORAGE_KEY = 'hr_instagram_scraper_last_result';
+const BEAT_STORE_CLOUD_PATH = '/beats_store';
+const BEAT_AUDIO_ACCEPT = '.mp3,.wav,.m4a,.aac,.ogg,.flac,.aif,.aiff,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/flac,audio/aiff';
+const BEAT_AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'aif', 'aiff']);
+
+function normalizeCloudPath(path) {
+  if (!path || path === '/') return '/';
+  let normalized = String(path).replace(/\\/g, '/');
+  normalized = normalized.replace(/\/+/g, '/');
+  if (!normalized.startsWith('/')) normalized = `/${normalized}`;
+  if (normalized !== '/' && normalized.endsWith('/')) normalized = normalized.slice(0, -1);
+  return normalized;
+}
+
+async function getCloudAuthHeaders() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) {
+    throw new Error('Sesión de Supabase no disponible');
+  }
+  return {
+    Accept: 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
+}
+
+async function cloudApiFetch(url, options = {}) {
+  const authHeaders = await getCloudAuthHeaders();
+  const headers = { ...authHeaders, ...(options.headers || {}) };
+  return fetch(url, { ...options, headers });
+}
+
+async function igFunctionFetch(functionName, payload) {
+  const response = await cloudApiFetch(`${CLOUD_FUNCTION_BASE}/${functionName}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const body = await response.json().catch(() => null) || {};
+  if (!response.ok || body.ok === false) {
+    throw new Error(body.error || `No se pudo completar la solicitud (${response.status})`);
+  }
+  return body;
+}
+async function igAnalyzeCommentsStream(payload) {
+  const response = await cloudApiFetch(`${CLOUD_FUNCTION_BASE}/ig-analyze-comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...payload, progress_stream: true }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.error || `No se pudo completar el analisis (${response.status})`);
+  }
+  if (!response.body) throw new Error('El navegador no pudo abrir el stream del analisis.');
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result = null;
+
+  const consumeLine = (line) => {
+    if (!line.trim()) return;
+    const event = JSON.parse(line);
+    if (event.event === 'error') throw new Error(event.error || 'No se pudo analizar la publicacion.');
+    if (event.event === 'complete') result = event.result;
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    lines.forEach(consumeLine);
+    if (done) break;
+  }
+  if (buffer.trim()) consumeLine(buffer);
+  if (!result?.ok) throw new Error(result?.error || 'El analisis termino sin devolver resultados.');
+  return result;
+}
+
+function buildCloudFunctionUrl(functionName, path = '/') {
+  const normalized = normalizeCloudPath(path);
+  return `${CLOUD_FUNCTION_BASE}/${functionName}?path=${encodeURIComponent(normalized)}`;
+}
+
+function buildCloudStagingPath(userId, fileName) {
+  const safeFileName = String(fileName || 'archivo')
+    .replace(/[\\/]/g, '_')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .trim() || 'archivo';
+  const uniquePart = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
+  return `${userId}/${Date.now()}-${uniquePart}-${safeFileName}`;
+}
+
+async function listCloudFiles(path = state.erpCloud.currentPath) {
+  const currentPath = normalizeCloudPath(path);
+  const response = await cloudApiFetch(buildCloudFunctionUrl('cloud-list', currentPath), {
+    method: 'GET',
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.error || `No se pudieron obtener los archivos (${response.status})`);
+  }
+
+  const body = await response.json().catch(() => null) || {};
+
+  // If a job is pending, return an empty normalized structure and mark pending
+  if (body.status === 'pending') {
+    return { path: currentPath, folders: [], files: [], pending: true };
+  }
+
+  // Support several response shapes: { result: { items: [...] } }, { items: [...] },
+  // or already-normalized { path, folders, files }.
+  let folders = [];
+  let files = [];
+
+  if (Array.isArray(body.folders) || Array.isArray(body.files)) {
+    folders = Array.isArray(body.folders) ? body.folders : [];
+    files = Array.isArray(body.files) ? body.files : [];
+    return { path: body.path || currentPath, folders, files };
+  }
+
+  let items = null;
+  if (body.result && Array.isArray(body.result.items)) items = body.result.items;
+  else if (Array.isArray(body.items)) items = body.items;
+
+  if (Array.isArray(items)) {
+    for (const it of items) {
+      const type = String(it.type || '').toLowerCase();
+      if (type === 'folder' || (it.isDirectory || it.directory)) {
+        folders.push(it.name || it.folderName || '');
+      } else {
+        files.push({
+          name: it.name || it.fileName || '',
+          type: it.type || it.mimeType || '',
+          size: it.size || it.sizeText || '',
+          modified: it.modified || it.mtime || '',
+          url: it.url || '',
+        });
+      }
+    }
+    return { path: currentPath, folders, files };
+  }
+
+  // Fallback: return an empty normalized structure
+  return { path: currentPath, folders: [], files: [] };
+}
+
+async function uploadCloudFile(file, targetPath = state.erpCloud.currentPath) {
+  return uploadCloudFileToPath(file, targetPath);
+}
+
+async function uploadCloudFileToPath(file, targetPath = '/') {
+  if (!file) return null;
+  if (!Number.isFinite(file.size) || file.size <= 0) {
+    throw new Error('El archivo esta vacio. Vuelve a exportarlo o elige otro archivo.');
+  }
+  const currentPath = normalizeCloudPath(targetPath);
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('Sesion de Supabase no disponible');
+  }
+
+  const storagePath = buildCloudStagingPath(user.id, file.name);
+  const { error: storageError } = await supabase.storage
+    .from(CLOUD_STAGING_BUCKET)
+    .upload(storagePath, file, {
+      contentType: file.type || 'application/octet-stream',
+      upsert: false,
+    });
+
+  if (storageError) {
+    throw new Error(`No se pudo preparar el archivo: ${storageError.message}`);
+  }
+
+  const response = await cloudApiFetch(`${CLOUD_FUNCTION_BASE}/cloud-upload`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      path: currentPath,
+      filename: file.name,
+      storage_path: storagePath,
+      size: file.size,
+      mime_type: file.type || 'application/octet-stream',
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    if (response.status >= 400 && response.status < 500) {
+      await supabase.storage.from(CLOUD_STAGING_BUCKET).remove([storagePath]).catch(() => {});
+    }
+    throw new Error(error?.error || `No se pudo subir el archivo (${response.status})`);
+  }
+
+  const payload = await response.json().catch(() => ({}));
+  return {
+    ...payload,
+    targetPath: currentPath,
+    fileName: file.name,
+    url: cloudUploadResultUrl(payload) || buildCloudFileFallbackUrl(currentPath, file.name),
+  };
+}
+
+async function createCloudFolder(folderName, basePath = state.erpCloud.currentPath) {
+  return createCloudFolderAt(basePath, folderName);
+}
+
+async function createCloudFolderAt(basePath, folderName) {
+  if (!folderName) return null;
+  const response = await cloudApiFetch(`${CLOUD_FUNCTION_BASE}/cloud-folder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      path: normalizeCloudPath(basePath),
+      folderName: folderName.trim(),
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    const message = error?.error || `No se pudo crear la carpeta (${response.status})`;
+    if (response.status === 409 || /exist|existe|already/i.test(message)) return { ok: true, existed: true };
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
+async function ensureCloudFolderPath(path) {
+  const normalized = normalizeCloudPath(path);
+  if (normalized === '/') return;
+  const segments = normalized.slice(1).split('/').filter(Boolean);
+  let current = '/';
+  for (const segment of segments) {
+    await createCloudFolderAt(current, segment);
+    current = normalizeCloudPath(current === '/' ? `/${segment}` : `${current}/${segment}`);
+  }
+}
+
+function cloudUploadResultUrl(payload) {
+  return payload?.url
+    || payload?.public_url
+    || payload?.publicUrl
+    || payload?.file_url
+    || payload?.fileUrl
+    || payload?.result?.url
+    || payload?.result?.public_url
+    || payload?.result?.publicUrl
+    || null;
+}
+
+function buildCloudFileFallbackUrl(path, fileName) {
+  const safePath = normalizeCloudPath(path);
+  const fullPath = safePath === '/' ? `/${fileName}` : `${safePath}/${fileName}`;
+  return `${CLOUD_HIDDENROOM_URL.replace(/\/$/, '')}${fullPath.split('/').map(encodeURIComponent).join('/')}`;
+}
+
+async function deleteCloudFile(itemType, itemName) {
+  const currentPath = normalizeCloudPath(state.erpCloud.currentPath);
+  const response = await cloudApiFetch(`${CLOUD_FUNCTION_BASE}/cloud-delete?path=${encodeURIComponent(currentPath)}&type=${encodeURIComponent(itemType)}&name=${encodeURIComponent(itemName)}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.error || `No se pudo eliminar el elemento (${response.status})`);
+  }
+
+  return response.json();
+}
+
+function copyCloudLink(url) {
+  return url;
+}
+
 const FINANCE_STUDIO_SOURCES = [
   { value: 'IXT', label: 'Ixtapaluca' },
   { value: 'VC', label: 'Venustiano Carranza' },
@@ -111,6 +395,24 @@ const state = {
 
   /** Session may be stale when UI role and API/RLS responses disagree */
   sessionStale: false,
+
+  /** Active timer for live infrastructure metrics */
+  infrastructureRefreshTimer: null,
+  erpCloud: {
+    currentPath: '/',
+  },
+  instagramScraper: {
+    comments: readInstagramScraperCache().comments,
+    sourceUrl: readInstagramScraperCache().sourceUrl,
+    expectedCount: readInstagramScraperCache().expectedCount,
+    pagesFetched: readInstagramScraperCache().pagesFetched,
+    source: readInstagramScraperCache().source,
+    stoppedReason: readInstagramScraperCache().stoppedReason,
+    isRunning: false,
+    isHydrating: false,
+    hasHydrated: false,
+    error: '',
+  },
 };
 
 /**
@@ -119,6 +421,80 @@ const state = {
  */
 function setState(patch) {
   Object.assign(state, patch);
+  if (Array.isArray(patch.roles)) {
+    window.HiddenRoomNavigation?.setAdminLinksVisible(patch.roles.includes("admin"));
+  }
+}
+
+function getCloudBreadcrumb(path) {
+  const normalized = normalizeCloudPath(path);
+  if (normalized === '/') return [{ name: 'Root', path: '/' }];
+  const segments = normalized.slice(1).split('/');
+  const result = [{ name: 'Root', path: '/' }];
+  let current = '';
+  for (const segment of segments) {
+    current = `${current}/${segment}`;
+    result.push({ name: segment, path: current });
+  }
+  return result;
+}
+
+function renderCloudBreadcrumb(path) {
+  const items = getCloudBreadcrumb(path);
+  return `
+    <nav aria-label="Ruta actual" class="hr-stack hr-stack-sm">
+      ${items.map((item, index) => `
+        <button class="hr-btn" type="button" data-action="cloud-breadcrumb" data-path="${escapeHTML(item.path)}">
+          ${escapeHTML(item.name)}
+        </button>
+        ${index < items.length - 1 ? '<span>/</span>' : ''}
+      `).join('')}
+    </nav>
+  `;
+}
+
+function renderCloudFolderList(node, currentPath) {
+  const folders = Array.isArray(node && node.folders) ? node.folders : [];
+  if (!folders.length) {
+    return `<p>No hay carpetas en esta ubicación.</p>`;
+  }
+
+  return folders.map((folder) => `
+    <div class="hr-card hr-panel hr-stack">
+      <div class="hr-stack hr-stack-sm">
+        <div>
+          <p><strong>${escapeHTML(folder)}</strong></p>
+          <p class="hr-eyebrow">Carpeta</p>
+        </div>
+        <div class="hr-stack hr-stack-sm">
+          <button class="hr-btn" type="button" data-action="cloud-open-folder" data-path="${escapeHTML(currentPath === '/' ? `/${folder}` : `${currentPath}/${folder}`)}">Abrir</button>
+          <button class="hr-btn" type="button" data-action="cloud-delete-item" data-item-type="folder" data-item-name="${escapeHTML(folder)}">Eliminar</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderCloudFileList(node) {
+  const files = Array.isArray(node && node.files) ? node.files : [];
+  if (!files.length) {
+    return `<p>No hay archivos en esta carpeta.</p>`;
+  }
+
+  return files.map((file) => `
+    <div class="hr-card hr-panel hr-stack">
+      <div class="hr-stack hr-stack-sm">
+        <div>
+          <p><strong>${escapeHTML(file.name)}</strong></p>
+          <p class="hr-eyebrow">${escapeHTML(file.type)} · ${escapeHTML(file.size)} · ${escapeHTML(file.modified)}</p>
+        </div>
+        <div class="hr-stack hr-stack-sm">
+          <button class="hr-btn" type="button" data-action="cloud-copy-link" data-url="${escapeHTML(file.url)}">Copiar enlace</button>
+          <button class="hr-btn" type="button" data-action="cloud-delete-item" data-item-type="file" data-item-name="${escapeHTML(file.name)}">Eliminar</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
 }
 
 
@@ -207,7 +583,12 @@ const hasAnyPermission = (permissions) =>
 /**
  * Returns true when the active user can mutate SCRUM tasks.
  */
-const canEditScrum = () => hasPermission('scrum.edit');
+const canEditScrum = (event = null) =>
+  hasPermission('scrum.edit') && (hasRole('admin') || Boolean(event?.can_edit_scrum));
+
+const canViewScrum = (event = null) =>
+  hasAnyPermission(['scrum.view', 'scrum.edit'])
+    && (hasRole('admin') || Boolean(event?.can_view_scrum || event?.can_edit_scrum));
 
 /**
  * Shows sidebar nav groups whose data-role-gate the user satisfies.
@@ -224,6 +605,15 @@ function applyRoleGates() {
   permissionGroups.forEach((group) => {
     const requiredPermission = group.dataset.permissionGate;
     group.hidden = !hasPermission(requiredPermission);
+  });
+
+  const permissionAnyGroups = document.querySelectorAll('[data-permission-any-gate]');
+  permissionAnyGroups.forEach((group) => {
+    const requiredPermissions = String(group.dataset.permissionAnyGate || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    group.hidden = !hasAnyPermission(requiredPermissions);
   });
 }
 
@@ -307,7 +697,7 @@ const SECTIONS = {
   'collab-tasks': {
     label: 'SCRUM / Tareas',
     roleRequired: 'collaborator',
-    permissionRequired: 'scrum.view',
+    permissionAnyRequired: ['scrum.view', 'scrum.edit'],
     render: renderCollabTasks,
   },
   'collab-log': {
@@ -342,6 +732,12 @@ const SECTIONS = {
     roleRequired: 'pr',
     render: renderRrppBenefits,
   },
+  'rrpp-scrum': {
+    label: 'SCRUM / Tareas',
+    roleRequired: 'pr',
+    permissionAnyRequired: ['scrum.view', 'scrum.edit'],
+    render: () => renderCollabTasks('Embajador'),
+  },
 
   /* -- ERP / ADMIN -------------------------------------- */
   'erp-finance': {
@@ -354,6 +750,11 @@ const SECTIONS = {
     roleRequired: 'admin',
     render: renderErpOps,
   },
+  'erp-csv-upload': {
+    label: 'Subir CSV',
+    permissionAnyRequired: ['erp.finance.input', 'erp.ops.input'],
+    render: renderErpCsvUpload,
+  },
   'erp-permissions': {
     label: 'Permisos',
     roleRequired: 'admin',
@@ -364,12 +765,126 @@ const SECTIONS = {
     roleRequired: 'admin',
     render: renderErpAuthAudit,
   },
+  'erp-infrastructure': {
+    label: 'Servidor Mysauth',
+    roleRequired: 'admin',
+    render: renderErpInfrastructure,
+  },
+  'erp-cloud': {
+    label: 'Cloud Hidden Room',
+    roleRequired: 'admin',
+    render: renderErpCloud,
+  },
+  'erp-ig-mention-rank': {
+    label: 'Instagram Mention Rank',
+    roleRequired: 'admin',
+    render: renderErpInstagramMentionRank,
+  },
+  'erp-ig-benefits-audit': {
+    label: 'IG Beneficios',
+    roleRequired: 'admin',
+    render: renderErpIgBenefitsAudit,
+  },
+  'erp-instagram-scraper': {
+    label: 'Instagram Comments Scraper',
+    roleRequired: 'admin',
+    render: renderErpInstagramScraper,
+  },
   'admin-table-editor': {
     label: 'BB.DD',
     roleRequired: 'admin',
     render: renderAdminTableEditor,
   },
 };
+
+const PORTAL_NAV_GROUPS = [
+  {
+    key: 'system',
+    title: 'Sistema',
+    items: [
+      { label: 'Inicio', section: 'overview', icon: 'grid' },
+    ],
+  },
+  {
+    key: 'client',
+    title: 'Cliente',
+    role: 'client',
+    items: [
+      { label: 'Descargas', section: 'client-downloads', icon: 'download' },
+      { label: 'Sesiones', section: 'client-sessions', icon: 'calendar' },
+      { label: 'Transacciones', section: 'client-transactions', icon: 'receipt' },
+      { label: 'Contratos', section: 'client-contracts', icon: 'doc' },
+      { label: 'Membresía', section: 'client-membership', icon: 'star' },
+      { label: 'Tickets', section: 'client-tickets', icon: 'ticket' },
+      { label: 'Tienda', section: 'client-store', icon: 'bag' },
+      { label: 'Premios', section: 'client-rewards', icon: 'star' },
+      { label: 'Minijuegos', action: 'minigames', icon: 'grid' },
+    ],
+  },
+  {
+    key: 'collaborator',
+    title: 'Colaborador',
+    role: 'collaborator',
+    items: [
+      { label: 'Documentos/Contratos', section: 'collab-docs', icon: 'folder' },
+      { label: 'Financiero', section: 'collab-finance', icon: 'receipt' },
+      { label: 'SCRUM / Tareas', section: 'collab-tasks', icon: 'check', permissionAny: ['scrum.view', 'scrum.edit'] },
+      { label: 'Actividad', section: 'collab-log', icon: 'activity' },
+      { label: 'Boletera', href: '../tickets/', icon: 'ticket' },
+    ],
+  },
+  {
+    key: 'rrpp',
+    title: 'Embajador / RRPP',
+    role: 'pr',
+    items: [
+      { label: 'Boletos vendidos', section: 'rrpp-contacts', icon: 'users' },
+      { label: 'Invitaciones', section: 'rrpp-invitations', icon: 'mail' },
+      { label: 'Campañas', section: 'rrpp-campaigns', icon: 'broadcast' },
+      { label: 'Lista de invitados', section: 'rrpp-guestlist', icon: 'list' },
+      { label: 'Beneficios', section: 'rrpp-benefits', icon: 'gift' },
+      { label: 'SCRUM / Tareas', section: 'rrpp-scrum', icon: 'check', permissionAny: ['scrum.view', 'scrum.edit'] },
+    ],
+  },
+  {
+    key: 'media',
+    title: 'Media',
+    permission: 'media.posts',
+    items: [
+      { label: 'Publicaciones', href: '../media/admin.html?view=posts', icon: 'doc' },
+      { label: 'Crear publicación', href: '../media/admin.html?view=editor', icon: 'activity' },
+      { label: 'Borradores', href: '../media/admin.html?view=drafts', icon: 'folder' },
+    ],
+  },
+  {
+    key: 'erp',
+    title: 'ERP / Operaciones',
+    permissionAny: ['erp.finance.input', 'erp.ops.input'],
+    items: [
+      { label: 'Finanzas', section: 'erp-finance', icon: 'chart' },
+      { label: 'Operaciones', section: 'erp-ops', icon: 'settings' },
+      { label: 'Subir CSV', section: 'erp-csv-upload', icon: 'doc' },
+      { label: 'Permisos', section: 'erp-permissions', icon: 'users' },
+      { label: 'Auth / Registros', section: 'erp-auth-audit', icon: 'activity' },
+      { label: 'Servidor Mysauth', section: 'erp-infrastructure', icon: 'server' },
+      { label: 'Cloud Hidden Room', section: 'erp-cloud', icon: 'cloud' },
+      { label: 'Instagram Mention Rank', section: 'erp-ig-mention-rank', icon: 'chart' },
+      { label: 'IG Beneficios', section: 'erp-ig-benefits-audit', icon: 'gift' },
+      { label: 'Instagram Comments Scraper', section: 'erp-instagram-scraper', icon: 'activity' },
+      { label: 'Boletera', href: '../tickets/', icon: 'ticket' },
+      { label: 'BB.DD', section: 'admin-table-editor', icon: 'settings' },
+    ],
+  },
+  {
+    key: 'account',
+    title: 'Cuenta',
+    items: [
+      { label: 'Perfil', action: 'profile', icon: 'users' },
+      { label: 'Ajustes', section: 'account-settings', icon: 'settings' },
+      { label: 'Cerrar sesión', action: 'logout', icon: 'settings', danger: true },
+    ],
+  },
+];
 
 const SCRUM_COLUMNS = [
   { key: 'todo', label: 'Todo' },
@@ -382,18 +897,23 @@ const TASK_PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 const AVAILABLE_ROLES = ['client', 'pr', 'collaborator', 'partner', 'admin'];
 const SECTION_LOADING_MIN_MS = 300;
 const SUGGESTED_PERMISSIONS = [
+  'Kairen AI',
+  'cloud.upload',
+  'media.posts',
   'scrum.view',
   'scrum.edit',
   'erp.finance.input',
   'erp.ops.input',
   'rrpp.manage',
   'events.access',
+  'tickets.view',
+  'tickets.edit',
+  'tickets.validate',
 ];
 
 const EVENT_PERMISSION_FLAGS = [
   ['can_view', 'Ver Evento'],
   ['can_add_finance', 'Capturar Finanzas'],
-  ['can_edit_finance', 'Editar Finanzas'],
   ['can_view_scrum', 'SCRUM View'],
   ['can_edit_scrum', 'Editar SCRUM'],
 ];
@@ -410,23 +930,39 @@ const EVENT_MOVEMENT_TYPES = [
 
 const EVENT_STATUS_OPTIONS = ['draft', 'active', 'closed', 'cancelled'];
 
-const ADMIN_TABLE_FETCH_SIZE = 1000;
+const ADMIN_TABLE_FETCH_SIZE = 200;
+const ADMIN_TABLE_INITIAL_ROW_LIMIT = 200;
+const ADMIN_TABLE_RENDER_LIMIT = 200;
+const USER_PICKER_RENDER_LIMIT = 120;
+const ADMIN_TABLE_REMOTE_SEARCH_MIN_CHARS = 2;
+
+const ADMIN_TABLE_SUMMARY_COLUMN_GROUPS = [
+  ['type', 'movement_type', 'category', 'entity_type', 'role', 'status', 'release_mode'],
+  ['username', 'display_name', 'email', 'user_id', 'from_user_id', 'to_user_id', 'owner_user_id'],
+  ['date', 'movement_date', 'session_date', 'created_at', 'fecha_de_sesion', 'fecha_de_saldo', 'delivered_at', 'start_date', 'end_date', 'updated_at'],
+  ['amount', 'price', 'cost', 'stock', 'quantity', 'weekly_price', 'saldo', 'participation_percent', 'sessions_per_week', 'membership_cycle_number'],
+  ['hour', 'sc_end', 'time'],
+];
 
 const TABLE_EDITOR_CONFIG = {
   users: {
     label: 'Usuarios',
     primaryKey: 'id',
-    select: 'id, user_id, display_name, email, whatsapp, avatar_url, username, roles, has_auth, old_id, temp_password',
+    select: 'id, user_id, display_name, email, whatsapp, avatar_url, username, occupations, ig_username, passline_tracking, roles, has_auth, old_id, temp_password',
     lockedFields: ['id', 'user_id', 'roles', 'has_auth', 'old_id', 'temp_password'],
-    editableFields: ['user_id', 'display_name', 'email', 'whatsapp', 'avatar_url', 'username'],
+    editableFields: ['user_id', 'display_name', 'email', 'whatsapp', 'avatar_url', 'username', 'occupations', 'ig_username', 'passline_tracking'],
     hiddenColumns: ['id', 'old_id', 'temp_password'],
-    pdfColumns: ['user_id', 'display_name', 'email', 'whatsapp', 'username', 'roles', 'has_auth'],
+    summaryFields: ['user_id', 'display_name', 'email', 'whatsapp', 'username', 'ig_username', 'passline_tracking', 'roles', 'has_auth'],
+    pdfColumns: ['user_id', 'display_name', 'email', 'whatsapp', 'username', 'occupations', 'ig_username', 'passline_tracking', 'roles', 'has_auth'],
     pdfColumnLabels: {
       user_id: 'User ID',
       display_name: 'Nombre',
       email: 'Email',
       whatsapp: 'WhatsApp',
       username: 'Username',
+      occupations: 'Ocupaciones',
+      ig_username: 'Instagram',
+      passline_tracking: 'Passline tracking',
       roles: 'Roles',
       has_auth: 'Auth',
     },
@@ -443,10 +979,10 @@ const TABLE_EDITOR_CONFIG = {
   hr_transactions: {
     label: 'hr_transactions',
     primaryKey: 'id',
-    select: 'id, event_id, event_key, movement_type, concept, amount, hidden_room_share, from_user_id, to_user_id, owner_user_id, payment_method, movement_date, notes, user_id, username, created_by_user_id, type, via, date',
+    select: 'id, event_id, event_key, movement_type, concept, amount, hidden_room_share, from_user_id, to_user_id, owner_user_id, owner_entity_id, payment_method, movement_date, notes, user_id, username, created_by_user_id, type, via, date',
     defaultSort: { field: 'movement_date', direction: 'desc' },
     lockedFields: ['id', 'created_by_user_id'],
-    editableFields: ['event_id', 'event_key', 'movement_type', 'concept', 'amount', 'hidden_room_share', 'from_user_id', 'to_user_id', 'owner_user_id', 'payment_method', 'movement_date', 'notes', 'user_id', 'username', 'type', 'via', 'date'],
+    editableFields: ['event_id', 'event_key', 'movement_type', 'concept', 'amount', 'hidden_room_share', 'from_user_id', 'to_user_id', 'owner_user_id', 'owner_entity_id', 'payment_method', 'movement_date', 'notes', 'user_id', 'username', 'type', 'via', 'date'],
     hiddenColumns: ['id'],
   },
   sessions: {
@@ -469,12 +1005,36 @@ const TABLE_EDITOR_CONFIG = {
   },
   downloads: {
     label: 'Descargas',
-    primaryKey: null,
-    select: 'id, user_id, name, storage_path, notes, type',
+    primaryKey: 'id',
+    select: 'id, user_id, name, storage_path, notes, type, release_mode, membership_id, membership_delivery_id, membership_cycle_number',
     lockedFields: ['id'],
-    editableFields: ['user_id', 'name', 'storage_path', 'notes', 'type'],
-    matchFields: ['user_id', 'name', 'storage_path'],
+    editableFields: ['user_id', 'name', 'storage_path', 'notes', 'type', 'release_mode', 'membership_id', 'membership_delivery_id', 'membership_cycle_number'],
     hiddenColumns: ['id'],
+    summaryFields: ['user_id', 'name', 'type', 'release_mode', 'notes'],
+    pdfColumns: ['user_id', 'name', 'type', 'release_mode', 'notes'],
+    pdfColumnLabels: {
+      user_id: 'Usuario',
+      name: 'Producto',
+      type: 'Formato',
+      release_mode: 'Origen',
+      notes: 'Notas',
+    },
+  },
+  store_products: {
+    label: 'Beats a la venta',
+    primaryKey: 'id',
+    select: 'id, slug, name, description, category, price, currency, image_url, file_url, producer, stock, is_digital, is_active, featured, stripe_price_id, created_at, updated_at',
+    defaultSort: { field: 'created_at', direction: 'desc' },
+    lockedFields: ['id', 'created_at', 'updated_at'],
+    editableFields: ['slug', 'name', 'description', 'category', 'price', 'currency', 'image_url', 'file_url', 'producer', 'stock', 'is_digital', 'is_active', 'featured', 'stripe_price_id'],
+    hiddenColumns: ['id', 'updated_at'],
+    rowFilter: (row) => String(row.category ?? '').toLowerCase() === 'beats',
+    pdfColumnLabels: {
+      category: 'tipo',
+      created_at: 'fecha',
+      price: 'cantidad',
+      producer: 'productor',
+    },
   },
   rewards: {
     label: 'Recompensas',
@@ -484,25 +1044,69 @@ const TABLE_EDITOR_CONFIG = {
     editableFields: ['user_id', 'concept'],
     hiddenColumns: ['id'],
   },
+  ig_contest: {
+    label: 'IG Contest',
+    primaryKey: 'id',
+    select: 'id, concepto, user_id, ig_username, created_at',
+    defaultSort: { field: 'created_at', direction: 'desc' },
+    lockedFields: ['id', 'user_id', 'created_at'],
+    editableFields: ['concepto', 'ig_username'],
+    hiddenColumns: ['id'],
+    summaryFields: ['concepto', 'ig_username', 'user_id', 'created_at'],
+    pdfColumns: ['concepto', 'ig_username', 'user_id', 'created_at'],
+    pdfColumnLabels: {
+      concepto: 'Concepto',
+      ig_username: 'Instagram',
+      user_id: 'User ID',
+      created_at: 'Creado',
+    },
+  },
   membership_dashboard: {
     label: 'Membresia',
     primaryKey: null,
     select: 'user_id, username, semana, fecha_de_sesion, estado, fecha_de_saldo, saldo, notas',
-    defaultSort: { field: 'fecha_de_sesion', direction: 'desc' },
-    lockedFields: ['user_id', 'username', 'semana', 'fecha_de_sesion', 'estado', 'fecha_de_saldo', 'saldo', 'notas'],
+    defaultSort: { field: 'fecha_esperada', direction: 'desc' },
+    lockedFields: ['user_id', 'username', 'display_name', 'email', 'semana', 'periodo', 'fecha_esperada', 'week_end', 'fecha_de_sesion', 'sesiones_usadas', 'estado', 'estado_operativo', 'fecha_de_saldo', 'saldo', 'notas', 'material_estimated_delivery', 'material_delivery_delay_weeks', 'material_delivery_delay_label', 'material_delivery_status'],
     editableFields: [],
-    hiddenColumns: [],
+    hiddenColumns: ['membership_id', 'display_name', 'email'],
     readOnly: true,
     pdfColumnLabels: {
       user_id: 'User ID',
       username: 'Username',
       semana: 'Semana',
+      periodo: 'Periodo',
+      fecha_esperada: 'Fecha esperada',
+      week_end: 'Corte de pago',
       fecha_de_sesion: 'Fecha de sesion',
+      sesiones_usadas: 'Sesiones usadas',
       estado: 'Estado',
+      estado_operativo: 'Membresia',
       fecha_de_saldo: 'Fecha de saldo',
-      saldo: 'Saldo',
+      saldo: 'Adeudo / crédito',
       notas: 'Notas',
+      material_estimated_delivery: 'Entrega programada',
+      material_delivery_delay_weeks: 'Atraso entrega',
+      material_delivery_delay_label: 'Atraso entrega',
+      material_delivery_status: 'Estado entrega',
     },
+  },
+  memberships: {
+    label: 'Membresias',
+    primaryKey: 'id',
+    select: 'id, user_id, username, status, start_date, end_date, weekly_price, sessions_per_week, notes',
+    defaultSort: { field: 'start_date', direction: 'desc' },
+    lockedFields: ['id'],
+    editableFields: ['user_id', 'username', 'status', 'start_date', 'end_date', 'weekly_price', 'sessions_per_week', 'notes'],
+    hiddenColumns: ['id'],
+  },
+  membership_material_deliveries: {
+    label: 'Entregas material',
+    primaryKey: 'id',
+    select: 'id, membership_id, user_id, cycle_number, delivered_at, notes, created_at',
+    defaultSort: { field: 'delivered_at', direction: 'desc' },
+    lockedFields: ['id', 'created_at'],
+    editableFields: ['membership_id', 'user_id', 'cycle_number', 'delivered_at', 'notes'],
+    hiddenColumns: ['id'],
   },
   events: {
     label: 'Eventos',
@@ -521,18 +1125,68 @@ const TABLE_EDITOR_CONFIG = {
     lockedFields: ['id', 'created_at'],
     editableFields: ['event_id', 'user_id', 'participation_percent', 'role', 'notes'],
     hiddenColumns: ['id'],
+    hidden: true,
+  },
+  participants: {
+    label: 'Participantes',
+    primaryKey: 'id',
+    select: 'id, user_id, role, status, notes, created_at',
+    defaultSort: { field: 'created_at', direction: 'desc' },
+    lockedFields: ['id', 'created_at'],
+    editableFields: ['user_id', 'role', 'status', 'notes'],
+    hiddenColumns: ['id'],
+  },
+  finance_entities: {
+    label: 'Entidades financieras',
+    primaryKey: 'id',
+    select: 'id, entity_key, name, entity_type, status, notes, created_at',
+    defaultSort: { field: 'name', direction: 'asc' },
+    lockedFields: ['id', 'created_at'],
+    editableFields: ['entity_key', 'name', 'entity_type', 'status', 'notes'],
+    hiddenColumns: ['id'],
+  },
+  payment_methods: {
+    label: 'Metodos de pago',
+    primaryKey: 'id',
+    select: 'id, key, name, status, sort_order, created_at',
+    defaultSort: { field: 'sort_order', direction: 'asc' },
+    lockedFields: ['id', 'created_at'],
+    editableFields: ['key', 'name', 'status', 'sort_order'],
+    hiddenColumns: ['id'],
+    summaryFields: ['key', 'name', 'status', 'sort_order'],
+    pdfColumns: ['key', 'name', 'status', 'sort_order'],
+    pdfColumnLabels: { key: 'Clave', name: 'Nombre', status: 'Status', sort_order: 'Orden' },
+  },
+  services: {
+    label: 'Servicios',
+    primaryKey: 'id',
+    select: 'id, key, name, status, sort_order, show_in_finance, show_in_session, session_cost, session_minutes, created_at',
+    defaultSort: { field: 'sort_order', direction: 'asc' },
+    lockedFields: ['id', 'created_at'],
+    editableFields: ['key', 'name', 'status', 'sort_order', 'show_in_finance', 'show_in_session', 'session_cost', 'session_minutes'],
+    hiddenColumns: ['id'],
+    summaryFields: ['key', 'name', 'status', 'sort_order', 'show_in_finance', 'show_in_session', 'session_cost', 'session_minutes'],
+    pdfColumns: ['key', 'name', 'status', 'sort_order', 'show_in_finance', 'show_in_session', 'session_cost', 'session_minutes'],
+    pdfColumnLabels: { key: 'Clave', name: 'Nombre', status: 'Status', sort_order: 'Orden', show_in_finance: 'Finanzas', show_in_session: 'Sesion', session_cost: 'Costo sesion', session_minutes: 'Minutos sesion' },
   },
 };
 
-async function fetchAllTableEditorRows(tableName, select, defaultSort = null) {
+async function fetchAllTableEditorRows(tableName, select, defaultSort = null, options = {}) {
   const rows = [];
+  const maxRows = Number.isFinite(options.maxRows) ? Math.max(1, Number(options.maxRows)) : Infinity;
   let from = 0;
 
-  while (true) {
+  while (rows.length < maxRows) {
+    const remaining = maxRows - rows.length;
+    const pageSize = Math.min(ADMIN_TABLE_FETCH_SIZE, remaining);
     let query = supabase
       .from(tableName)
       .select(select)
-      .range(from, from + ADMIN_TABLE_FETCH_SIZE - 1);
+      .range(from, from + pageSize - 1);
+
+    if (options.searchQuery && options.config) {
+      query = applyAdminTableRemoteSearch(query, tableName, options.config, options.searchQuery);
+    }
 
     if (defaultSort?.field) {
       query = query.order(defaultSort.field, { ascending: defaultSort.direction !== 'desc' });
@@ -544,11 +1198,91 @@ async function fetchAllTableEditorRows(tableName, select, defaultSort = null) {
 
     rows.push(...(data ?? []));
 
-    if (!data || data.length < ADMIN_TABLE_FETCH_SIZE) break;
-    from += ADMIN_TABLE_FETCH_SIZE;
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
   }
 
   return rows;
+}
+
+async function fetchComputedMembershipDashboardRows(selectedUserId = '') {
+  const usersResult = await fetchAllTableEditorRows(
+    'users',
+    'id, user_id, display_name, email, username',
+    { field: 'display_name', direction: 'asc' },
+    {
+      maxRows: ADMIN_TABLE_INITIAL_ROW_LIMIT,
+      searchQuery: selectedUserId,
+      config: TABLE_EDITOR_CONFIG.users,
+    }
+  );
+  const users = uniqueUsers(usersResult ?? []);
+  state.data.membershipDashboardUsers = users;
+  state.data.users = users;
+
+  const requestedUserId = String(selectedUserId || '').trim();
+  const selectedUser = users.find((user) => String(user.user_id ?? '') === requestedUserId);
+  const userId = selectedUser ? requestedUserId : '';
+  if (!userId) return [];
+
+  const [membershipsResult, sessionsResult, transactionsResult, materialDeliveriesResult] = await Promise.all([
+    supabase
+      .from('memberships')
+      .select('id, user_id, username, status, start_date, end_date, weekly_price, sessions_per_week, notes')
+      .eq('user_id', userId)
+      .order('start_date', { ascending: true }),
+    supabase
+      .from('sessions')
+      .select('id, user_id, username, session_date, concept, status, type, notes, hour, sc_end, cost, promo')
+      .eq('user_id', userId)
+      .order('session_date', { ascending: true }),
+    supabase
+      .from('transactions')
+      .select('id, user_id, type, concept, service, date, amount, via, username, id_trans, notes')
+      .eq('user_id', userId)
+      .order('date', { ascending: true }),
+    fetchMembershipMaterialDeliveries(userId),
+  ]);
+
+  const loadError = membershipsResult.error || sessionsResult.error || transactionsResult.error;
+  if (loadError) throw loadError;
+
+  const usersByUserId = new Map(users
+    .filter((user) => user.user_id)
+    .map((user) => [String(user.user_id), user]));
+
+  return buildMembershipRows(
+    membershipsResult.data ?? [],
+    sessionsResult.data ?? [],
+    transactionsResult.data ?? [],
+    materialDeliveriesResult ?? []
+  ).map((row) => {
+    const user = usersByUserId.get(String(row.user_id ?? ''));
+    return {
+      ...row,
+      display_name: user?.display_name ?? row.username ?? null,
+      email: user?.email ?? null,
+      username: row.username ?? user?.username ?? null,
+    };
+  });
+}
+
+async function fetchMembershipMaterialDeliveries(userId = null) {
+  try {
+    let query = supabase
+      .from('membership_material_deliveries')
+      .select('id, membership_id, user_id, cycle_number, delivered_at, notes, created_at')
+      .order('delivered_at', { ascending: true });
+
+    if (userId) query = query.eq('user_id', userId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+  } catch (error) {
+    console.info('[HR] membership material deliveries unavailable:', error?.message ?? error);
+    return [];
+  }
 }
 
 function sortTableEditorRows(rows, field, direction = 'asc') {
@@ -598,8 +1332,90 @@ function sortRowsByColumn(rows, field, direction = 'asc') {
   return sortTableEditorRows(rows ?? [], field, direction);
 }
 
+function readDashboardPrefs() {
+  try {
+    return JSON.parse(localStorage.getItem(DASHBOARD_PREFS_STORAGE_KEY) || '{}') || {};
+  } catch {
+    return {};
+  }
+}
+
+function writeDashboardPrefs(patch = {}) {
+  try {
+    localStorage.setItem(DASHBOARD_PREFS_STORAGE_KEY, JSON.stringify({
+      ...readDashboardPrefs(),
+      ...patch,
+    }));
+  } catch {
+    // localStorage can fail in private or restricted contexts; memory still works.
+  }
+}
+
+function persistedDataValue(key, fallback = '') {
+  if (state.data[key] !== undefined) return state.data[key];
+  const stored = readDashboardPrefs()[key];
+  return stored !== undefined ? stored : fallback;
+}
+
+function setPersistedDataValue(key, value) {
+  state.data[key] = value;
+  writeDashboardPrefs({ [key]: value });
+  return value;
+}
+
+function tableSearchStorageKey(inputOrId) {
+  if (!inputOrId) return '';
+  if (typeof inputOrId === 'string') return inputOrId;
+  return inputOrId.dataset.adminTableName || inputOrId.dataset.tableTarget || '';
+}
+
+function tableSearchFor(inputOrId) {
+  const key = tableSearchStorageKey(inputOrId);
+  if (!key) return '';
+  if (state.data.tableSearches?.[key] !== undefined) return state.data.tableSearches[key];
+  return readDashboardPrefs().tableSearches?.[key] ?? '';
+}
+
+function setTableSearch(inputOrId, query) {
+  const key = tableSearchStorageKey(inputOrId);
+  if (!key) return;
+  state.data.tableSearches = {
+    ...(state.data.tableSearches ?? {}),
+    [key]: query,
+  };
+  writeDashboardPrefs({
+    tableSearches: {
+      ...(readDashboardPrefs().tableSearches ?? {}),
+      [key]: query,
+    },
+  });
+}
+
 function adminTableSearchFor(tableName) {
-  return state.data.adminTableSearches?.[tableName] ?? '';
+  return state.data.adminTableSearches?.[tableName] ?? tableSearchFor(tableName);
+}
+
+function normalizeAdminTableName(tableName) {
+  return TABLE_EDITOR_CONFIG[tableName] ? tableName : 'users';
+}
+
+function readStoredAdminTableName() {
+  try {
+    return normalizeAdminTableName(localStorage.getItem(ADMIN_TABLE_STORAGE_KEY));
+  } catch {
+    return 'users';
+  }
+}
+
+function setAdminTableName(tableName) {
+  const normalized = normalizeAdminTableName(tableName);
+  state.data.adminTableName = normalized;
+  try {
+    localStorage.setItem(ADMIN_TABLE_STORAGE_KEY, normalized);
+  } catch {
+    // Ignore storage failures; in-memory state still updates.
+  }
+  return normalized;
 }
 
 function setAdminTableSearch(tableName, query) {
@@ -607,6 +1423,7 @@ function setAdminTableSearch(tableName, query) {
     ...(state.data.adminTableSearches ?? {}),
     [tableName]: query,
   };
+  setTableSearch(tableName, query);
 }
 
 function isSessionStaleError(error) {
@@ -620,10 +1437,19 @@ function isSessionStaleError(error) {
   return /jwt|token|expired|permission denied|row-level security|rls|invalid claim|not authorized|unauthorized/.test(text);
 }
 
-function persistAdminTableSearchFromDOM(tableName = state.data.adminTableName || 'users') {
+function persistAdminTableSearchFromDOM(tableName = state.data.adminTableName || readStoredAdminTableName()) {
   const input = [...document.querySelectorAll('[data-table-search]')]
     .find((item) => item.dataset.adminTableName === tableName);
   if (input) setAdminTableSearch(tableName, input.value.trim());
+}
+
+function restorePersistedTableSearches(root = document) {
+  root.querySelectorAll('[data-table-search]').forEach((input) => {
+    const query = tableSearchFor(input);
+    if (!query) return;
+    input.value = query;
+    filterTableRows(input);
+  });
 }
 
 function rowMatchesSearch(row, columns, query) {
@@ -636,6 +1462,39 @@ function rowMatchesSearch(row, columns, query) {
     .join(' ');
 
   return normalizeSearchText(searchable).includes(normalizedQuery);
+}
+
+function adminTableRemoteSearchColumns(tableName, config) {
+  const preferred = [
+    'display_name',
+    'username',
+    'email',
+    'user_id',
+    'concept',
+    'service',
+    'notes',
+    'name',
+    'event_key',
+    'storage_path',
+    'id_trans',
+  ];
+  const allowed = new Set([...(config.lockedFields ?? []), ...(config.editableFields ?? [])]);
+  return preferred.filter((field) => allowed.has(field));
+}
+
+function applyAdminTableRemoteSearch(query, tableName, config, searchQuery) {
+  const normalized = normalizeSearchText(searchQuery);
+  if (!normalized || normalized.length < ADMIN_TABLE_REMOTE_SEARCH_MIN_CHARS || tableName === 'membership_dashboard') {
+    return query;
+  }
+
+  const columns = adminTableRemoteSearchColumns(tableName, config);
+  if (!columns.length) return query;
+
+  const escaped = String(searchQuery).replace(/[%*]/g, '').trim();
+  if (!escaped) return query;
+
+  return query.or(columns.map((field) => `${field}.ilike.%${escaped}%`).join(','));
 }
 
 function renderSortableHeader(tableId, field, label, activeSort) {
@@ -695,6 +1554,98 @@ function normalizeSearchText(value) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim();
+}
+function normalizePhoneForMatch(value) {
+  return String(value ?? '').replace(/[^0-9+]/g, '').trim();
+}
+
+function normalizeOccupationsValue(value) {
+  const source = Array.isArray(value) ? value : String(value ?? '').split(',');
+  const occupations = source.map((item) => String(item ?? '').trim()).filter(Boolean);
+  return occupations.length ? occupations : ['Comunidad'];
+}
+
+function displayOccupationsValue(value) {
+  return normalizeOccupationsValue(value).join(', ');
+}
+
+function normalizePasslineTrackingValue(value) {
+  const source = Array.isArray(value) ? value : String(value ?? '').split(',');
+  return source.map((item) => String(item ?? '').trim()).filter(Boolean);
+}
+
+function displayPasslineTrackingValue(value) {
+  return normalizePasslineTrackingValue(value).join(', ');
+}
+
+function buildPasslineTrackingIndex(users = []) {
+  const index = new Map();
+  const ambiguous = new Set();
+  users.forEach((user) => {
+    if (!user?.user_id) return;
+    normalizePasslineTrackingValue(user.passline_tracking).forEach((alias) => {
+      const key = normalizeSearchText(alias);
+      if (!key) return;
+      const existing = index.get(key);
+      if (existing && existing !== user.user_id) {
+        ambiguous.add(key);
+        return;
+      }
+      index.set(key, user.user_id);
+    });
+  });
+  ambiguous.forEach((key) => index.delete(key));
+  return index;
+}
+
+function applyPasslineTracking(row, trackingIndex = new Map()) {
+  if (row.user_id) return row;
+  const key = normalizeSearchText(row.buyer_name);
+  const userId = key ? trackingIndex.get(key) : null;
+  return userId ? { ...row, user_id: userId } : row;
+}
+
+function renderUserMergeDuplicateAlerts(mode = 'email') {
+  const labels = { email: 'Email', name: 'Nombre', whatsapp: 'WhatsApp' };
+  const groups = new Map();
+  (state.data.users ?? []).forEach((user) => {
+    const rawKey = mode === 'name'
+      ? (user.display_name || user.username || '')
+      : mode === 'whatsapp'
+        ? user.whatsapp
+        : user.email;
+    const key = mode === 'whatsapp' ? normalizePhoneForMatch(rawKey) : normalizeSearchText(rawKey);
+    if (!key) return;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(user);
+  });
+
+  const duplicates = [...groups.values()].filter((items) => items.length > 1).slice(0, 8);
+  const rows = duplicates.map((items) => {
+    const title = mode === 'whatsapp'
+      ? normalizePhoneForMatch(items[0].whatsapp)
+      : mode === 'name'
+        ? (items[0].display_name || items[0].username || 'Sin nombre')
+        : (items[0].email || 'Sin email');
+    const detail = items.map((user) => `${user.display_name || user.username || user.email || 'Usuario'} - ${user.user_id ?? '-'} - ${user.email ?? 'sin email'} - ${user.whatsapp ?? 'sin WhatsApp'}`).join(' | ');
+    return `<li><strong>${escapeHTML(title)}</strong><br><small>${escapeHTML(detail)}</small></li>`;
+  }).join('');
+
+  return `
+    <div class="db-field">
+      <span>Detectar posibles duplicados por</span>
+      <select data-action="merge-duplicate-mode" aria-label="Detectar duplicados por">
+        ${optionHTML('email', 'Email', mode)}
+        ${optionHTML('name', 'Nombre', mode)}
+        ${optionHTML('whatsapp', 'WhatsApp', mode)}
+      </select>
+      <small class="db-field__hint">Email es la senal mas importante. Nombre y WhatsApp son alertas operativas, no fusion automatica.</small>
+    </div>
+    <div class="db-empty">
+      <strong>Posibles mismas personas por ${escapeHTML(labels[mode] || 'Email')}</strong>
+      ${duplicates.length ? `<ul>${rows}</ul>` : '<p>Sin duplicados detectados con este criterio.</p>'}
+    </div>
+  `;
 }
 
 const userLabel = (userId) => {
@@ -760,7 +1711,11 @@ async function syncLocalStorageRecords() {
       const amount = Number(raw || 0);
       if (!Number.isFinite(amount) || amount <= 0) continue;
 
-      const gameId = key === 'dem00nz_best' ? 'flappy-nero' : key.replace(/_best$/, '');
+      const gameId = key === 'dem00nz_best'
+        ? 'flappy-nero'
+        : key === 'gol_gana_record'
+          ? 'gol-gana'
+          : key.replace(/_best$/, '');
 
       const { data: existing, error: fetchError } = await supabase
         .from('scores')
@@ -902,13 +1857,41 @@ function navigate(sectionKey) {
     return;
   }
 
+  if (section.permissionAnyRequired && !hasAnyPermission(section.permissionAnyRequired)) {
+    showToast('No tienes permiso para ver este modulo.', 'error');
+    return;
+  }
+
   setState({ activeSection: sectionKey });
   persistActiveSection(sectionKey);
   updateSidebarActiveState(sectionKey);
   updateTopbarTitle(section.label);
+  syncInfrastructureRefresh(sectionKey);
 
   // Fire-and-forget: renderSection is async but navigate stays sync
   renderSection(sectionKey);
+}
+
+function syncInfrastructureRefresh(sectionKey) {
+  if (state.infrastructureRefreshTimer && sectionKey !== 'erp-infrastructure') {
+    clearInterval(state.infrastructureRefreshTimer);
+    setState({ infrastructureRefreshTimer: null });
+    return;
+  }
+
+  if (sectionKey !== 'erp-infrastructure' || state.infrastructureRefreshTimer) return;
+
+  const timer = setInterval(() => {
+    if (state.activeSection !== 'erp-infrastructure') {
+      clearInterval(timer);
+      if (state.infrastructureRefreshTimer === timer) setState({ infrastructureRefreshTimer: null });
+      return;
+    }
+    if (state.data?.serverStatus) delete state.data.serverStatus;
+    renderSection('erp-infrastructure');
+  }, 20_000);
+
+  setState({ infrastructureRefreshTimer: timer });
 }
 
 function persistActiveSection(sectionKey) {
@@ -1032,6 +2015,7 @@ async function renderSection(sectionKey) {
     if (state.renderToken !== renderToken) return;
     wrap.innerHTML = `${renderSessionStaleBanner()}${html}`;
     enhancePasswordToggles(wrap);
+    restorePersistedTableSearches(wrap);
   } catch (error) {
     if (state.renderToken !== renderToken) return;
     console.error('[HR] renderSection:', error);
@@ -1041,9 +2025,14 @@ async function renderSection(sectionKey) {
       <p class="db-empty db-empty--error">Error al cargar este modulo.</p>
     `);
     enhancePasswordToggles(wrap);
+    restorePersistedTableSearches(wrap);
   } finally {
     if (state.renderToken === renderToken && skeleton) skeleton.hidden = true;
   }
+  if (sectionKey === 'client-tickets') {
+    requestAnimationFrame(() => renderClientTicketQrs(wrap));
+  }
+
 
   // Trigger reveal after paint
   requestAnimationFrame(() => {
@@ -1062,13 +2051,17 @@ function hydrateTopbar() {
 
   if (!state.user) return;
 
-  if (nameEl)   nameEl.textContent  = state.user.display_name ?? state.user.email ?? '-';
+  const fullName = state.user.display_name ?? state.user.username ?? state.user.email?.split('@')[0] ?? 'Usuario';
+  const shortName = String(fullName).trim().split(/\s+/)[0] || 'Usuario';
+  if (nameEl) nameEl.textContent = `Hola, ${shortName}`;
   if (avatarEl) {
     const avatarUrl = String(state.user.avatar_url ?? '').trim();
-    const fallbackInitial = (state.user.display_name ?? state.user.email ?? '?')[0].toUpperCase();
     const renderFallback = () => {
-      avatarEl.textContent = fallbackInitial;
-      avatarEl.removeAttribute('aria-label');
+      const fallback = document.createElement('img');
+      fallback.src = '/assets/img/np-negative.png';
+      fallback.alt = '';
+      avatarEl.replaceChildren(fallback);
+      avatarEl.setAttribute('aria-label', 'Foto de perfil predeterminada');
     };
 
     avatarEl.textContent = '';
@@ -1118,6 +2111,201 @@ function updateSidebarActiveState(activeKey) {
     btn.classList.toggle('db-sidebar__item--active', isActive);
     btn.setAttribute('aria-current', isActive ? 'page' : 'false');
   });
+
+  document.querySelectorAll('.hr-portal-nav-item[data-section]').forEach((btn) => {
+    const isActive = btn.dataset.section === activeKey;
+    btn.classList.toggle('is-active', isActive);
+    btn.setAttribute('aria-current', isActive ? 'page' : 'false');
+  });
+
+  const activeGroup = PORTAL_NAV_GROUPS.find((group) =>
+    group.items.some((item) => item.section === activeKey)
+  )?.key;
+  document.querySelectorAll('.hr-portal-bottom-nav [data-portal-group]').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.portalGroup === activeGroup);
+  });
+  document.querySelectorAll('.hr-portal-bottom-nav [data-section]').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.section === activeKey);
+  });
+}
+
+function canShowPortalGroup(group) {
+  if (group.role && !hasRole(group.role)) return false;
+  if (group.permission && !hasPermission(group.permission)) return false;
+  if (group.permissionAny && !hasAnyPermission(group.permissionAny)) return false;
+  return true;
+}
+
+function canShowPortalItem(item) {
+  if (item.permission && !hasPermission(item.permission)) return false;
+  if (item.permissionAny && !hasAnyPermission(item.permissionAny)) return false;
+  if (item.section) {
+    const section = SECTIONS[item.section];
+    if (!section) return false;
+    if (section.roleRequired && !hasRole(section.roleRequired)) return false;
+    if (section.permissionRequired && !hasPermission(section.permissionRequired)) return false;
+    if (section.permissionAnyRequired && !hasAnyPermission(section.permissionAnyRequired)) return false;
+  }
+  return true;
+}
+
+function visiblePortalGroups() {
+  return PORTAL_NAV_GROUPS
+    .filter(canShowPortalGroup)
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(canShowPortalItem),
+    }))
+    .filter((group) => group.items.length);
+}
+
+function renderPortalNavItem(item, className = 'db-sidebar__item') {
+  const icon = `<span class="db-icon db-icon--${escapeHTML(item.icon || 'grid')}" aria-hidden="true"></span>`;
+  const text = `<span class="db-sidebar__item-text">${escapeHTML(item.label)}</span>`;
+  const active = item.section === state.activeSection;
+  const classes = `${className}${item.danger ? ' db-sidebar__item--danger' : ''}${active ? ' is-active' : ''}`;
+  const current = active ? ' aria-current="page"' : '';
+
+  if (item.href) {
+    return `<a class="${classes}" href="${escapeHTML(item.href)}">${icon}${text}</a>`;
+  }
+
+  const data = item.section
+    ? `data-section="${escapeHTML(item.section)}"`
+    : `data-sidebar-action="${escapeHTML(item.action)}"`;
+  return `<button class="${classes}" type="button" ${data}${current}>${icon}${text}</button>`;
+}
+
+function renderPortalSidebar() {
+  const nav = document.querySelector('#js-sidebar .db-sidebar__nav');
+  if (!nav) return;
+
+  nav.innerHTML = visiblePortalGroups().map((group) => `
+    <ul class="db-sidebar__group${group.key === 'account' ? ' db-sidebar__group--account' : ''}"
+      role="list" data-group="${escapeHTML(group.key)}">
+      <li class="db-sidebar__label" aria-hidden="true">${escapeHTML(group.title)}</li>
+      ${group.items.map((item) => `<li>${renderPortalNavItem(item)}</li>`).join('')}
+    </ul>
+  `).join('');
+}
+
+function activePortalGroupKey() {
+  return PORTAL_NAV_GROUPS.find((group) =>
+    group.items.some((item) => item.section === state.activeSection)
+  )?.key || '';
+}
+
+function renderPortalMoreSheet(openKey = '') {
+  const groups = visiblePortalGroups().filter((group) => group.key !== 'system');
+  const expandedKey = openKey;
+  const currentKey = activePortalGroupKey();
+
+  return groups.map((group) => `
+    <details class="hr-portal-drawer__section${group.key === currentKey ? ' is-current' : ''}"
+      data-portal-sheet-group="${escapeHTML(group.key)}"${group.key === expandedKey ? ' open' : ''}>
+      <summary>
+        <span>${escapeHTML(group.title)}</span>
+        <span class="hr-portal-drawer__chevron" aria-hidden="true"></span>
+      </summary>
+      <div class="hr-portal-drawer__list">
+        ${group.items.map((item) => renderPortalNavItem(item, 'hr-portal-nav-item')).join('')}
+      </div>
+    </details>
+  `).join('');
+}
+
+function renderPortalNavigation() {
+  renderPortalSidebar();
+  document.querySelectorAll('.hr-portal-bottom-nav, .hr-portal-backdrop, .hr-portal-drawer')
+    .forEach((node) => node.remove());
+
+  const collaboratorEnabled = visiblePortalGroups().some((group) => group.key === 'collaborator');
+  const erpEnabled = visiblePortalGroups().some((group) => group.key === 'erp');
+  document.body.insertAdjacentHTML('beforeend', `
+    <nav class="hr-portal-bottom-nav" aria-label="Navegación principal del portal">
+      <button type="button" data-section="overview"><span>⌂</span>Inicio</button>
+      <button type="button" data-portal-group="client"><span>◎</span>Cliente</button>
+      <button type="button" data-portal-group="collaborator"${collaboratorEnabled ? '' : ' disabled'}><span>◇</span>Colaborador</button>
+      <button type="button" data-portal-group="erp"${erpEnabled ? '' : ' disabled'}><span>▦</span>ERP</button>
+      <button type="button" data-portal-more aria-controls="hr-portal-more" aria-expanded="false"><span>•••</span>Más</button>
+    </nav>
+    <button class="hr-portal-backdrop" type="button" aria-label="Cerrar menú" hidden></button>
+    <aside class="hr-portal-drawer" id="hr-portal-more" aria-label="Menú del portal" hidden>
+      <header>
+        <div><small>Navegación</small><strong data-portal-sheet-title>Todas las secciones</strong></div>
+        <button type="button" data-portal-sheet-close aria-label="Cerrar menú">×</button>
+      </header>
+      <div class="hr-portal-drawer__content">${renderPortalMoreSheet()}</div>
+    </aside>
+  `);
+}
+
+function togglePortalMoreSheet(forceOpen, filterKey = '') {
+  const sheet = document.getElementById('hr-portal-more');
+  const backdrop = document.querySelector('.hr-portal-backdrop');
+  const moreButton = document.querySelector('[data-portal-more]');
+  if (!sheet || !backdrop || !moreButton) return;
+
+  const open = typeof forceOpen === 'boolean' ? forceOpen : sheet.hidden;
+  if (open) {
+    sheet.querySelector('.hr-portal-drawer__content').innerHTML = renderPortalMoreSheet(filterKey);
+    sheet.querySelector('[data-portal-sheet-title]').textContent = 'Todas las secciones';
+  }
+
+  sheet.hidden = !open;
+  backdrop.hidden = !open;
+  moreButton.setAttribute('aria-expanded', String(open && !filterKey));
+  document.body.classList.toggle('hr-portal-menu-open', open);
+  document.body.classList.toggle('hr-overlay-open', open || document.body.classList.contains('hr-global-menu-open'));
+  if (open) sheet.querySelector('[data-portal-sheet-close]')?.focus();
+}
+
+function closePortalMoreSheet() {
+  togglePortalMoreSheet(false);
+}
+
+function attachPortalMobileListeners() {
+  document.querySelector('.hr-portal-bottom-nav')?.addEventListener('click', (event) => {
+    const sectionButton = event.target.closest('[data-section]');
+    if (sectionButton) {
+      navigate(sectionButton.dataset.section);
+      closePortalMoreSheet();
+      return;
+    }
+
+    const groupButton = event.target.closest('[data-portal-group]');
+    if (groupButton && !groupButton.disabled) {
+      togglePortalMoreSheet(true, groupButton.dataset.portalGroup);
+      return;
+    }
+
+    if (event.target.closest('[data-portal-more]')) togglePortalMoreSheet();
+  });
+
+  document.querySelector('.hr-portal-backdrop')?.addEventListener('click', closePortalMoreSheet);
+  document.querySelector('[data-portal-sheet-close]')?.addEventListener('click', closePortalMoreSheet);
+  document.getElementById('hr-portal-more')?.addEventListener('click', (event) => {
+    const sectionItem = event.target.closest('[data-section]');
+    if (sectionItem) navigate(sectionItem.dataset.section);
+
+    const actionItem = event.target.closest('[data-sidebar-action]');
+    if (actionItem) handleNavigationAction(actionItem.dataset.sidebarAction);
+
+    if (event.target.closest('a, button')) closePortalMoreSheet();
+  });
+  document.getElementById('hr-portal-more')?.addEventListener('toggle', (event) => {
+    const opened = event.target.closest('details[open]');
+    if (!opened) return;
+    document.querySelectorAll('#hr-portal-more details[open]').forEach((group) => {
+      if (group !== opened) group.removeAttribute('open');
+    });
+  }, true);
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && document.body.classList.contains('hr-portal-menu-open')) {
+      closePortalMoreSheet();
+    }
+  });
 }
 
 function attachSidebarListeners() {
@@ -1134,28 +2322,12 @@ function attachSidebarListeners() {
       closeUnifiedNavigation();
     });
   });
-
-  // Tap on the topbar context label also toggles the sidebar on mobile
-  document.querySelector('.db-topbar__context')?.addEventListener('click', () => {
-    toggleUnifiedNavigation();
-  });
 }
 
 function toggleUnifiedNavigation({ menuOnly = false } = {}) {
   const toggle = document.getElementById('js-user-menu-toggle');
   const menu = document.getElementById('js-user-menu');
-  const sidebar = document.getElementById('js-sidebar');
   const shouldOpenMenu = menu?.hidden;
-  const isMobile = window.matchMedia('(max-width: 800px)').matches;
-
-  if (!menuOnly && isMobile) {
-    const open = !state.sidebarOpen;
-    if (menu) menu.hidden = true;
-    setState({ sidebarOpen: open });
-    sidebar?.classList.toggle('db-sidebar--open', open);
-    toggle?.setAttribute('aria-expanded', String(Boolean(open)));
-    return;
-  }
 
   if (menu) menu.hidden = !shouldOpenMenu;
   toggle?.setAttribute('aria-expanded', String(Boolean(shouldOpenMenu)));
@@ -1242,10 +2414,10 @@ async function loadAndRenderNotifications() {
   }
 
   list.innerHTML = notifications.map((n) => `
-    <li class="db-notifications__item db-notifications__item--${n.type}${n.read ? ' db-notifications__item--read' : ''}" data-notif-id="${n.id}">
-      <span class="db-notifications__dot" aria-hidden="true"></span>
-      <span class="db-notifications__msg">${escapeHTML(n.message)}</span>
-      <time class="db-notifications__time" datetime="${new Date(n.ts).toISOString()}">${relativeTime(n.ts)}</time>
+    <li class="hr-notice hr-notice--${escapeAttr(n.type)} db-notifications__item db-notifications__item--${n.type}${n.read ? ' db-notifications__item--read' : ''}" data-notif-id="${n.id}">
+      <span class="hr-notice__dot db-notifications__dot" aria-hidden="true"></span>
+      <span class="hr-notice__message db-notifications__msg">${escapeHTML(n.message)}</span>
+      <time class="hr-notice__time db-notifications__time" datetime="${new Date(n.ts).toISOString()}">${relativeTime(n.ts)}</time>
     </li>
   `).join('');
 }
@@ -1282,16 +2454,19 @@ function showToast(message, type = 'info', duration = 4000) {
   if (!region) return;
 
   const toast = document.createElement('div');
-  toast.className = `db-toast db-toast--${type}`;
+  toast.className = `hr-toast hr-toast--${type} db-toast db-toast--${type}`;
   toast.setAttribute('role', 'status');
-  toast.textContent = message;
+  toast.innerHTML = `
+    <span class="hr-toast__dot" aria-hidden="true"></span>
+    <span class="hr-toast__message">${escapeHTML(message)}</span>
+  `;
 
   region.appendChild(toast);
 
-  requestAnimationFrame(() => toast.classList.add('db-toast--visible'));
+  requestAnimationFrame(() => toast.classList.add('hr-toast--visible', 'db-toast--visible'));
 
   setTimeout(() => {
-    toast.classList.remove('db-toast--visible');
+    toast.classList.remove('hr-toast--visible', 'db-toast--visible');
     toast.addEventListener('transitionend', () => toast.remove(), { once: true });
   }, duration);
 }
@@ -1415,6 +2590,7 @@ function renderOverview() {
 
 function renderAccountSettings() {
   const email = state.user?.email ?? '';
+  const igUsername = state.user?.ig_username ?? '';
 
   return sectionShell('Cuenta', 'Ajustes de Cuenta', 'title-account-settings', `
     <div class="db-admin-grid">
@@ -1429,12 +2605,16 @@ function renderAccountSettings() {
               <input type="email" name="email" autocomplete="email" value="${escapeAttr(email)}" required />
             </label>
             <label class="db-field">
-              <span>Nueva contrasena</span>
-              <input type="password" name="password" autocomplete="new-password" minlength="6" placeholder="Nueva contrasena" />
+              <span>Usuario de Instagram</span>
+              <input type="text" name="ig_username" autocomplete="off" autocapitalize="off" spellcheck="false" value="${escapeAttr(igUsername)}" placeholder="tu_usuario" />
             </label>
             <label class="db-field">
-              <span>Confirmar contrasena</span>
-              <input type="password" name="password_confirm" autocomplete="new-password" minlength="6" placeholder="Confirmar contrasena" />
+              <span>Nueva contraseña</span>
+              <input type="password" name="password" autocomplete="new-password" minlength="8" placeholder="Nueva contraseña" />
+            </label>
+            <label class="db-field">
+              <span>Confirmar contraseña</span>
+              <input type="password" name="password_confirm" autocomplete="new-password" minlength="8" placeholder="Confirmar contraseña" />
             </label>
             <button class="btn-primary" type="submit">Guardar cuenta</button>
           </form>
@@ -1447,6 +2627,15 @@ function renderAccountSettings() {
   `);
 }
 
+function cleanInstagramUsername(value) {
+  return String(value ?? '')
+    .trim()
+    .replace(/^https?:\/\/(www\.)?instagram\.com\//i, '')
+    .replace(/^@+/, '')
+    .split(/[/?#\s]/)[0]
+    .replace(/[^a-zA-Z0-9._]/g, '')
+    .slice(0, 30);
+}
 /** @param {string[]} roles */
 function buildQuickActions(roles) {
   const actions = [];
@@ -1477,6 +2666,38 @@ function buildQuickActions(roles) {
       <span class="db-quick-action__arrow" aria-hidden="true">-></span>
     </button>
   `).join('');
+}
+
+async function createUserNotification(userId, message, type = 'info') {
+  const targetUserId = String(userId ?? '').trim();
+  if (!targetUserId || !message) return false;
+
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .insert({
+        user_id: targetUserId,
+        message,
+        type,
+        read: false,
+      });
+
+    if (error) {
+      console.info('[HR] notification insert skipped:', error.message);
+      if (/schema cache|could not find the table|404/i.test(error.message)) {
+        setState({ notificationsAvailable: false });
+      }
+      return false;
+    }
+
+    if (String(state.user?.user_id ?? '') === targetUserId || String(state.user?.id ?? '') === targetUserId) {
+      await loadAndRenderNotifications();
+    }
+    return true;
+  } catch (error) {
+    console.info('[HR] notification insert unavailable:', error);
+    return false;
+  }
 }
 
 function renderLoadingBlock(label = 'Cargando') {
@@ -1525,8 +2746,8 @@ async function renderClientDownloads() {
 
   if (!data || data.length === 0) {
     rows = `
-      <tr class="db-table__empty-row">
-        <td colspan="4" class="db-empty">Sin descargas disponibles.</td>
+      <tr class="db-table__empty-row hr-table-empty">
+        <td colspan="5" class="db-empty hr-table-empty">Sin descargas disponibles.</td>
       </tr>
     `;
   } else {
@@ -1534,11 +2755,10 @@ async function renderClientDownloads() {
       <tr>
         <td>${escapeHTML(p.name ?? '-')}</td>
         <td>${escapeHTML(p.type ?? '-')}</td>
+        <td>${escapeHTML(p.release_mode === 'membership_delivery' ? `Membresía · Mes ${p.membership_cycle_number ?? '-'}` : 'Directa')}</td>
         <td>${escapeHTML(p.notes ?? '-')}</td>
         <td>
-          ${p.storage_path
-            ? `<a class="btn-primary" href="${escapeHTML(p.storage_path)}" target="_blank" rel="noopener noreferrer">Descargar</a>`
-            : '-'}
+          ${renderDownloadAction(p)}
         </td>
       </tr>
     `).join('');
@@ -1550,12 +2770,13 @@ async function renderClientDownloads() {
         <p class="section-label">Cliente</p>
         <h1 class="db-section__title" id="title-downloads">Descargas</h1>
       </header>
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="Productos descargables">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="Productos descargables">
           <thead>
             <tr>
               <th scope="col">Producto</th>
               <th scope="col">Formato</th>
+              <th scope="col">Origen</th>
               <th scope="col">Notas</th>
               <th scope="col">Acción</th>
             </tr>
@@ -1567,6 +2788,83 @@ async function renderClientDownloads() {
       </div>
     </section>
   `;
+}
+
+function isCloudDownloadUrl(value) {
+  if (!value) return false;
+  try {
+    const url = new URL(String(value), window.location.origin);
+    return url.hostname === 'cloud.hiddenroom.mx';
+  } catch {
+    return String(value).startsWith(CLOUD_HIDDENROOM_URL);
+  }
+}
+
+function downloadReleaseLabel(item = {}) {
+  return item.release_mode === 'membership_delivery'
+    ? 'Membresía - Mes ' + (item.membership_cycle_number ?? '-')
+    : 'Directa';
+}
+
+function renderDownloadAction(item) {
+  const href = String(item?.storage_path || '').trim();
+  if (!href) return '-';
+  const isCloudFile = isCloudDownloadUrl(href);
+  const label = isCloudFile ? 'Descarga directa' : 'Descargar';
+  return `
+    <a class="btn-primary db-download-action${isCloudFile ? ' db-download-action--cloud' : ''}" href="${escapeAttr(href)}" ${isCloudFile ? 'data-direct-cloud-download="true"' : 'target="_blank" rel="noopener noreferrer"'} aria-label="${escapeAttr(label)}">
+      <svg class="db-download-action__icon" aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+      <span>${escapeHTML(label)}</span>
+    </a>
+  `;
+}
+
+function cloudDownloadRequestFromHref(href) {
+  if (!isCloudDownloadUrl(href)) return null;
+  const url = new URL(String(href), window.location.origin);
+  const segments = url.pathname.split('/').filter(Boolean).map((segment) => decodeURIComponent(segment));
+  const name = segments.pop();
+  if (!name) return null;
+  let pathSegments = segments;
+  if (pathSegments[0] === 'files') pathSegments = pathSegments.slice(1);
+  if (!hasRole('admin') && pathSegments[0] === 'users') pathSegments = pathSegments.slice(2);
+  return {
+    path: normalizeCloudPath('/' + pathSegments.join('/')),
+    name,
+  };
+}
+
+async function downloadCloudFileFromPortal(link) {
+  const request = cloudDownloadRequestFromHref(link?.href);
+  if (!request) return false;
+  const apiUrl = `${CLOUD_HIDDENROOM_URL.replace(/\/$/, '')}/api/download?path=${encodeURIComponent(request.path)}&name=${encodeURIComponent(request.name)}`;
+  link.setAttribute('aria-busy', 'true');
+  link.classList.add('is-loading');
+  try {
+    const response = await cloudApiFetch(apiUrl, { headers: { Accept: 'application/octet-stream' } });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(detail || `No se pudo descargar el archivo (${response.status})`);
+    }
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = request.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+    showToast('Descarga iniciada.', 'success');
+    return true;
+  } catch (err) {
+    console.error('[HR] direct cloud download:', err);
+    showToast(err.message || 'No se pudo descargar desde Cloud.', 'error');
+    return false;
+  } finally {
+    link.removeAttribute('aria-busy');
+    link.classList.remove('is-loading');
+  }
 }
 
 
@@ -1595,15 +2893,15 @@ async function renderClientSessions() {
 
   if (!data || data.length === 0) {
     rows = `
-      <tr class="db-table__empty-row">
-        <td colspan="5" class="db-empty">Sin sesiones registradas.</td>
+      <tr class="db-table__empty-row hr-table-empty">
+        <td colspan="5" class="db-empty hr-table-empty">Sin sesiones registradas.</td>
       </tr>
     `;
   } else {
     rows = data.map((s) => `
       <tr>
         <td>${escapeHTML(s.concept ?? '-')}</td>
-        <td>${s.session_date ? new Date(s.session_date).toLocaleDateString('es-MX') : '-'}</td>
+        <td>${s.session_date ? formatDisplayDateOnly(s.session_date) : '-'}</td>
         <td>${escapeHTML(s.status ?? '-')}</td>
         <td>${escapeHTML(s.cost != null ? `$${s.cost}` : '-')}</td>
         <td>${escapeHTML(s.notes ?? '-')}</td>
@@ -1617,8 +2915,8 @@ async function renderClientSessions() {
         <p class="section-label">Cliente</p>
         <h1 class="db-section__title" id="title-sessions">Sesiones</h1>
       </header>
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="Historial de sesiones">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="Historial de sesiones">
           <thead>
             <tr>
               <th scope="col">Concepto</th>
@@ -1663,8 +2961,8 @@ async function renderClientTransactions() {
 
   if (!data || data.length === 0) {
     rows = `
-      <tr class="db-table__empty-row">
-        <td colspan="5" class="db-empty">Sin transacciones registradas.</td>
+      <tr class="db-table__empty-row hr-table-empty">
+        <td colspan="5" class="db-empty hr-table-empty">Sin transacciones registradas.</td>
       </tr>
     `;
   } else {
@@ -1673,7 +2971,7 @@ async function renderClientTransactions() {
         <td>${escapeHTML(tx.concept ?? '-')}</td>
         <td>${escapeHTML(tx.type ?? '-')}</td>
         <td>$${escapeHTML(String(tx.amount ?? 0))}</td>
-        <td>${tx.date ? new Date(tx.date).toLocaleDateString('es-MX') : '-'}</td>
+        <td>${tx.date ? formatDisplayDateOnly(tx.date) : '-'}</td>
         <td>${escapeHTML(tx.via ?? '-')}</td>
       </tr>
     `).join('');
@@ -1685,8 +2983,8 @@ async function renderClientTransactions() {
         <p class="section-label">Cliente</p>
         <h1 class="db-section__title" id="title-txn">Transacciones</h1>
       </header>
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="Historial de transacciones">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="Historial de transacciones">
           <thead>
             <tr>
               <th scope="col">Concepto</th>
@@ -1757,21 +3055,27 @@ async function renderClientContracts() {
 
 async function renderClientMembership() {
   const userId = state.user?.user_id;
-  const [sessionsResult, transactionsResult] = await Promise.all([
+  const [membershipsResult, sessionsResult, transactionsResult, materialDeliveriesResult] = await Promise.all([
+    supabase
+      .from('memberships')
+      .select('id, user_id, username, status, start_date, end_date, weekly_price, sessions_per_week, notes')
+      .eq('user_id', userId)
+      .order('start_date', { ascending: true }),
     supabase
       .from('sessions')
-      .select('id, user_id, username, session_date, type, concept, notes, status, cost, hour, sc_end')
+      .select('*')
       .eq('user_id', userId)
       .order('session_date', { ascending: true }),
     supabase
       .from('transactions')
-      .select('id, user_id, username, date, amount, type, concept, service, via, notes, id_trans')
+      .select('*')
       .eq('user_id', userId)
       .order('date', { ascending: true }),
+    fetchMembershipMaterialDeliveries(userId),
   ]);
 
-  if (sessionsResult.error || transactionsResult.error) {
-    console.error('[HR] renderClientMembership:', sessionsResult.error || transactionsResult.error);
+  if (membershipsResult.error || sessionsResult.error || transactionsResult.error) {
+    console.error('[HR] renderClientMembership:', membershipsResult.error || sessionsResult.error || transactionsResult.error);
     return `
       <section class="db-section" aria-labelledby="title-membership">
         <header class="db-section__header">
@@ -1783,25 +3087,15 @@ async function renderClientMembership() {
     `;
   }
 
-  const membershipRows = buildMembershipRows(sessionsResult.data ?? [], transactionsResult.data ?? []);
-  const visibleMembershipRows = sortRowsByColumn(membershipRows, 'fecha_de_sesion', 'desc');
+  const membershipRows = buildMembershipRows(
+    membershipsResult.data ?? [],
+    sessionsResult.data ?? [],
+    transactionsResult.data ?? [],
+    materialDeliveriesResult ?? []
+  );
+  const visibleMembershipRows = sortRowsByColumn(membershipRows, 'fecha_esperada', 'desc');
   const membershipNotices = renderMembershipNotices(membershipRows);
-  const rows = visibleMembershipRows.length
-    ? visibleMembershipRows.map((item) => `
-      <tr>
-        <td>${escapeHTML(item.semana ?? '-')}</td>
-        <td>${escapeHTML(formatDateOnly(item.fecha_de_sesion))}</td>
-        <td>${escapeHTML(item.estado ?? '-')}</td>
-        <td>${escapeHTML(formatDateOnly(item.fecha_de_saldo))}</td>
-        <td>${money(Number(item.saldo ?? 0))}</td>
-        <td>${escapeHTML(item.notas ?? '-')}</td>
-      </tr>
-    `).join('')
-    : `
-      <tr class="db-table__empty-row">
-        <td colspan="6" class="db-empty">Sin datos de membresía.</td>
-      </tr>
-    `;
+  const membershipSummary = renderMembershipSummary(membershipRows);
 
   return `
     <section class="db-section" aria-labelledby="title-membership">
@@ -1809,29 +3103,47 @@ async function renderClientMembership() {
         <p class="section-label">Cliente</p>
         <h1 class="db-section__title" id="title-membership">Membresía</h1>
       </header>
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="Membresía">
-          <thead>
-            <tr>
-              <th scope="col">Semana</th>
-              <th scope="col">Fecha de sesión</th>
-              <th scope="col">Estado</th>
-              <th scope="col">Fecha de saldo</th>
-              <th scope="col">Saldo</th>
-              <th scope="col">Notas</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
       ${membershipNotices}
+      ${membershipSummary}
+      ${renderMembershipDashboardTable(visibleMembershipRows)}
+      ${renderMembershipSyncFooter()}
     </section>
   `;
 }
 
 
 /* -- CLIENT: TICKETS ---------------------------------------- */
-function renderClientTickets() {
+async function renderClientTickets() {
+  const userId = state.user?.user_id;
+  let tickets = [];
+
+  if (userId) {
+    const { data, error } = await supabase
+      .from('event_tickets')
+      .select('id, event_key, folio, qr_payload, status, price, sold_at, used_at, ticket_type, customer_name, customer_email, user_id, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('[HR] renderClientTickets:', error);
+      return `
+        <section class="db-section" aria-labelledby="title-tickets">
+          <header class="db-section__header">
+            <p class="section-label">Cliente</p>
+            <h1 class="db-section__title" id="title-tickets">Tickets de Evento</h1>
+          </header>
+          <p class="db-empty db-empty--error">Error al cargar tickets. Intenta de nuevo.</p>
+        </section>
+      `;
+    }
+
+    tickets = data ?? [];
+  }
+
+  const listHTML = tickets.length
+    ? tickets.map((ticket) => renderClientTicketCard(ticket)).join('')
+    : '<li class="db-empty">Sin tickets adquiridos.</li>';
+
   return `
     <section class="db-section" aria-labelledby="title-tickets">
       <header class="db-section__header">
@@ -1839,10 +3151,64 @@ function renderClientTickets() {
         <h1 class="db-section__title" id="title-tickets">Tickets de Evento</h1>
       </header>
       <ul class="db-card-list" id="js-tickets-list" role="list">
-        <li class="db-empty">Sin tickets adquiridos.</li>
+        ${listHTML}
       </ul>
     </section>
   `;
+}
+
+function safeDomId(value) {
+  return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+function clientTicketQrPayload(ticket) {
+  const folio = String(ticket?.folio ?? '').trim();
+  return String(ticket?.qr_payload || `https://hiddenroom.mx/tickets/validate.html?folio=${encodeURIComponent(folio)}`).trim();
+}
+
+function clientTicketQrId(ticket) {
+  return `client-ticket-qr-${safeDomId(ticket?.folio || ticket?.id)}`;
+}
+
+function renderClientTicketCard(ticket) {
+  const folio = String(ticket.folio ?? '').trim();
+  return `
+    <li class="db-client-ticket-card">
+      <div class="db-client-ticket-card__qr" id="${escapeAttr(clientTicketQrId(ticket))}" data-ticket-qr="${escapeAttr(clientTicketQrPayload(ticket))}" aria-label="QR del ticket ${escapeAttr(folio)}"></div>
+      <div class="db-client-ticket-card__body">
+        <span class="section-label">${escapeHTML(ticket.event_key ?? 'Evento')}</span>
+        <strong class="db-client-ticket-card__folio">${escapeHTML(folio || '-')}</strong>
+        <dl class="db-client-ticket-card__meta">
+          <div><dt>Tipo</dt><dd>${escapeHTML(ticket.ticket_type ?? 'TICKET')}</dd></div>
+          <div><dt>Estado</dt><dd>${escapeHTML(ticket.status ?? '-')}</dd></div>
+          ${ticket.used_at ? `<div><dt>Usado</dt><dd>${escapeHTML(formatDateTime(ticket.used_at))}</dd></div>` : ''}
+        </dl>
+      </div>
+    </li>
+  `;
+}
+
+function renderClientTicketQrs(root = document) {
+  root.querySelectorAll('[data-ticket-qr]').forEach((container) => {
+    const payload = container.dataset.ticketQr;
+    if (!payload || container.dataset.qrRendered === 'true') return;
+    container.dataset.qrRendered = 'true';
+    container.textContent = '';
+
+    if (!window.QRCode) {
+      container.textContent = 'QR no disponible';
+      return;
+    }
+
+    new window.QRCode(container, {
+      text: payload,
+      width: 132,
+      height: 132,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
+      correctLevel: window.QRCode.CorrectLevel.M,
+    });
+  });
 }
 
 
@@ -1854,8 +3220,8 @@ function renderClientStore() {
         <p class="section-label">Cliente</p>
         <h1 class="db-section__title" id="title-store">Tienda Online - Pedidos</h1>
       </header>
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="Historial de pedidos">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="Historial de pedidos">
           <thead>
             <tr>
               <th scope="col">Pedido</th>
@@ -1866,8 +3232,8 @@ function renderClientStore() {
             </tr>
           </thead>
           <tbody id="js-store-body">
-            <tr class="db-table__empty-row">
-              <td colspan="5" class="db-empty">Sin pedidos registrados.</td>
+            <tr class="db-table__empty-row hr-table-empty">
+              <td colspan="5" class="db-empty hr-table-empty">Sin pedidos registrados.</td>
             </tr>
           </tbody>
         </table>
@@ -1882,6 +3248,7 @@ async function renderClientRewards() {
   const [
     { data: scores, error: scoresError },
     { data: rewards, error: rewardsError },
+    { data: igContest, error: igContestError },
   ] = await Promise.all([
     supabase
       .from('scores')
@@ -1893,10 +3260,15 @@ async function renderClientRewards() {
       .select('id, concept, created_at')
       .eq('user_id', state.user.user_id)
       .order('created_at', { ascending: false }),
+    supabase
+      .from('ig_contest')
+      .select('id, concepto, user_id, ig_username, created_at')
+      .eq('user_id', state.user.user_id)
+      .order('created_at', { ascending: false }),
   ]);
 
-  if (scoresError || rewardsError) {
-    console.error('[HR] renderClientRewards:', scoresError || rewardsError);
+  if (scoresError || rewardsError || igContestError) {
+    console.error('[HR] renderClientRewards:', scoresError || rewardsError || igContestError);
     return `
       <section class="db-section" aria-labelledby="title-rewards">
         <header class="db-section__header">
@@ -1911,7 +3283,7 @@ async function renderClientRewards() {
   let scoresHTML;
 
   if (!scores || scores.length === 0) {
-    scoresHTML = '<p class="db-empty">Ingresa <a href="../minijuegos/">MINIJUEGOS</a> para sincronizar tu puntuación.</p>';
+    scoresHTML = '<p class="db-empty">Ingresa <a href="../minijuegos/">MINIJUEGOS</a> para sincronizar tu puntuacion.</p>';
   } else {
     scoresHTML = `
       <ul class="db-card-list" role="list">
@@ -1932,6 +3304,15 @@ async function renderClientRewards() {
       </li>
     `).join('')
     : '<li class="db-empty">Sin recompensas.</li>';
+
+  const igContestHTML = igContest?.length
+    ? igContest.map((item) => `
+      <li class="db-card-list__item">
+        <span class="db-card-list__label">${escapeHTML(item.concepto ?? 'IG CONTEST')}</span>
+        <span class="db-card-list__value">${escapeHTML(item.ig_username ? `@${item.ig_username}` : '')}</span>
+      </li>
+    `).join('')
+    : '<li class="db-empty">Sin registros de IG CONTEST.</li>';
 
   return `
     <section class="db-section" aria-labelledby="title-rewards">
@@ -1954,7 +3335,15 @@ async function renderClientRewards() {
             <span class="section-label">Cupones Desbloqueados</span>
           </header>
           <ul class="db-coupon-list" id="js-rewards-coupons" role="list">
-            <li class="db-empty">Próximamente.</li>
+            <li class="db-empty">Proximamente.</li>
+          </ul>
+        </article>
+        <article class="db-card" aria-label="IG CONTEST">
+          <header class="db-card__header">
+            <span class="section-label">IG CONTEST</span>
+          </header>
+          <ul class="db-card-list" id="js-rewards-ig-contest" role="list">
+            ${igContestHTML}
           </ul>
         </article>
         <article class="db-card" aria-label="Tus recompensas">
@@ -2011,21 +3400,24 @@ async function renderCollabFinance() {
 
   const filters = getEventFinanceFilters();
   const events = await ensureCollabFinanceEventsLoaded();
+  const paymentMethods = await fetchPaymentMethods();
   if (!events.length) {
     return sectionShell('Colaborador', 'Financiero', 'title-collab-finance', `
       <p class="db-empty">No tienes eventos asignados todavía.</p>
     `);
   }
 
-  if (state.data.collabFinanceEventId && !events.some((event) => String(event.id ?? event.event_id) === String(state.data.collabFinanceEventId))) {
-    state.data.collabFinanceEventId = '';
+  const storedCollabEventId = persistedDataValue('collabFinanceEventId', '');
+  if (storedCollabEventId && !events.some((event) => String(event.id ?? event.event_id) === String(storedCollabEventId))) {
+    setPersistedDataValue('collabFinanceEventId', '');
   }
-  const eventId = state.data.collabFinanceEventId || String(events[0].id ?? events[0].event_id);
-  state.data.collabFinanceEventId = eventId;
+  const eventId = persistedDataValue('collabFinanceEventId', '') || String(events[0].id ?? events[0].event_id);
+  setPersistedDataValue('collabFinanceEventId', eventId);
   const selectedEvent = events.find((event) => String(event.id ?? event.event_id) === String(eventId));
   const permissions = eventAccessFor(selectedEvent);
   const { data, error } = await fetchCollabFinanceTransactions(filters, eventId, events);
   const participants = await fetchParticipantsForEvent(selectedEvent?.id ?? selectedEvent?.event_id ?? eventId);
+  const financeEntities = await fetchFinanceEntities();
 
   if (error) {
     console.error('[HR] renderCollabFinance:', error);
@@ -2044,7 +3436,7 @@ async function renderCollabFinance() {
     ${renderEventInfo(selectedEvent)}
     ${renderEventSummaryCards(eventSummaryFor(selectedEvent, data ?? []))}
     ${renderEventRightsChart(selectedEvent, data ?? [])}
-    ${permissions.can_add_finance ? renderEventMovementForm(selectedEvent, 'collab-event-movement-create', participants) : ''}
+    ${permissions.can_add_finance ? renderEventMovementForm(selectedEvent, 'collab-event-movement-create', participants, financeEntities, paymentMethods) : ''}
     ${renderEventFinanceTransactionsTable(data ?? [], { canEdit: permissions.can_edit_finance })}
   `);
 }
@@ -2062,7 +3454,7 @@ async function fetchCollabFinanceTransactions(filters, eventId, events = []) {
 
 function renderCollabFinanceEventFilter(events = [], selectedEventId = '') {
   return `
-    <div class="db-toolbar">
+    <div class="db-toolbar hr-table-toolbar">
       <label class="db-field db-field--compact">
         <span>Eventos</span>
         <select data-action="collab-finance-event" aria-label="Filtrar financiero por evento">
@@ -2074,35 +3466,51 @@ function renderCollabFinanceEventFilter(events = [], selectedEventId = '') {
   `;
 }
 
-async function renderCollabTasks() {
-  if (!hasPermission('scrum.view')) {
-    return sectionShell('Colaborador', 'SCRUM / Tareas', 'title-tasks', `
+async function renderCollabTasks(contextLabel = 'Colaborador') {
+  if (!hasAnyPermission(['scrum.view', 'scrum.edit'])) {
+    return sectionShell(contextLabel, 'SCRUM / Tareas', 'title-tasks', `
       <p class="db-empty db-empty--error">No tienes permiso para ver este modulo.</p>
     `);
   }
 
-  const editable = canEditScrum();
-  const [{ data: users, error: usersError }, { data: events, error: eventsError }] = await Promise.all([
+  const [{ data: users, error: usersError }, eventsResult] = await Promise.all([
     supabase
       .from('users')
-      .select('user_id, display_name, username, email')
+      .select('id, user_id, display_name, username, email, passline_tracking')
       .order('display_name', { ascending: true }),
-    supabase
-      .from('events')
-      .select('id, name, event_date, date')
-      .order('event_date', { ascending: false }),
+    fetchScrumEvents(),
   ]);
+  const { data: events, error: eventsError } = eventsResult;
 
   if (usersError || eventsError) {
     console.error('[HR] renderCollabTasks:', usersError || eventsError);
-    return sectionShell('Colaborador', 'SCRUM / Tareas', 'title-tasks', `
+    return sectionShell(contextLabel, 'SCRUM / Tareas', 'title-tasks', `
       <p class="db-empty db-empty--error">Error al cargar tareas. Intenta de nuevo.</p>
     `);
   }
 
+  const scrumEvents = normalizeEventFinanceOptions(events ?? []);
   state.data.users = uniqueUsers(users);
-  state.data.events = events ?? [];
-  if (!state.data.scrumEventId && (events ?? []).length) state.data.scrumEventId = String(events[0].id);
+  state.data.scrumEvents = scrumEvents;
+  if (state.data.scrumEventId === undefined) {
+    state.data.scrumEventId = persistedDataValue('scrumEventId', '');
+  }
+  if (state.data.scrumEventId && !scrumEvents.some((event) => String(event.id) === String(state.data.scrumEventId))) {
+    state.data.scrumEventId = '';
+    setPersistedDataValue('scrumEventId', '');
+  }
+  if (!state.data.scrumEventId && scrumEvents.length) {
+    state.data.scrumEventId = String(scrumEvents[0].id);
+    setPersistedDataValue('scrumEventId', state.data.scrumEventId);
+  }
+
+  const selectedEvent = scrumEvents.find((event) => String(event.id) === String(state.data.scrumEventId));
+  if (!selectedEvent || !canViewScrum(selectedEvent)) {
+    return sectionShell(contextLabel, 'SCRUM / Tareas', 'title-tasks', `
+      <p class="db-empty">No tienes eventos SCRUM asignados.</p>
+    `);
+  }
+  const editable = canEditScrum(selectedEvent);
 
   let taskQuery = supabase
     .from('tasks')
@@ -2114,7 +3522,7 @@ async function renderCollabTasks() {
   const { data: tasks, error: tasksError } = await taskQuery;
   if (tasksError) {
     console.error('[HR] renderCollabTasks:', tasksError);
-    return sectionShell('Colaborador', 'SCRUM / Tareas', 'title-tasks', `
+    return sectionShell(contextLabel, 'SCRUM / Tareas', 'title-tasks', `
       <p class="db-empty db-empty--error">Error al cargar tareas para el evento seleccionado.</p>
     `);
   }
@@ -2147,14 +3555,14 @@ async function renderCollabTasks() {
   return `
     <section class="db-section db-section--wide" aria-labelledby="title-tasks">
       <header class="db-section__header">
-        <p class="section-label">Colaborador</p>
+        <p class="section-label">${escapeHTML(contextLabel)}</p>
         <h1 class="db-section__title" id="title-tasks">SCRUM / Tareas</h1>
       </header>
       <div class="db-toolbar">
         <label class="db-field db-field--compact">
           <span>Evento</span>
           <select data-action="scrum-event-change" aria-label="Cambiar evento SCRUM">
-            ${(events ?? []).map((event) => optionHTML(String(event.id), eventLabel(event), state.data.scrumEventId ?? '')).join('')}
+            ${scrumEvents.map((event) => optionHTML(String(event.id), eventLabel(event), state.data.scrumEventId ?? '')).join('')}
           </select>
         </label>
       </div>
@@ -2256,47 +3664,72 @@ function renderTaskCard(task, editable) {
 
 function renderUserPicker(name, label, value = '', options = {}) {
   const valueField = options.valueField || 'user_id';
+  const limit = options.limit ?? USER_PICKER_RENDER_LIMIT;
   const users = uniqueUsers(state.data.users)
     .filter((user) => !options.requiredField || String(user?.[options.requiredField] ?? '').trim());
   const selected = users.find((u) => String(u?.[valueField] ?? '') === String(value));
   const displayValue = selected
-    ? (options.displayValue?.(selected) ?? userLabel(selected.user_id))
+    ? (options.displayValue?.(selected) ?? userPickerDisplay(selected, valueField))
     : '';
   const inputId = `user-picker-${escapeAttr(name)}-${Math.random().toString(36).slice(2, 8)}`;
-  const optionButtons = users.map((user) => {
-    const optionValue = String(user?.[valueField] ?? '');
-    const optionDisplay = options.displayValue?.(user) ?? userLabel(user.user_id);
-    const searchText = [
-      user.display_name,
-      user.email,
-      user.username,
-      user.user_id,
-    ]
-      .filter((item) => item !== null && item !== undefined)
-      .join(' ')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase();
-
-    return `
-    <button class="db-user-option" type="button" data-user-id="${escapeAttr(String(user.user_id ?? ''))}" data-user-value="${escapeAttr(optionValue)}" data-user-display="${escapeAttr(optionDisplay)}" data-search-text="${escapeAttr(searchText)}">
-      <span>${escapeHTML(user.display_name || user.email || 'Usuario sin nombre')}</span>
-      <small>${escapeHTML(options.caption?.(user) ?? `${usernameLabel(user)} · ${user.user_id ?? '-'}`)}</small>
-    </button>
-  `;
-  }).join('');
+  const selectedUser = selected ? [selected] : [];
+  const menuUsers = uniqueUsers([...selectedUser, ...users]).slice(0, limit);
+  const clippedNotice = users.length > menuUsers.length
+    ? `<div class="db-user-picker__empty" data-user-picker-clipped>Mostrando ${menuUsers.length} usuarios. Escribe mas especifico si no ves a la persona.</div>`
+    : '';
+  const optionButtons = renderUserPickerOptions(menuUsers, options);
 
   return `
-    <div class="db-field db-user-picker">
+    <div class="db-field db-user-picker" data-user-value-field="${escapeAttr(valueField)}" data-user-required-field="${escapeAttr(options.requiredField || '')}" data-user-picker-limit="${escapeAttr(String(limit))}">
       <label for="${inputId}">${escapeHTML(label)}</label>
       <input id="${inputId}" data-user-search autocomplete="off" placeholder="${escapeAttr(options.placeholder || 'Buscar usuario')}" value="${escapeAttr(displayValue)}" />
       <input type="hidden" name="${escapeHTML(name)}" value="${escapeAttr(value)}" />
       <div class="db-user-picker__menu" hidden>
         ${optionButtons}
+        ${clippedNotice}
         <div class="db-user-picker__empty" data-user-picker-empty hidden>${escapeHTML(options.emptyLabel || 'Sin usuarios encontrados.')}</div>
       </div>
     </div>
   `;
+}
+
+function userPickerDisplay(user, valueField = 'user_id') {
+  if (valueField === 'email') {
+    const name = user.display_name || user.username || 'Usuario';
+    return `${user.email ?? ''} · ${name}`;
+  }
+  return userLabel(user.user_id);
+}
+
+function userPickerCaption(user, valueField = 'user_id') {
+  if (valueField === 'email') return `${usernameLabel(user)} · ${user.email ?? 'sin email'}`;
+  return `${usernameLabel(user)} · ${user.user_id ?? '-'}`;
+}
+
+function userPickerSearchText(user) {
+  return normalizeSearchText([
+    user.display_name,
+    user.email,
+    user.username,
+    user.user_id,
+    user.id,
+  ].filter((item) => item !== null && item !== undefined).join(' '));
+}
+
+function renderUserPickerOptions(users = [], options = {}) {
+  const valueField = options.valueField || 'user_id';
+  return users.map((user) => {
+    const optionValue = String(user?.[valueField] ?? '');
+    const optionDisplay = options.displayValue?.(user) ?? userPickerDisplay(user, valueField);
+    const searchText = userPickerSearchText(user);
+
+    return `
+    <button class="db-user-option" type="button" data-user-id="${escapeAttr(String(user.user_id ?? ''))}" data-user-value="${escapeAttr(optionValue)}" data-user-display="${escapeAttr(optionDisplay)}" data-search-text="${escapeAttr(searchText)}">
+      <span>${escapeHTML(user.display_name || user.email || 'Usuario sin nombre')}</span>
+      <small>${escapeHTML(options.caption?.(user) ?? userPickerCaption(user, valueField))}</small>
+    </button>
+  `;
+  }).join('');
 }
 
 function renderErpUserPicker(name, label) {
@@ -2325,7 +3758,7 @@ function renderHalfHourOptions(selectedValue = '') {
 }
 
 function optionHTML(value, label, selectedValue) {
-  return `<option value="${escapeHTML(value)}"${String(value) === String(selectedValue) ? ' selected' : ''}>${escapeHTML(label)}</option>`;
+  return `<option value="${escapeAttr(value)}"${String(value) === String(selectedValue) ? ' selected' : ''}>${escapeHTML(String(label ?? ''))}</option>`;
 }
 
 
@@ -2333,16 +3766,16 @@ function optionHTML(value, label, selectedValue) {
 /* -- RRPP --------------------------------------------------- */
 function renderRrppContacts() {
   return sectionShell('Embajador', 'Boletos vendidos', 'title-rrpp-contacts', `
-    <div class="db-table-wrap">
-      <table class="db-table" aria-label="Boletos vendidos">
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="db-table hr-table hr-table-readable" aria-label="Boletos vendidos">
         <thead><tr>
           <th scope="col">Cliente</th>
           <th scope="col">Canal</th>
           <th scope="col">Evento</th>
           <th scope="col">Boletos</th>
         </tr></thead>
-        <tbody><tr class="db-table__empty-row">
-          <td colspan="4" class="db-empty">Sin boletos vendidos registrados.</td>
+        <tbody><tr class="db-table__empty-row hr-table-empty">
+          <td colspan="4" class="db-empty hr-table-empty">Sin boletos vendidos registrados.</td>
         </tr></tbody>
       </table>
     </div>
@@ -2383,11 +3816,11 @@ async function renderErpFinance() {
   if (filters.scope === 'events') {
     if (filters.eventId && !events.some((event) => String(event.id) === String(filters.eventId))) {
       filters.eventId = '';
-      state.data.financeEventId = '';
+      setPersistedDataValue('financeEventId', '');
     }
     if (!filters.eventId && events.length) {
       filters.eventId = String(events[0].id);
-      state.data.financeEventId = filters.eventId;
+      setPersistedDataValue('financeEventId', filters.eventId);
     }
 
     const selectedEvent = events.find((event) => String(event.id) === String(filters.eventId));
@@ -2402,6 +3835,7 @@ async function renderErpFinance() {
     state.data.erpFinanceRows = data ?? [];
     state.data.erpFinanceFilters = filters;
     await fetchAllEventParticipants();
+    await fetchFinanceEntities();
 
     return sectionShell('ERP', 'Finanzas', 'title-erp-finance', `
       ${renderFinanceScopeFilters(filters, events)}
@@ -2409,14 +3843,14 @@ async function renderErpFinance() {
       ${selectedEvent ? renderEventInfo(selectedEvent) : '<p class="db-empty">Sin eventos disponibles.</p>'}
       ${selectedEvent ? renderEventSummaryCards(selectedEvent) : ''}
       ${selectedEvent ? renderEventRightsChart(selectedEvent, data ?? []) : ''}
-      ${selectedEvent ? renderEventInternalInvestors(data ?? []) : ''}
+      ${selectedEvent ? renderEventInternalInvestors(selectedEvent, data ?? []) : ''}
       ${renderEventFinanceTransactionsTable(data ?? [], { canEdit: true })}
     `);
   }
 
   if (filters.scope === 'events' && filters.eventId && !events.some((event) => normalizeEventKey(event.event_key) === normalizeEventKey(filters.eventId))) {
     filters.eventId = '';
-    state.data.financeEventId = '';
+    setPersistedDataValue('financeEventId', '');
   }
   const { data, error } = await fetchFinanceTransactions(filters, events);
 
@@ -2440,15 +3874,1904 @@ async function renderErpFinance() {
   `);
 }
 
+async function renderErpInfrastructure() {
+  if (!hasRole('admin')) {
+    return sectionShell('ERP', 'Servidor Mysauth', 'title-erp-infrastructure', `
+      <p class="db-empty db-empty--error">Acceso no autorizado.</p>
+    `);
+  }
+
+  let serverStatus = null;
+  let errorMessage = null;
+
+  try {
+    serverStatus = await fetchServerStatus();
+  } catch (err) {
+    console.error('[HR] renderErpInfrastructure:', err);
+    if (isSessionStaleError(err)) markSessionStale(err.message || 'server status fetch');
+    errorMessage = err.message || 'No se pudo obtener el estado del servidor.';
+  }
+
+  const statusLabel = serverStatus?.online ? 'Online' : 'Offline';
+  const hostname = serverStatus?.hostname ?? 'No disponible';
+  const tailscaleIp = serverStatus?.tailscaleIp ?? 'No disponible';
+  const uptime = serverStatus?.uptime ?? 'Desconocido';
+  const platform = serverStatus?.platform ?? 'No disponible';
+  const checkedAt = serverStatus?.checkedAt ? formatDateTime(serverStatus.checkedAt) : 'No disponible';
+  const cpuPercent = numberOrNull(serverStatus?.cpuPercent);
+  const ramPercent = numberOrNull(serverStatus?.memory?.percent ?? serverStatus?.memoryPercent);
+  const diskPercent = numberOrNull(serverStatus?.diskUsage?.percent ?? serverStatus?.diskPercent);
+  const tempC = numberOrNull(serverStatus?.temperatureCelsius);
+  const samples = serverStatus?.samples ?? [];
+
+  return sectionShell('ERP', 'Servidor Mysauth', 'title-erp-infrastructure', `
+    <p class="db-section__summary">Estado real del Debian de MysAuth Cloud. Las metricas se leen desde <code>cloud.hiddenroom.mx/api/server-status</code> con sesion admin; no hay SSH ni secretos en el navegador.</p>
+    ${errorMessage ? `<p class="db-empty db-empty--error">${escapeHTML(errorMessage)}</p>` : ''}
+    <div class="db-grid db-grid--3col db-grid--server-status">
+      ${renderServerStatusCard('Estado', statusLabel)}
+      ${renderServerStatusCard('Hostname', hostname)}
+      ${renderServerStatusCard('IP Tailscale', tailscaleIp)}
+      ${renderServerStatusCard('Uptime', uptime)}
+      ${renderServerStatusCard('Sistema', platform)}
+      ${renderServerStatusCard('Ultima lectura', checkedAt)}
+    </div>
+    <div class="db-server-metrics" aria-label="Graficas de rendimiento del servidor">
+      ${renderServerMetricCard('CPU', serverStatus?.cpu ?? percentDisplay(cpuPercent), cpuPercent, samples.map((sample) => sample.cpu), '%', { chart: 'pie' })}
+      ${renderServerMetricCard('RAM', serverStatus?.ram ?? percentDisplay(ramPercent), ramPercent, samples.map((sample) => sample.ram), '%', { chart: 'pie' })}
+      ${renderServerMetricCard('Disco', serverStatus?.disk ?? percentDisplay(diskPercent), diskPercent, samples.map((sample) => sample.disk), '%', { chart: 'pie' })}
+      ${renderServerMetricCard('Temperatura', serverStatus?.temperature ?? 'Sin sensor', tempC, samples.map((sample) => sample.temperature), 'C', { max: 100, chart: 'line' })}
+    </div>
+    <p class="db-note">Esta vista solo es visible para administradores. El agente conserva las ultimas 50 muestras; si no hay historial remoto, el navegador usa muestras de la sesion.</p>
+  `);
+}
+
+async function renderErpCloud() {
+  const currentPath = normalizeCloudPath(state.erpCloud.currentPath);
+  let cloudFiles = { folders: [], files: [], path: currentPath };
+  let errorMessage = '';
+
+  try {
+    cloudFiles = await listCloudFiles(currentPath);
+  } catch (err) {
+    console.error('[HR] renderErpCloud:', err);
+    errorMessage = err?.message || 'No se pudieron cargar los archivos.';
+  }
+
+  return sectionShell('Infraestructura', 'Cloud Hidden Room', 'title-erp-cloud', `
+    <div class="hr-container hr-stack">
+      ${errorMessage ? `<p class="db-empty db-empty--error">${escapeHTML(errorMessage)}</p>` : ''}
+      <div class="hr-panel hr-card hr-stack">
+        <div>
+          <p class="hr-eyebrow">Cloud Hidden Room</p>
+          <h2 class="hr-title">Administración de archivos y almacenamiento del servidor Mysauth.</h2>
+          <p>Estado: Online · Dominio: cloud.hiddenroom.mx</p>
+        </div>
+        <div class="hr-stack hr-stack-sm">
+          <a class="hr-btn hr-btn-primary" href="${escapeHTML(CLOUD_HIDDENROOM_URL)}" target="_blank" rel="noopener noreferrer">Abrir Cloud</a>
+          <button class="hr-btn hr-btn-primary" type="button" data-action="copy-cloud-hiddenroom-url" data-url="${escapeHTML(CLOUD_HIDDENROOM_URL)}">Copiar URL</button>
+        </div>
+      </div>
+
+      <div class="hr-panel hr-card hr-stack">
+        <div class="hr-eyebrow">Ruta actual</div>
+        ${renderCloudBreadcrumb(currentPath)}
+        <div class="hr-stack hr-stack-sm">
+          <button class="hr-btn hr-btn-primary" type="button" data-action="cloud-upload-file">Subir archivo</button>
+          <button class="hr-btn hr-btn-primary" type="button" data-action="cloud-create-folder">Crear carpeta</button>
+        </div>
+      <p class="hr-note">Los datos se cargan desde las funciones Supabase Edge: <code>cloud-list</code>, <code>cloud-upload</code>, <code>cloud-delete</code> y <code>cloud-folder</code>.</p>
+
+        <div class="hr-panel hr-card hr-stack" style="width:100%;">
+          <p class="hr-eyebrow">Archivos</p>
+          ${renderCloudFileList(cloudFiles)}
+        </div>
+      </div>
+
+      <input id="js-cloud-file-input" type="file" hidden />
+    </div>
+  `);
+}
+
+function getIgMentionState() {
+  if (!state.data.instagramMentionRank) {
+    state.data.instagramMentionRank = {
+      accessToken: '',
+      apiMode: 'instagram_login',
+      media: [],
+      analysis: null,
+      selectedMedia: null,
+      isAnalyzing: false,
+      error: ''
+    };
+  }
+  return state.data.instagramMentionRank;
+}
+
+function getIgTokenFromDashboard() {
+  return document.getElementById('js-ig-access-token')?.value.trim() || getIgMentionState().accessToken || '';
+}
+
+function getIgApiModeFromDashboard() {
+  return document.getElementById('js-ig-api-mode')?.value || getIgMentionState().apiMode || 'instagram_login';
+}
+
+function normalizeIgMentionHandle(value) {
+  const handle = String(value || '').replace(/^@+/, '').toLowerCase();
+  return handle && /^[a-z0-9._]{1,30}$/i.test(handle) ? '@' + handle : '';
+}
+
+function extractIgMentionHandles(text) {
+  const matches = String(text || '').match(/(^|[^A-Za-z0-9._])@([A-Za-z0-9._]{1,30})/g) || [];
+  return matches
+    .map((item) => normalizeIgMentionHandle(item.replace(/^[^@]*/, '')))
+    .filter(Boolean);
+}
+
+function buildInstagramScraperMentionAnalysis(comments, scraper = {}) {
+  const startedAt = scraper.startedAt ? new Date(scraper.startedAt).getTime() : Date.now();
+  const finishedAt = Date.now();
+  const safeComments = Array.isArray(comments) ? comments : [];
+  const mainComments = safeComments.filter((comment) => !comment?.is_reply);
+  const mentionCounts = new Map();
+  const mentionAuthors = new Map();
+  const authorStats = new Map();
+  let mentionsCount = 0;
+  let commentsWithMentions = 0;
+
+  for (const comment of mainComments) {
+    const author = String(comment?.username || 'usuario_desconocido').replace(/^@+/, '').toLowerCase() || 'usuario_desconocido';
+    const text = String(comment?.comment_text || '');
+    const mentions = extractIgMentionHandles(text);
+    const uniqueMentions = [...new Set(mentions)];
+    if (!authorStats.has(author)) authorStats.set(author, { author, count: 0, mentions: new Set() });
+    const authorRow = authorStats.get(author);
+    authorRow.count += 1;
+    uniqueMentions.forEach((mention) => authorRow.mentions.add(mention));
+    if (mentions.length) commentsWithMentions += 1;
+    mentionsCount += mentions.length;
+
+    for (const mention of mentions) mentionCounts.set(mention, (mentionCounts.get(mention) || 0) + 1);
+    for (const mention of uniqueMentions) {
+      if (!mentionAuthors.has(mention)) mentionAuthors.set(mention, new Set());
+      mentionAuthors.get(mention).add(author);
+    }
+  }
+
+  const rankingTotal = [...mentionCounts.entries()]
+    .map(([mention, count]) => ({ mention, count }))
+    .sort((a, b) => b.count - a.count || a.mention.localeCompare(b.mention));
+  const rankingUniqueAuthors = [...mentionAuthors.entries()]
+    .map(([mention, authors]) => ({ mention, count: authors.size, authors: [...authors].sort() }))
+    .sort((a, b) => b.count - a.count || a.mention.localeCompare(b.mention));
+  const rankingAuthors = [...authorStats.values()]
+    .map((row) => ({ author: row.author, count: row.count, mentions: [...row.mentions].sort() }))
+    .sort((a, b) => b.count - a.count || a.author.localeCompare(b.author));
+  const expectedCount = Number(scraper.expectedCount || safeComments.length || 0);
+  const coverage = expectedCount > 0 ? Math.min(100, (safeComments.length / expectedCount) * 100) : 100;
+
+  return {
+    api_mode: 'local_playwright',
+    media: { id: scraper.mediaId || scraper.sourceUrl || 'scraper-local', permalink: scraper.sourceUrl || '' },
+    media_permalink: scraper.sourceUrl || '',
+    comments_count: mainComments.length,
+    meta_comments_count: expectedCount || safeComments.length,
+    replies_count: safeComments.length - mainComments.length,
+    mentions_count: mentionsCount,
+    unique_mentions_count: mentionCounts.size,
+    comments_with_mentions_count: commentsWithMentions,
+    coverage_percent: coverage,
+    pages_fetched: scraper.pagesFetched || 0,
+    elapsed_seconds: Math.max(0, (finishedAt - startedAt) / 1000),
+    retry_count: 0,
+    completion_reason: scraper.stoppedReason || scraper.source || 'scraper-local',
+    incomplete_reasons: coverage < 100 ? ['Instagram no devolvio mas paginas accesibles para esta sesion local.'] : [],
+    ranking_total: rankingTotal,
+    ranking_unique_authors: rankingUniqueAuthors,
+    ranking_authors: rankingAuthors,
+    comments_export: mainComments.map((comment) => ({
+      username: String(comment?.username || '').replace(/^@+/, ''),
+      timestamp: comment?.timestamp || '',
+      text: comment?.comment_text || '',
+    })),
+    source: 'instagram-scraper',
+  };
+}
+
+function syncInstagramScraperMentionState() {
+  const scraper = state.instagramScraper;
+  const comments = instagramScraperComments();
+  if (!comments.length) return null;
+  const analysis = buildInstagramScraperMentionAnalysis(comments, scraper);
+  scraper.analysis = analysis;
+  const igState = getIgMentionState();
+  igState.analysis = analysis;
+  igState.selectedMedia = {
+    id: scraper.sourceUrl || 'scraper-local',
+    permalink: scraper.sourceUrl || '',
+    comments_count: scraper.expectedCount || comments.length,
+    api_mode: 'local_playwright',
+  };
+  igState.isAnalyzing = false;
+  igState.error = '';
+  return analysis;
+}
+
+function renderInstagramScraperMentionResults() {
+  const scraper = state.instagramScraper;
+  if (scraper.isRunning) {
+    return `
+      <article class="db-card db-ig-loading-card" aria-live="polite" aria-busy="true">
+        <div class="db-card__inner">
+          <p class="hr-table-loading">Analizando comentarios</p>
+        </div>
+      </article>
+    `;
+  }
+  const analysis = syncInstagramScraperMentionState();
+  if (!analysis) return '<p class="db-empty">Todavia no hay comentarios extraidos.</p>';
+  const media = getIgMentionState().selectedMedia;
+  return renderIgAnalysisSummary(analysis, media)
+    .replaceAll('data-action="ig-export-pdf"', 'data-action="instagram-scraper-rank-pdf"')
+    .replaceAll('data-action="ig-export-comments-markdown"', 'data-action="instagram-scraper-rank-md"')
+    .replaceAll('data-action="ig-reset-analysis"', 'data-action="instagram-scraper-reset-analysis"')
+    + renderIgRankingTables(analysis);
+}
+
+function instagramScraperComments() {
+  return Array.isArray(state.instagramScraper.comments) ? state.instagramScraper.comments : [];
+}
+function readInstagramScraperCache() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(INSTAGRAM_SCRAPER_STORAGE_KEY) || '{}');
+    return {
+      comments: Array.isArray(cached.comments) ? cached.comments : [],
+      sourceUrl: typeof cached.sourceUrl === 'string' ? cached.sourceUrl : '',
+      expectedCount: Number(cached.expectedCount) || null,
+      pagesFetched: Number(cached.pagesFetched) || null,
+      source: typeof cached.source === 'string' ? cached.source : '',
+      stoppedReason: typeof cached.stoppedReason === 'string' ? cached.stoppedReason : '',
+    };
+  } catch {
+    return { comments: [], sourceUrl: '', expectedCount: null, pagesFetched: null, source: '', stoppedReason: '' };
+  }
+}
+
+function saveInstagramScraperCache() {
+  try {
+    localStorage.setItem(INSTAGRAM_SCRAPER_STORAGE_KEY, JSON.stringify({
+      sourceUrl: state.instagramScraper.sourceUrl || '',
+      comments: instagramScraperComments(),
+      expectedCount: state.instagramScraper.expectedCount || null,
+      pagesFetched: state.instagramScraper.pagesFetched || null,
+      source: state.instagramScraper.source || '',
+      stoppedReason: state.instagramScraper.stoppedReason || '',
+      savedAt: new Date().toISOString(),
+    }));
+  } catch {
+    // Local storage can be unavailable in hardened browsers; UI still works in memory.
+  }
+}
+
+async function fetchInstagramScraperLastResult() {
+  const response = await fetch(`${INSTAGRAM_SCRAPER_URL}/api/results`);
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.ok) return null;
+  return result;
+}
+
+async function loadInstagramScraperLastResult({ silent = false } = {}) {
+  if (state.instagramScraper.isHydrating) return;
+  state.instagramScraper.isHydrating = true;
+  try {
+    const result = await fetchInstagramScraperLastResult();
+    const comments = Array.isArray(result?.comments) ? result.comments : [];
+    if (comments.length) {
+      const currentCount = instagramScraperComments().length;
+      const shouldReplace = !silent || comments.length >= currentCount;
+      if (shouldReplace) {
+        state.instagramScraper.comments = comments;
+        state.instagramScraper.sourceUrl = result.url || state.instagramScraper.sourceUrl || '';
+        state.instagramScraper.expectedCount = Number(result.expected_count) || null;
+        state.instagramScraper.pagesFetched = Number(result.pages_fetched) || null;
+        state.instagramScraper.source = result.source || '';
+        state.instagramScraper.stoppedReason = result.stopped_reason || '';
+        state.instagramScraper.error = '';
+        saveInstagramScraperCache();
+        if (!silent) showToast(comments.length + ' comentarios cargados del scraper local.', 'success');
+        renderSection('erp-instagram-scraper');
+      }
+    } else if (!silent) {
+      showToast('El scraper local no tiene resultados guardados todavía.', 'info');
+    }
+  } catch (error) {
+    if (!silent) showToast(error?.message || 'No se pudo cargar el último resultado.', 'error');
+  } finally {
+    state.instagramScraper.isHydrating = false;
+    state.instagramScraper.hasHydrated = true;
+  }
+}
+
+function scheduleInstagramScraperHydration() {
+  if (state.instagramScraper.hasHydrated || state.instagramScraper.isRunning || state.instagramScraper.isHydrating) return;
+  window.setTimeout(() => loadInstagramScraperLastResult({ silent: true }), 0);
+}
+async function handleInstagramScraper(form) {
+  const data = new FormData(form);
+  const url = String(data.get('url') || '').trim();
+  const maxScrolls = Math.min(Math.max(Number(data.get('max_scrolls')) || 500, 1), 2500);
+  state.instagramScraper.sourceUrl = url;
+  if (state.instagramScraper.isRunning) return;
+  state.instagramScraper.isRunning = true;
+  state.instagramScraper.error = '';
+  renderSection('erp-instagram-scraper');
+
+  try {
+    const response = await fetch(`${INSTAGRAM_SCRAPER_URL}/api/scrape`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, max_scrolls: maxScrolls }),
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.ok) throw new Error(result?.error || `El scraper respondio ${response.status}.`);
+    let comments = Array.isArray(result.comments) ? result.comments : [];
+    if (!comments.length) {
+      const lastResult = await fetchInstagramScraperLastResult().catch(() => null);
+      comments = Array.isArray(lastResult?.comments) ? lastResult.comments : comments;
+    }
+    state.instagramScraper.comments = comments;
+    state.instagramScraper.expectedCount = Number(result.expected_count) || null;
+    state.instagramScraper.pagesFetched = Number(result.pages_fetched) || null;
+    state.instagramScraper.source = result.source || '';
+    state.instagramScraper.stoppedReason = result.stopped_reason || '';
+    saveInstagramScraperCache();
+    showToast(state.instagramScraper.comments.length + ' comentarios extraidos.', state.instagramScraper.comments.length ? 'success' : 'info');
+  } catch (error) {
+    state.instagramScraper.error = error?.message === 'Failed to fetch'
+      ? 'No se pudo conectar al scraper local. Ejecuta "npm run instagram:scraper".'
+      : (error?.message || 'No se pudo completar el scraping.');
+    showToast(state.instagramScraper.error, 'error');
+  } finally {
+    state.instagramScraper.isRunning = false;
+    renderSection('erp-instagram-scraper');
+  }
+}
+
+function downloadInstagramScraperMarkdown() {
+  const comments = instagramScraperComments();
+  if (!comments.length) return showToast('No hay comentarios para exportar.', 'error');
+  const markdown = [
+    '# Comentarios de Instagram',
+    '',
+    `Fuente: ${state.instagramScraper.sourceUrl || '-'}`,
+    '',
+    ...comments.flatMap((comment) => [
+      `## @${String(comment.username || 'usuario').replace(/^@+/, '')}`,
+      '',
+      `- Fecha: ${comment.timestamp || 'No disponible'}`,
+      `- Likes: ${comment.like_count ?? 'No disponible'}`,
+      `- Tipo: ${comment.is_reply ? 'Respuesta' : 'Comentario principal'}`,
+      '',
+      String(comment.comment_text || '').split(/\r?\n/).map((line) => `> ${line}`).join('\n'),
+      '',
+    ]),
+  ].join('\n');
+  const blob = new Blob([`${markdown}\n`], { type: 'text/markdown;charset=utf-8' });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = 'comments.md';
+  link.click();
+  URL.revokeObjectURL(objectUrl);
+}
+
+async function downloadInstagramScraperPdf() {
+  const comments = instagramScraperComments();
+  if (!comments.length) return showToast('No hay comentarios para exportar.', 'error');
+  try {
+    await ensurePdfLibraries();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    doc.setFontSize(18);
+    doc.text('Comentarios de Instagram', 40, 40);
+    doc.setFontSize(9);
+    doc.text(state.instagramScraper.sourceUrl || '-', 40, 58, { maxWidth: 760 });
+    doc.autoTable({
+      startY: 76,
+      head: [['Usuario', 'Comentario', 'Fecha', 'Likes', 'Tipo']],
+      body: comments.map((comment) => [
+        `@${String(comment.username || '').replace(/^@+/, '')}`,
+        String(comment.comment_text || ''),
+        String(comment.timestamp || '-'),
+        String(comment.like_count ?? '-'),
+        comment.is_reply ? 'Respuesta' : 'Principal',
+      ]),
+      styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak' },
+      headStyles: { fillColor: [32, 32, 32] },
+      columnStyles: { 1: { cellWidth: 330 } },
+      margin: { left: 40, right: 40 },
+    });
+    doc.save('comments.pdf');
+  } catch (error) {
+    showToast(error?.message || 'No se pudo generar el PDF.', 'error');
+  }
+}
+
+function exportInstagramScraperRankPdf() {
+  syncInstagramScraperMentionState();
+  exportIgAnalysisPdf();
+}
+
+function exportInstagramScraperRankMarkdown() {
+  syncInstagramScraperMentionState();
+  exportIgCommentsMarkdown();
+}
+
+function resetInstagramScraperAnalysis() {
+  state.instagramScraper.comments = [];
+  state.instagramScraper.analysis = null;
+  state.instagramScraper.expectedCount = null;
+  state.instagramScraper.pagesFetched = null;
+  state.instagramScraper.source = '';
+  state.instagramScraper.stoppedReason = '';
+  state.instagramScraper.hasHydrated = true;
+  const igState = getIgMentionState();
+  if (igState.analysis?.source === 'instagram-scraper') {
+    igState.analysis = null;
+    igState.selectedMedia = null;
+    igState.isAnalyzing = false;
+  }
+  saveInstagramScraperCache();
+  renderSection('erp-instagram-scraper');
+}
+
+function normalizeIgAuditUsername(value) {
+  return String(value || '').trim().replace(/^@+/, '').toLowerCase();
+}
+
+function safePostgrestSearchTerm(value) {
+  return String(value || '').trim().replace(/[%,()]/g, ' ').replace(/\s+/g, ' ').slice(0, 80);
+}
+
+function mergeRowsById(rows) {
+  const map = new Map();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const key = row?.id ?? `${row?.user_id || ''}:${row?.ig_username || ''}:${row?.concepto || ''}:${row?.folio || ''}`;
+    if (key) map.set(String(key), row);
+  });
+  return [...map.values()];
+}
+
+async function fetchErpIgBenefitsAudit(query = '') {
+  const rawQuery = String(query || '').trim();
+  const normalizedIg = normalizeIgAuditUsername(rawQuery);
+  const search = safePostgrestSearchTerm(rawQuery.replace(/^@+/, ''));
+  const hasSearch = search.length >= 2;
+  const contestSelect = 'id, concepto, user_id, ig_username, created_at';
+  const userSelect = 'id, user_id, display_name, username, email, whatsapp, ig_username, has_auth';
+  const ticketSelect = 'id, event_key, folio, status, ticket_type, customer_name, customer_email, user_id, created_at, used_at, qr_payload';
+
+  let contestQuery = supabase
+    .from('ig_contest')
+    .select(contestSelect)
+    .order('created_at', { ascending: false })
+    .limit(hasSearch ? 500 : 200);
+
+  if (hasSearch) {
+    contestQuery = contestQuery.or(`ig_username.ilike.%${search}%,concepto.ilike.%${search}%,user_id.ilike.%${search}%`);
+  }
+
+  let usersBySearch = [];
+  if (hasSearch) {
+    const { data, error } = await supabase
+      .from('users')
+      .select(userSelect)
+      .or(`ig_username.ilike.%${search}%,user_id.ilike.%${search}%,display_name.ilike.%${search}%,email.ilike.%${search}%,whatsapp.ilike.%${search}%`)
+      .limit(100);
+    if (error) throw error;
+    usersBySearch = data ?? [];
+  }
+
+  const { data: contestData, error: contestError } = await contestQuery;
+  if (contestError) throw contestError;
+
+  const extraContest = [];
+  const searchedUserIds = [...new Set(usersBySearch.map((user) => user.user_id).filter(Boolean).map(String))];
+  const searchedHandles = [...new Set(usersBySearch.map((user) => normalizeIgAuditUsername(user.ig_username)).filter(Boolean))];
+
+  if (searchedUserIds.length) {
+    const { data, error } = await supabase.from('ig_contest').select(contestSelect).in('user_id', searchedUserIds).limit(500);
+    if (error) throw error;
+    extraContest.push(...(data ?? []));
+  }
+
+  if (searchedHandles.length) {
+    const { data, error } = await supabase.from('ig_contest').select(contestSelect).in('ig_username', searchedHandles).limit(500);
+    if (error) throw error;
+    extraContest.push(...(data ?? []));
+  }
+
+  const contestRows = mergeRowsById([...(contestData ?? []), ...extraContest]);
+  const relatedUserIds = new Set(searchedUserIds);
+  const relatedHandles = new Set(searchedHandles);
+
+  contestRows.forEach((row) => {
+    if (row.user_id) relatedUserIds.add(String(row.user_id));
+    const handle = normalizeIgAuditUsername(row.ig_username);
+    if (handle) relatedHandles.add(handle);
+  });
+  if (hasSearch && normalizedIg) relatedHandles.add(normalizedIg);
+
+  const users = [...usersBySearch];
+  const userIds = [...relatedUserIds];
+  const handles = [...relatedHandles];
+
+  if (userIds.length) {
+    const { data, error } = await supabase.from('users').select(userSelect).in('user_id', userIds).limit(500);
+    if (error) throw error;
+    users.push(...(data ?? []));
+  }
+
+  if (handles.length) {
+    const { data, error } = await supabase.from('users').select(userSelect).in('ig_username', handles).limit(500);
+    if (error) throw error;
+    users.push(...(data ?? []));
+  }
+
+  const userRows = mergeRowsById(users);
+  const ticketQueries = [];
+  const ticketUserIds = [...new Set(userRows.map((user) => user.user_id).filter(Boolean).map(String))];
+
+  if (ticketUserIds.length) {
+    ticketQueries.push(supabase.from('event_tickets').select(ticketSelect).in('user_id', ticketUserIds).limit(500));
+  }
+
+  if (hasSearch) {
+    ticketQueries.push(
+      supabase
+        .from('event_tickets')
+        .select(ticketSelect)
+        .or(`folio.ilike.%${search}%,event_key.ilike.%${search}%,customer_name.ilike.%${search}%,customer_email.ilike.%${search}%,user_id.ilike.%${search}%`)
+        .limit(200)
+    );
+  } else {
+    ticketQueries.push(
+      supabase
+        .from('event_tickets')
+        .select(ticketSelect)
+        .eq('event_key', 'HRCDMX-17-21')
+        .order('created_at', { ascending: false })
+        .limit(200)
+    );
+  }
+
+  const ticketResults = await Promise.all(ticketQueries);
+  const tickets = [];
+  ticketResults.forEach(({ data, error }) => {
+    if (error) throw error;
+    tickets.push(...(data ?? []));
+  });
+
+  return {
+    query: rawQuery,
+    contestRows,
+    userRows,
+    ticketRows: mergeRowsById(tickets),
+  };
+}
+
+function buildErpIgBenefitsAuditRows(result) {
+  const usersById = new Map();
+  const usersByIg = new Map();
+  const contestByIg = new Map();
+  const ticketsByUserId = new Map();
+
+  result.userRows.forEach((user) => {
+    if (user.user_id) usersById.set(String(user.user_id), user);
+    const handle = normalizeIgAuditUsername(user.ig_username);
+    if (handle) usersByIg.set(handle, user);
+  });
+
+  result.contestRows.forEach((row) => {
+    const handle = normalizeIgAuditUsername(row.ig_username) || `user:${row.user_id || row.id}`;
+    if (!contestByIg.has(handle)) contestByIg.set(handle, []);
+    contestByIg.get(handle).push(row);
+  });
+
+  result.ticketRows.forEach((ticket) => {
+    const key = String(ticket.user_id || 'sin-user-id');
+    if (!ticketsByUserId.has(key)) ticketsByUserId.set(key, []);
+    ticketsByUserId.get(key).push(ticket);
+  });
+
+  const rowKeys = new Set([...contestByIg.keys()]);
+  result.userRows.forEach((user) => {
+    const handle = normalizeIgAuditUsername(user.ig_username);
+    if (handle) rowKeys.add(handle);
+    else if (user.user_id) rowKeys.add(`user:${user.user_id}`);
+  });
+
+  result.ticketRows.forEach((ticket) => {
+    const user = usersById.get(String(ticket.user_id || ''));
+    const handle = normalizeIgAuditUsername(user?.ig_username);
+    rowKeys.add(handle || `user:${ticket.user_id || ticket.id}`);
+  });
+
+  return [...rowKeys].map((key) => {
+    const contestRows = contestByIg.get(key) ?? [];
+    const firstContest = contestRows[0];
+    const user = usersById.get(String(firstContest?.user_id || '')) || usersByIg.get(key) || result.userRows.find((item) => `user:${item.user_id}` === key) || null;
+    const tickets = user?.user_id ? (ticketsByUserId.get(String(user.user_id)) ?? []) : [];
+    const concepts = [...new Set(contestRows.map((row) => row.concepto).filter(Boolean))];
+    const hasCourtesy = concepts.some((concept) => String(concept).toLowerCase().includes('cortes'));
+    const hasAuth = user?.has_auth === true;
+    const status = hasAuth ? 'Registrado' : user ? 'Perfil sin auth' : 'No registrado';
+    let note = 'OK';
+
+    if (!user) note = 'No hay coincidencia en public.users.';
+    else if (firstContest && !firstContest.user_id) note = 'Existe usuario por IG, pero el registro no tiene user_id.';
+    else if (hasCourtesy && !tickets.length && hasAuth) note = 'Tiene cortesía en ig_contest, pero no se ve ticket materializado.';
+    else if (hasCourtesy && !hasAuth) note = 'La cortesía queda pendiente hasta registro/auth.';
+
+    const lastDates = [
+      ...contestRows.map((row) => row.created_at),
+      ...tickets.map((ticket) => ticket.created_at),
+      ...tickets.map((ticket) => ticket.used_at),
+    ].filter(Boolean).sort().reverse();
+
+    return {
+      key,
+      ig_username: normalizeIgAuditUsername(firstContest?.ig_username || user?.ig_username || ''),
+      user,
+      status,
+      concepts,
+      contestRows,
+      tickets,
+      note,
+      lastDate: lastDates[0] || null,
+    };
+  }).sort((a, b) => {
+    const rank = (row) => row.status === 'No registrado' ? 0 : row.note === 'OK' ? 2 : 1;
+    return rank(a) - rank(b) || String(a.ig_username || a.user?.display_name || '').localeCompare(String(b.ig_username || b.user?.display_name || ''));
+  });
+}
+
+function renderErpIgBenefitsAuditTable(rows) {
+  if (!rows.length) return '<p class="db-empty">Sin coincidencias para cotejar.</p>';
+
+  return `
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="db-table hr-table hr-table-readable" aria-label="Cotejo IG Beneficios">
+        <thead>
+          <tr>
+            <th scope="col">Instagram</th>
+            <th scope="col">Registro</th>
+            <th scope="col">Usuario</th>
+            <th scope="col">User ID</th>
+            <th scope="col">Recompensas</th>
+            <th scope="col">Tickets</th>
+            <th scope="col">Último mov.</th>
+            <th scope="col">Revisión</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((row) => {
+            const user = row.user;
+            const concepts = row.concepts.length ? row.concepts.join(', ') : '-';
+            const ticketLabels = row.tickets.length
+              ? row.tickets.map((ticket) => `${ticket.folio || ticket.event_key || 'Ticket'} (${ticket.status || '-'})`).join(', ')
+              : '-';
+            return `
+              <tr>
+                <td>${row.ig_username ? `@${escapeHTML(row.ig_username)}` : '-'}</td>
+                <td>${escapeHTML(row.status)}</td>
+                <td>${escapeHTML(user?.display_name || user?.username || user?.email || '-')}</td>
+                <td><code>${escapeHTML(user?.user_id || '-')}</code></td>
+                <td>${escapeHTML(concepts)}</td>
+                <td>${escapeHTML(ticketLabels)}</td>
+                <td>${escapeHTML(formatDateTime(row.lastDate))}</td>
+                <td>${escapeHTML(row.note)}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function renderErpIgBenefitsAudit() {
+  const query = state.data.erpIgBenefitsAuditQuery || '';
+  let result;
+
+  try {
+    result = await fetchErpIgBenefitsAudit(query);
+  } catch (error) {
+    console.error('[HR] renderErpIgBenefitsAudit:', error);
+    return sectionShell('ERP', 'IG Beneficios', 'title-erp-ig-benefits-audit', `
+      <p class="db-empty db-empty--error">No se pudo cargar el cotejo. Revisa permisos o RLS.</p>
+    `);
+  }
+
+  const rows = buildErpIgBenefitsAuditRows(result);
+  const registeredCount = rows.filter((row) => row.status === 'Registrado').length;
+  const historicCount = rows.filter((row) => row.status === 'Perfil sin auth').length;
+  const missingCount = rows.filter((row) => row.status === 'No registrado').length;
+  const reviewCount = rows.filter((row) => row.note !== 'OK').length;
+
+  return sectionShell('ERP', 'IG Beneficios', 'title-erp-ig-benefits-audit', `
+    <p class="db-section__summary">Busca recompensas de IG CONTEST y cortesías HRCDMX-17-21 para cotejar si el usuario ya tiene perfil/auth y ticket vinculado.</p>
+    <form class="db-form" data-form="erp-ig-benefits-search">
+      <div class="db-form__row">
+        <label class="db-field"><span>Buscar</span><input name="query" value="${escapeAttr(query)}" placeholder="@usuario, nombre, email, User ID, concepto o folio" autocomplete="off" /></label>
+      </div>
+      <div class="db-form__actions">
+        <button class="btn-primary" type="submit">Buscar</button>
+        <button class="db-btn-secondary" type="submit" name="query" value="" data-operation-action="clear">Limpiar</button>
+      </div>
+    </form>
+    <div class="db-grid db-grid--4col">
+      ${renderStatCard('Filas cotejadas', rows.length)}
+      ${renderStatCard('Registrados', registeredCount)}
+      ${renderStatCard('Perfil sin auth', historicCount)}
+      ${renderStatCard('No registrados', missingCount)}
+    </div>
+    ${reviewCount ? `<p class="db-note">Hay ${escapeHTML(reviewCount)} fila(s) para revisar: registros sin user_id, sin perfil o cortesías sin ticket visible.</p>` : '<p class="db-note">Sin alertas en las coincidencias mostradas.</p>'}
+    ${renderErpIgBenefitsAuditTable(rows)}
+  `);
+}
+
+function handleErpIgBenefitsSearch(form) {
+  const action = form.dataset.operationAction;
+  const values = formValues(form);
+  state.data.erpIgBenefitsAuditQuery = action === 'clear' ? '' : String(values.query || '').trim();
+  renderSection('erp-ig-benefits-audit');
+}
+function renderErpInstagramScraper() {
+  const scraper = state.instagramScraper;
+  const comments = instagramScraperComments();
+  scheduleInstagramScraperHydration();
+  return sectionShell('ERP', 'Instagram Comments Scraper', 'title-erp-instagram-scraper', `
+    <p class="db-section__summary">Extrae comentarios con Node.js y Playwright usando una sesion local persistente. Las cookies nunca salen de tu equipo.</p>
+    ${scraper.error ? `<p class="db-empty db-empty--error">${escapeHTML(scraper.error)}</p>` : ''}
+    <div class="db-admin-grid db-admin-grid--single db-ig-rank">
+      <article class="db-card"><div class="db-card__inner">
+        <form class="db-form" data-form="instagram-scrape">
+          <label class="db-field"><span>URL publica del post o reel</span>
+            <input name="url" type="url" required pattern="https://(www\\.)?instagram\\.com/(p|reel)/.+" value="${escapeAttr(scraper.sourceUrl)}" placeholder="https://www.instagram.com/p/..." />
+          </label>
+          <label class="db-field"><span>Ciclos de carga</span>
+            <input name="max_scrolls" type="number" min="1" max="2500" value="500" />
+          </label>
+          <p class="db-note">Primera vez: ejecuta <code>npm run instagram:login</code>. Cada ciclo trae hasta ~15 comentarios; para 3,500 usa 250-500 ciclos. Puede tardar varios minutos.</p>
+          <div class="db-form__actions">
+            <button class="btn-primary" type="submit"${scraper.isRunning ? ' disabled' : ''}>${scraper.isRunning ? 'Cargando comentarios...' : 'Extraer comentarios'}</button><button class="db-btn-secondary" type="button" data-action="instagram-scraper-load-last">Cargar último resultado</button>
+            ${comments.length ? '<button class="db-btn-secondary" type="button" data-action="instagram-scraper-pdf">Exportar PDF</button><button class="db-btn-secondary" type="button" data-action="instagram-scraper-md">Exportar MD</button>' : ''}
+          </div>
+        </form>
+      </div></article>
+      ${renderInstagramScraperMentionResults()}
+    </div>
+  `);
+}
+
+async function renderErpInstagramMentionRank() {
+  const igState = getIgMentionState();
+  const media = Array.isArray(igState.media) ? igState.media : [];
+  const analysis = igState.analysis;
+  const isAnalyzing = Boolean(igState.isAnalyzing);
+  const apiMode = igState.apiMode || 'instagram_login';
+
+  return sectionShell('ERP', 'Instagram Mention Rank', 'title-erp-ig-mention-rank', `
+    <p class="db-section__summary">Analiza comentarios de publicaciones de Instagram con Instagram Login o Facebook Graph API. El token solo vive en memoria durante esta sesion del dashboard.</p>
+    ${igState.error ? `<p class="db-empty db-empty--error">${escapeHTML(igState.error)}</p>` : ''}
+    <div class="db-admin-grid db-admin-grid--single db-ig-rank">
+      <article class="db-card">
+        <div class="db-card__inner">
+          <header class="db-card__header"><span class="section-label">Conexion</span></header>
+          <form class="db-form" data-form="ig-list-media">
+            <label class="db-field">
+              <span>Modo API</span>
+              <select id="js-ig-api-mode" name="api_mode">
+                <option value="instagram_login" ${apiMode === 'instagram_login' ? 'selected' : ''}>Instagram Login / graph.instagram.com</option>
+                <option value="facebook_graph" ${apiMode === 'facebook_graph' ? 'selected' : ''}>Facebook Graph / graph.facebook.com</option>
+              </select>
+            </label>
+            <label class="db-field">
+              <span>Access Token</span>
+              <input id="js-ig-access-token" name="access_token" type="password" autocomplete="off" spellcheck="false" value="${escapeHTML(igState.accessToken || '')}" placeholder="Pega un token para pruebas o deja vacio si el secreto ya esta configurado" />
+            </label>
+            <p class="db-note">Instagram Login puede listar publicaciones, pero si Meta reporta comentarios y no los entrega, usa Facebook Graph con un token con permisos de paginas e Instagram Business.</p>
+            <label class="db-field">
+              <span>Enlace de tu publicacion</span>
+              <input name="permalink" type="url" inputmode="url" placeholder="https://www.instagram.com/p/.../" />
+              <small>Puedes analizar directamente un enlace que pertenezca a la cuenta conectada.</small>
+            </label>
+            <div class="db-form__row">
+              <label class="db-field"><span>Limite</span><input name="limit" type="number" min="1" max="100" value="25" /></label>
+            </div>
+            <div class="db-form__actions">
+              <button class="btn-primary" type="submit" data-operation-action="list">Cargar publicaciones</button>
+              <button class="db-btn-secondary" type="submit" data-operation-action="resolve">Analizar enlace</button>
+            </div>
+            <div class="db-field__hint" data-ig-status aria-live="polite"></div>
+          </form>
+        </div>
+      </article>
+
+      ${isAnalyzing ? `
+        <article class="db-card db-ig-loading-card" aria-live="polite" aria-busy="true">
+          <div class="db-card__inner">
+            <p class="hr-table-loading">Analizando comentarios</p>
+          </div>
+        </article>
+      ` : analysis ? '' : `
+        <article class="db-card">
+          <div class="db-card__inner">
+            <header class="db-card__header"><span class="section-label">Publicaciones</span></header>
+            ${media.length ? `<div class="db-ig-media-grid">${media.map(renderIgMediaCard).join('')}</div>` : '<p class="db-empty">Carga publicaciones para elegir una y analizar comentarios.</p>'}
+          </div>
+        </article>
+      `}
+      ${!isAnalyzing && analysis ? renderIgAnalysisSummary(analysis, igState.selectedMedia) : ''}
+      ${!isAnalyzing && analysis ? renderIgRankingTables(analysis) : ''}
+    </div>
+  `);
+}
+
+function renderIgMediaCard(media) {
+  const caption = String(media?.caption || '').trim();
+  const shortCaption = caption.length > 180 ? `${caption.slice(0, 177)}...` : caption;
+  return `
+    <article class="db-ig-media-card">
+      <div>
+        <p class="hr-eyebrow">${escapeHTML(media?.media_type || 'Media')} · ${escapeHTML(formatDateTime(media?.timestamp))} · Comentarios: ${escapeHTML(media?.comments_count ?? 0)}</p>
+        <h3>${escapeHTML(shortCaption || 'Publicacion sin caption')}</h3>
+        <p><code>${escapeHTML(media?.id || '')}</code></p>
+        ${media?.page_name ? `<p class="db-note">Pagina: ${escapeHTML(media.page_name)}</p>` : ''}
+      </div>
+      <div class="db-ig-media-card__actions">
+        ${media?.permalink ? `<a class="db-btn-secondary" href="${escapeHTML(media.permalink)}" target="_blank" rel="noopener noreferrer">Abrir</a>` : ''}
+        <button class="btn-primary" type="button" data-action="ig-analyze-media" data-media-id="${escapeHTML(media?.id || '')}">Analizar comentarios</button>
+      </div>
+    </article>
+  `;
+}
+function igCommentScopeSummary(analysis, media = {}) {
+  const processed = Number(analysis?.comments_count ?? 0);
+  const metaCount = Number(analysis?.meta_comments_count ?? media?.comments_count ?? 0);
+  const excludedReplies = Math.max(0, metaCount - processed);
+  return {
+    processed,
+    metaCount,
+    excludedReplies,
+    processedLabel: processed.toLocaleString('es-MX'),
+    metaCountLabel: metaCount.toLocaleString('es-MX'),
+    excludedRepliesLabel: excludedReplies.toLocaleString('es-MX'),
+  };
+}
+
+function renderIgAnalysisSummary(analysis, media) {
+  const coverage = Number(analysis.coverage_percent ?? 0);
+  const incompleteReasons = Array.isArray(analysis.incomplete_reasons) ? analysis.incomplete_reasons : [];
+  const shouldExplain = coverage < 100 && Number(analysis.meta_comments_count || 0) > Number(analysis.comments_count || 0);
+  const commentScope = igCommentScopeSummary(analysis, media);
+  return `
+    <article class="db-card">
+      <div class="db-card__inner">
+        <header class="db-card__header"><span class="section-label">Resultado</span></header>
+        ${analysis.analysis_warning ? `<p class="db-empty db-empty--error">${escapeHTML(analysis.analysis_warning)}</p>` : ''}
+        ${analysis.save_warning ? `<p class="db-empty db-empty--error">${escapeHTML(analysis.save_warning)}</p>` : ''}
+        <div class="db-grid db-grid--3col">
+          ${renderStatCard('Comentarios', analysis.comments_count ?? 0)}
+          ${renderStatCard('Menciones', analysis.mentions_count ?? 0)}
+          ${renderStatCard('Usuarios arrobados', analysis.unique_mentions_count ?? 0)}
+        </div>
+        <div class="db-ig-audit-summary">
+          <p>Comentarios principales procesados: <strong>${escapeHTML(commentScope.processedLabel)}</strong></p>
+          <p>Replies excluidas por regla del concurso: <strong>${escapeHTML(commentScope.excludedRepliesLabel)} aprox.</strong></p>
+          <p>comments_count Meta: <strong>${escapeHTML(commentScope.metaCountLabel)}</strong></p>
+          <p>Nota: <strong>Meta incluye replies en comments_count.</strong></p>
+          <p>Cobertura: <strong>${escapeHTML(coverage.toFixed(2))}%</strong></p>
+          <p>Paginas recorridas: <strong>${escapeHTML(analysis.pages_fetched ?? 0)}</strong></p>
+          <p>Tiempo total: <strong>${escapeHTML(Number(analysis.elapsed_seconds ?? 0).toFixed(2))} s</strong></p>
+          <p>Reintentos: <strong>${escapeHTML(analysis.retry_count ?? 0)}</strong></p>
+          <p>Fin: <strong>${escapeHTML(analysis.completion_reason || 'Sin paging.next')}</strong></p>
+        </div>
+        ${shouldExplain ? `
+          <div class="db-note">
+            <strong>Motivo:</strong>
+            <ul>${(incompleteReasons.length ? incompleteReasons : ['Meta no devolvio mas comentarios accesibles.']).map((item) => `<li>${escapeHTML(item)}</li>`).join('')}</ul>
+          </div>
+        ` : ''}
+        <p class="db-note">Este ranking cuenta unicamente comentarios principales. Las respuestas a comentarios no se consideran para la dinamica, aunque Meta las incluya dentro de comments_count.</p>
+        <p class="db-note">Media: <code>${escapeHTML(media?.id || '')}</code>${analysis.saved_analysis_id ? ` · Guardado: <code>${escapeHTML(analysis.saved_analysis_id)}</code>` : ''} · Comentarios con @: ${escapeHTML(analysis.comments_with_mentions_count ?? 0)}</p>
+        ${Number(analysis.mentions_count ?? 0) === 0 ? renderIgMentionDebug(analysis.mention_debug) : ''}
+        <div class="db-form__actions">
+          <button class="btn-primary" type="button" data-action="ig-export-pdf">Exportar PDF</button>
+          <button class="db-btn-secondary" type="button" data-action="ig-export-comments-markdown">Exportar comentarios Markdown</button>
+          <button class="db-btn-secondary" type="button" data-action="ig-reset-analysis">Analizar otra publicacion</button>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function renderIgMentionDebug(debug) {
+  const withAt = Array.isArray(debug?.sample_texts_with_at) ? debug.sample_texts_with_at : [];
+  const samples = Array.isArray(debug?.sample_texts) ? debug.sample_texts : [];
+  const rows = withAt.length ? withAt : samples;
+  if (!rows.length) return '<p class="db-note">Meta no devolvio texto de comentarios para diagnosticar menciones.</p>';
+
+  return `
+    <div class="db-note">
+      <strong>Muestras enmascaradas recibidas por la API:</strong>
+      <ul>
+        ${rows.map((item) => `<li>${escapeHTML(item)}</li>`).join('')}
+      </ul>
+    </div>
+  `;
+}
+function renderIgRankingTables(analysis) {
+  return `
+    <div class="db-grid db-grid--2col db-ig-ranking-grid">
+      <article class="db-card">
+        <div class="db-card__inner">
+          <header class="db-card__header"><span class="section-label">Mas arrobados total</span></header>
+          <button class="db-btn-secondary" type="button" data-action="ig-export-csv" data-ranking="total">Exportar CSV</button>
+          ${renderIgRankingChart(analysis.ranking_total, 'Menciones totales')}
+          ${renderIgRankingTable(analysis.ranking_total, false)}
+        </div>
+      </article>
+      <article class="db-card">
+        <div class="db-card__inner">
+          <header class="db-card__header"><span class="section-label">Mas arrobados por usuarios unicos</span></header>
+          <button class="db-btn-secondary" type="button" data-action="ig-export-csv" data-ranking="unique">Exportar CSV</button>
+          ${renderIgRankingChart(analysis.ranking_unique_authors, 'Usuarios unicos')}
+          ${renderIgRankingTable(analysis.ranking_unique_authors, true)}
+        </div>
+      </article>
+    </div>
+    <article class="db-card db-ig-author-summary">
+      <div class="db-card__inner">
+        <header class="db-card__header"><span class="section-label">Resumen de autores</span></header>
+        <p class="db-note">Usuarios ordenados por cantidad de comentarios principales y artistas etiquetados.</p>
+        ${renderIgRankingChart((analysis.ranking_authors || []).map((row) => ({ mention: '@' + row.author, count: row.count })), 'Comentarios')}
+        ${renderIgAuthorSummaryTable(analysis.ranking_authors)}
+      </div>
+    </article>
+    <article class="db-card db-ig-author-summary">
+      <div class="db-card__inner">
+        <header class="db-card__header"><span class="section-label">Artistas distintos mencionados</span></header>
+        <p class="db-note">Usuarios ordenados por la cantidad de artistas diferentes que etiquetaron.</p>
+        ${renderIgRankingChart(igDistinctArtistAuthors(analysis.ranking_authors).map((row) => ({ mention: '@' + row.author, count: row.count })), 'Artistas distintos')}
+        ${renderIgDistinctAuthorsTable(igDistinctArtistAuthors(analysis.ranking_authors))}
+      </div>
+    </article>
+  `;
+}
+
+function igDistinctArtistAuthors(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => ({
+      author: String(row?.author || ''),
+      count: Array.isArray(row?.mentions) ? row.mentions.length : 0,
+      mentions: Array.isArray(row?.mentions) ? row.mentions : [],
+    }))
+    .filter((row) => row.count > 0)
+    .sort((a, b) => b.count - a.count || a.author.localeCompare(b.author));
+}
+
+function renderIgDistinctAuthorsTable(rows) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (!safeRows.length) return '<p class="db-empty">Ningun autor etiqueto artistas.</p>';
+  return `
+    <div class="db-table-wrap">
+      <table class="db-table">
+        <thead><tr><th>#</th><th>Autor</th><th>Artistas distintos</th><th>Artistas etiquetados</th></tr></thead>
+        <tbody>
+          ${safeRows.map((row, index) => `
+            <tr>
+              <td>${index + 1}</td>
+              <td><code>@${escapeHTML(row.author || '')}</code></td>
+              <td>${escapeHTML(row.count ?? 0)}</td>
+              <td>${escapeHTML((row.mentions || []).join(', '))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderIgAuthorSummaryTable(rows) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (!safeRows.length) return '<p class="db-empty">Sin autores disponibles.</p>';
+  return `
+    <div class="db-table-wrap">
+      <table class="db-table">
+        <thead><tr><th>#</th><th>Autor</th><th>Comentarios</th><th>Artistas etiquetados</th></tr></thead>
+        <tbody>
+          ${safeRows.map((row, index) => `
+            <tr>
+              <td>${index + 1}</td>
+              <td><code>@${escapeHTML(row.author || '')}</code></td>
+              <td>${escapeHTML(row.count ?? 0)}</td>
+              <td>${escapeHTML((row.mentions || []).join(', ') || 'Sin etiquetas')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderIgRankingChart(rows, valueLabel) {
+  const safeRows = (Array.isArray(rows) ? rows : []).slice(0, 15);
+  if (!safeRows.length) return '';
+  const maxCount = Math.max(1, ...safeRows.map((row) => Number(row?.count) || 0));
+  return `
+    <div class="db-ig-chart" role="img" aria-label="Grafica de barras de ${escapeHTML(valueLabel)}">
+      <div class="db-ig-chart__header">
+        <strong>Top ${safeRows.length}</strong>
+        <span>${escapeHTML(valueLabel)}</span>
+      </div>
+      <div class="db-ig-chart__plot">
+        ${safeRows.map((row) => {
+          const count = Number(row?.count) || 0;
+          const width = Math.max(2, (count / maxCount) * 100);
+          return `
+            <div class="db-ig-chart__row">
+              <code title="${escapeHTML(row?.mention || '')}">${escapeHTML(row?.mention || '')}</code>
+              <div class="db-ig-chart__track"><span style="width:${width.toFixed(2)}%"></span></div>
+              <strong>${escapeHTML(count.toLocaleString('es-MX'))}</strong>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderIgRankingTable(rows, includeAuthors) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (!safeRows.length) return '<p class="db-empty">Sin menciones detectadas.</p>';
+  return `
+    <div class="db-table-wrap">
+      <table class="db-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Mencion</th>
+            <th>Conteo</th>
+            ${includeAuthors ? '<th>Autores</th>' : ''}
+          </tr>
+        </thead>
+        <tbody>
+          ${safeRows.map((row, index) => `
+            <tr>
+              <td>${index + 1}</td>
+              <td><code>${escapeHTML(row.mention || '')}</code></td>
+              <td>${escapeHTML(row.count ?? 0)}</td>
+              ${includeAuthors ? `<td>${escapeHTML((row.authors || []).join(', '))}</td>` : ''}
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function csvCell(value) {
+  const text = Array.isArray(value) ? value.join('|') : String(value ?? '');
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(filename, rows) {
+  const csv = rows.map((row) => row.map(csvCell).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportIgRankingCsv(type) {
+  const analysis = getIgMentionState().analysis;
+  if (!analysis) {
+    showToast('Primero analiza una publicacion.', 'error');
+    return;
+  }
+
+  if (type === 'unique') {
+    const rows = [['mention', 'count', 'authors'], ...(analysis.ranking_unique_authors || []).map((row) => [row.mention, row.count, row.authors || []])];
+    downloadCsv('instagram-mention-rank-unique-authors.csv', rows);
+    return;
+  }
+
+  const rows = [['mention', 'count'], ...(analysis.ranking_total || []).map((row) => [row.mention, row.count])];
+  downloadCsv('instagram-mention-rank-total.csv', rows);
+}
+
+function exportIgCommentsMarkdown() {
+  const igState = getIgMentionState();
+  const comments = Array.isArray(igState.analysis?.comments_export) ? igState.analysis.comments_export : [];
+  if (!comments.length) {
+    showToast('No hay comentarios disponibles para exportar.', 'error');
+    return;
+  }
+
+  const markdown = comments.map((comment) => {
+    const username = String(comment?.username || 'usuario_desconocido').trim();
+    const timestamp = String(comment?.timestamp || '').trim();
+    const text = String(comment?.text || '').replace(/\r\n?/g, '\n').trim();
+    const quotedText = (text || '(Comentario sin texto)')
+      .split('\n')
+      .map((line) => `> ${line}`)
+      .join('\n');
+    return `### @${username.replace(/^@+/, '')}\n${timestamp ? `\n${timestamp}\n` : ''}\n${quotedText}`;
+  }).join('\n\n---\n\n');
+
+  const mediaId = String(igState.selectedMedia?.id || 'publicacion').replace(/[^a-z0-9_-]+/gi, '-');
+  const blob = new Blob([markdown + '\n'], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `instagram-comments-${mediaId}.md`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast('Comentarios exportados en Markdown.', 'success');
+}
+
+function igPdfRows(rows, includeAuthors, limit = 100) {
+  return (Array.isArray(rows) ? rows : []).slice(0, limit).map((row, index) => {
+    const base = [String(index + 1), String(row.mention || ''), String(row.count ?? 0)];
+    if (includeAuthors) base.push(Array.isArray(row.authors) ? row.authors.join(', ') : '');
+    return base;
+  });
+}
+
+function igSafePdfFilename(mediaId) {
+  const cleanId = String(mediaId || 'publicacion').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'publicacion';
+  return 'instagram-mention-rank-' + cleanId + '-' + new Date().toISOString().slice(0, 10) + '.pdf';
+}
+
+function drawIgPdfBarChart(doc, rows, title, startY, margin) {
+  const safeRows = (Array.isArray(rows) ? rows : []).slice(0, 15);
+  if (!safeRows.length) return startY;
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const chartHeight = 30 + safeRows.length * 18;
+  let y = startY;
+  if (y + chartHeight > pageHeight - 38) {
+    doc.addPage();
+    y = 48;
+  }
+
+  const maxCount = Math.max(1, ...safeRows.map((row) => Number(row?.count) || 0));
+  const labelWidth = 105;
+  const valueWidth = 35;
+  const chartWidth = doc.internal.pageSize.getWidth() - margin * 2 - labelWidth - valueWidth;
+  doc.setFontSize(12);
+  doc.text(title, margin, y);
+  y += 18;
+
+  safeRows.forEach((row) => {
+    const count = Number(row?.count) || 0;
+    const barWidth = Math.max(2, (count / maxCount) * chartWidth);
+    doc.setFontSize(8);
+    doc.setTextColor(45, 45, 45);
+    doc.text(String(row?.mention || ''), margin, y + 8, { maxWidth: labelWidth - 8 });
+    doc.setFillColor(231, 233, 236);
+    doc.rect(margin + labelWidth, y, chartWidth, 10, 'F');
+    doc.setFillColor(220, 40, 84);
+    doc.rect(margin + labelWidth, y, barWidth, 10, 'F');
+    doc.text(count.toLocaleString('es-MX'), margin + labelWidth + chartWidth + 7, y + 8);
+    y += 18;
+  });
+  doc.setTextColor(0, 0, 0);
+  return y + 12;
+}
+
+async function exportIgAnalysisPdf() {
+  const igState = getIgMentionState();
+  const analysis = igState.analysis;
+  const media = igState.selectedMedia || {};
+  if (!analysis) {
+    showToast('Primero analiza una publicacion.', 'error');
+    return;
+  }
+
+  try {
+    await ensurePdfLibraries();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const generatedAt = new Date().toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+    const apiModeLabel = analysis.api_mode === 'facebook_graph' || media.api_mode === 'facebook_graph' ? 'Facebook Graph' : 'Instagram Login';
+    const commentScope = igCommentScopeSummary(analysis, media);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 40;
+
+    doc.setFontSize(18);
+    doc.text('Instagram Mention Rank', margin, 42);
+    doc.setFontSize(10);
+    doc.text('Generado: ' + generatedAt, margin, 62);
+    doc.text('Modo API: ' + apiModeLabel, margin, 78);
+    doc.text('Media ID: ' + (media.id || analysis.media?.id || '-'), margin, 94);
+    if (media.permalink || analysis.media_permalink) {
+      const link = String(media.permalink || analysis.media_permalink);
+      doc.text('Permalink: ' + link, margin, 110, { maxWidth: pageWidth - margin * 2 });
+    }
+
+    doc.autoTable({
+      head: [['Metrica', 'Valor']],
+      body: [
+        ['Comentarios principales procesados', commentScope.processedLabel],
+        ['Replies excluidas por regla del concurso', commentScope.excludedRepliesLabel + ' aprox.'],
+        ['comments_count Meta', commentScope.metaCountLabel],
+        ['Nota', 'Meta incluye replies en comments_count.'],
+        ['Menciones detectadas', String(analysis.mentions_count ?? 0)],
+        ['Usuarios arrobados', String(analysis.unique_mentions_count ?? 0)],
+        ['Paginas leidas', String(analysis.pages_fetched ?? 0)],
+        ['Comentarios con @', String(analysis.comments_with_mentions_count ?? 0)],
+        ['Guardado Supabase', String(analysis.saved_analysis_id || 'No')],
+      ],
+      startY: 132,
+      styles: { fontSize: 9, cellPadding: 5, overflow: 'linebreak', valign: 'top' },
+      headStyles: { fillColor: [32, 32, 32] },
+      margin: { left: margin, right: margin },
+    });
+
+    let nextY = (doc.lastAutoTable?.finalY || 132) + 28;
+    doc.setFontSize(10);
+    doc.text('Este ranking cuenta unicamente comentarios principales. Las respuestas a comentarios no se consideran para la dinamica, aunque Meta las incluya dentro de comments_count.', margin, nextY, { maxWidth: pageWidth - margin * 2 });
+    nextY += 44;
+    if (analysis.analysis_warning) {
+      doc.setFontSize(10);
+      doc.text('Nota: ' + analysis.analysis_warning, margin, nextY, { maxWidth: pageWidth - margin * 2 });
+      nextY += 44;
+    }
+
+    doc.setFontSize(12);
+    nextY = drawIgPdfBarChart(doc, analysis.ranking_total, 'Grafica: menciones totales', nextY, margin);
+    doc.text('Mas arrobados total', margin, nextY - 8);
+    const totalRows = igPdfRows(analysis.ranking_total, false);
+    doc.autoTable({
+      head: [['#', 'Mencion', 'Conteo']],
+      body: totalRows.length ? totalRows : [['-', 'Sin menciones detectadas', '0']],
+      startY: nextY,
+      styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak', valign: 'top' },
+      headStyles: { fillColor: [32, 32, 32] },
+      margin: { left: margin, right: margin },
+    });
+
+    nextY = (doc.lastAutoTable?.finalY || nextY) + 32;
+    if (nextY > doc.internal.pageSize.getHeight() - 90) {
+      doc.addPage();
+      nextY = 52;
+    }
+    doc.setFontSize(12);
+    nextY = drawIgPdfBarChart(doc, analysis.ranking_unique_authors, 'Grafica: usuarios unicos', nextY, margin);
+    doc.text('Mas arrobados por usuarios unicos', margin, nextY - 8);
+    const uniqueRows = igPdfRows(analysis.ranking_unique_authors, true);
+    doc.autoTable({
+      head: [['#', 'Mencion', 'Usuarios', 'Autores']],
+      body: uniqueRows.length ? uniqueRows : [['-', 'Sin menciones detectadas', '0', '']],
+      startY: nextY,
+      styles: { fontSize: 7, cellPadding: 4, overflow: 'linebreak', valign: 'top' },
+      headStyles: { fillColor: [32, 32, 32] },
+      columnStyles: { 3: { cellWidth: 260 } },
+      margin: { left: margin, right: margin },
+    });
+
+    nextY = (doc.lastAutoTable?.finalY || nextY) + 32;
+    const authorRanking = Array.isArray(analysis.ranking_authors) ? analysis.ranking_authors : [];
+    const authorChartRows = authorRanking.map((row) => ({ mention: '@' + String(row.author || ''), count: row.count }));
+    nextY = drawIgPdfBarChart(doc, authorChartRows, 'Grafica: autores con mas comentarios', nextY, margin);
+    doc.setFontSize(12);
+    doc.text('Resumen de autores', margin, nextY - 8);
+    const authorRows = authorRanking.slice(0, 100).map((row, index) => [
+      String(index + 1),
+      '@' + String(row.author || ''),
+      String(row.count ?? 0),
+      Array.isArray(row.mentions) && row.mentions.length ? row.mentions.join(', ') : 'Sin etiquetas',
+    ]);
+    doc.autoTable({
+      head: [['#', 'Autor', 'Comentarios', 'Artistas etiquetados']],
+      body: authorRows.length ? authorRows : [['-', 'Sin autores disponibles', '0', '']],
+      startY: nextY,
+      styles: { fontSize: 7, cellPadding: 4, overflow: 'linebreak', valign: 'top' },
+      headStyles: { fillColor: [32, 32, 32] },
+      columnStyles: { 3: { cellWidth: 260 } },
+      margin: { left: margin, right: margin },
+    });
+
+    nextY = (doc.lastAutoTable?.finalY || nextY) + 32;
+    const distinctAuthorRanking = igDistinctArtistAuthors(authorRanking);
+    const distinctChartRows = distinctAuthorRanking.map((row) => ({ mention: '@' + row.author, count: row.count }));
+    nextY = drawIgPdfBarChart(doc, distinctChartRows, 'Grafica: artistas distintos mencionados', nextY, margin);
+    doc.setFontSize(12);
+    doc.text('Artistas distintos mencionados por autor', margin, nextY - 8);
+    const distinctRows = distinctAuthorRanking.slice(0, 100).map((row, index) => [
+      String(index + 1),
+      '@' + row.author,
+      String(row.count),
+      row.mentions.join(', '),
+    ]);
+    doc.autoTable({
+      head: [['#', 'Autor', 'Artistas distintos', 'Artistas etiquetados']],
+      body: distinctRows.length ? distinctRows : [['-', 'Sin autores disponibles', '0', '']],
+      startY: nextY,
+      styles: { fontSize: 7, cellPadding: 4, overflow: 'linebreak', valign: 'top' },
+      headStyles: { fillColor: [32, 32, 32] },
+      columnStyles: { 3: { cellWidth: 260 } },
+      margin: { left: margin, right: margin },
+    });
+
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let page = 1; page <= pageCount; page += 1) {
+      doc.setPage(page);
+      doc.setFontSize(8);
+      doc.text('Hidden Room - Instagram Mention Rank - Pagina ' + page + '/' + pageCount, margin, doc.internal.pageSize.getHeight() - 20);
+    }
+
+    doc.save(igSafePdfFilename(media.id || analysis.media?.id));
+    showToast('PDF de Instagram Mention Rank generado.', 'success');
+  } catch (err) {
+    console.error('[HR] Instagram Mention Rank PDF:', err);
+    showToast('No se pudo generar el PDF.', 'error');
+  }
+}
+
+async function handleIgListMedia(form) {
+  const status = form.querySelector('[data-ig-status]');
+  const submit = form.querySelector('button[type="submit"]');
+  const formData = new FormData(form);
+  const token = String(formData.get('access_token') || '').trim();
+  const apiMode = String(formData.get('api_mode') || 'instagram_login');
+  const limit = Number(formData.get('limit') || 25);
+  const permalink = String(formData.get('permalink') || '').trim();
+  const resolvePermalink = form.dataset.operationAction === 'resolve';
+  const igState = getIgMentionState();
+  igState.accessToken = token;
+  igState.apiMode = apiMode;
+  igState.error = '';
+  if (resolvePermalink && !permalink) {
+    showToast('Pega el enlace de una publicacion de Instagram.', 'error');
+    return;
+  }
+  if (status) status.textContent = resolvePermalink ? 'Buscando publicacion en tu cuenta...' : 'Cargando publicaciones...';
+  if (submit) submit.disabled = true;
+
+  try {
+    const result = await igFunctionFetch('ig-list-media', {
+      access_token: token,
+      api_mode: apiMode,
+      limit,
+      permalink: resolvePermalink ? permalink : '',
+    });
+    igState.media = Array.isArray(result.media) ? result.media.map((item) => ({ ...item, api_mode: item.api_mode || result.api_mode || apiMode })) : [];
+    igState.apiMode = result.api_mode || apiMode;
+    console.info('[Instagram Mention Rank] Publicaciones cargadas', {
+      mode: igState.apiMode,
+      count: igState.media.length,
+      media: igState.media.map((item) => ({
+        media_id: item.id,
+        media_permalink: item.permalink || null,
+        comments_count: item.comments_count ?? null,
+        api_mode: item.api_mode || igState.apiMode,
+      })),
+    });
+    igState.analysis = null;
+    igState.selectedMedia = null;
+    igState.isAnalyzing = false;
+    if (resolvePermalink) {
+      const resolvedMedia = igState.media[0];
+      showToast('Publicacion encontrada. Iniciando analisis.', 'success');
+      await handleIgAnalyzeMedia(resolvedMedia?.id);
+      return;
+    }
+    showToast('Publicaciones cargadas.', 'success');
+    renderSection('erp-ig-mention-rank');
+  } catch (err) {
+    igState.error = err.message || 'No se pudieron cargar las publicaciones.';
+    if (status) status.textContent = igState.error;
+    showToast(igState.error, 'error');
+  } finally {
+    if (submit) submit.disabled = false;
+  }
+}
+
+async function handleIgAnalyzeMedia(mediaId) {
+  const igState = getIgMentionState();
+  const token = getIgTokenFromDashboard();
+  const media = (igState.media || []).find((item) => String(item.id) === String(mediaId));
+  const apiMode = media?.api_mode || getIgApiModeFromDashboard();
+  if (!mediaId || !media) {
+    showToast('Selecciona una publicacion cargada desde Instagram antes de analizar.', 'error');
+    return;
+  }
+
+  console.info('[Instagram Mention Rank] Analizando media', {
+    media_id: media.id,
+    media_permalink: media.permalink || null,
+    comments_count: media.comments_count ?? null,
+    api_mode: apiMode,
+  });
+
+  igState.accessToken = token;
+  igState.apiMode = apiMode;
+  igState.error = '';
+  igState.analysis = null;
+  igState.selectedMedia = media;
+  igState.isAnalyzing = true;
+  showToast(apiMode === 'facebook_graph' ? 'Analizando comentarios con Facebook Graph...' : 'Analizando comentarios de Instagram...', 'info');
+  renderSection('erp-ig-mention-rank');
+
+  try {
+    const result = await igAnalyzeCommentsStream({
+      access_token: token,
+      api_mode: apiMode,
+      media_id: mediaId,
+      media_permalink: media?.permalink || null,
+    });
+    igState.analysis = result;
+    igState.selectedMedia = media || { id: mediaId };
+    igState.isAnalyzing = false;
+    console.info('[Instagram Mention Rank] Analisis completado', {
+      media_id: media.id,
+      meta_comments_count: result.meta_comments_count ?? null,
+      comments_downloaded: result.comments_count ?? null,
+      coverage_percent: result.coverage_percent ?? null,
+      pages_fetched: result.pages_fetched ?? null,
+      elapsed_seconds: result.elapsed_seconds ?? null,
+      incomplete_reasons: result.incomplete_reasons || [],
+    });
+    showToast('Analisis completado.', 'success');
+    renderSection('erp-ig-mention-rank');
+  } catch (err) {
+    igState.isAnalyzing = false;
+    igState.error = err.message || 'No se pudieron analizar los comentarios.';
+    showToast(igState.error, 'error');
+    renderSection('erp-ig-mention-rank');
+  }
+}
+function canImportPasslineTickets() {
+  return hasRole('admin') || hasAnyPermission(['erp.finance.input', 'erp.ops.input']);
+}
+
+function passlineImportState() {
+  return state.data.passlineImport ?? {
+    sourceType: 'passline_tickets',
+    sourceLabel: 'Passline Tickets',
+    fileName: '',
+    rawRows: [],
+    rows: [],
+    summary: null,
+    importSummary: null,
+    error: '',
+  };
+}
+
+async function renderErpCsvUpload() {
+  if (!canImportPasslineTickets()) {
+    return sectionShell('ERP', 'Subir CSV', 'title-erp-csv-upload', `
+      <p class="db-empty db-empty--error">No tienes permiso para importar CSV en ERP.</p>
+    `);
+  }
+
+  const importState = passlineImportState();
+  return sectionShell('ERP', 'Subir CSV', 'title-erp-csv-upload', `
+    <div class="db-admin-grid db-admin-grid--single">
+      <article class="db-card">
+        <div class="db-card__inner">
+          <div class="db-form__row">
+            <label class="db-field">
+              <span>Tipo de CSV</span>
+              <select id="js-passline-source-type" aria-label="Tipo de CSV">
+                ${optionHTML('passline_tickets', 'Passline Tickets', importState.sourceType)}
+              </select>
+            </label>
+            <label class="db-field">
+              <span>Archivos CSV</span>
+              <input id="js-passline-csv-file" type="file" accept=".csv,text/csv" multiple />
+            </label>
+          </div>
+          ${importState.fileName ? `<p class="db-field__hint">${escapeHTML(importState.fileName)}</p>` : ''}
+          <div class="db-form__actions">
+            <button class="db-btn-secondary" type="button" data-action="passline-preview"${importState.isImporting ? ' disabled' : ''}>Previsualizar</button>
+            <button class="btn-primary" type="button" data-action="passline-import"${importState.rows.length && !importState.isImporting ? '' : ' disabled'}>${importState.isImporting ? 'Subiendo...' : 'Importar a Supabase'}</button>
+          </div>
+          ${importState.error ? `<p class="db-empty db-empty--error">${escapeHTML(importState.error)}</p>` : ''}
+        </div>
+      </article>
+      ${renderPasslineImportSummary(importState.summary, 'Preview')}
+      ${renderPasslineImportSummary(importState.importSummary, 'Importacion')}
+      ${renderPasslinePreviewTable(importState.rows)}
+    </div>
+  `);
+}
+
+function renderPasslineImportSummary(summary, label) {
+  if (!summary) return '';
+  return `
+    <div class="db-grid db-grid--4col db-finance-summary" aria-label="${escapeAttr(label)} Passline">
+      ${renderStatCard('Filas', String(summary.totalRows ?? 0))}
+      ${renderStatCard('Tickets nuevos', String(summary.newTickets ?? 0))}
+      ${renderStatCard('Actualizados', String(summary.updatedTickets ?? 0))}
+      ${renderStatCard('Anulados', String(summary.cancelledTickets ?? 0))}
+      ${renderStatCard('Vigentes', String(summary.activeTickets ?? 0))}
+      ${renderStatCard('Validados', String(summary.validatedTickets ?? 0))}
+      ${renderStatCard('Cortesias', String(summary.courtesyTickets ?? 0))}
+      ${renderStatCard('Total vendido', money(summary.totalSold ?? 0))}
+    </div>
+  `;
+}
+
+function renderPasslinePreviewTable(rows = []) {
+  const previewRows = rows.slice(0, 20);
+  const body = previewRows.length
+    ? previewRows.map((row) => `
+      <tr>
+        <td>${escapeHTML(row.ticket_id ?? '-')}</td>
+        <td>${escapeHTML(row.buyer_name ?? '-')}</td>
+        <td>${escapeHTML(row.buyer_email ?? '-')}</td>
+        <td>${escapeHTML(row.buyer_phone ?? '-')}</td>
+        <td>${escapeHTML(row.user_id ?? '-')}</td>
+        <td>${escapeHTML(row.event_key ?? '-')}</td>
+        <td>${escapeHTML(row.ticket_type ?? '-')}</td>
+        <td>${escapeHTML(row.purchase_status ?? '-')}</td>
+        <td>${escapeHTML(row.ticket_status ?? '-')}</td>
+        <td>${money(row.total ?? 0)}</td>
+      </tr>
+    `).join('')
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="10" class="db-empty hr-table-empty">Carga un CSV para ver las primeras 20 filas.</td></tr>';
+
+  return `
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="db-table hr-table hr-table-readable" aria-label="Preview Passline Tickets">
+        <thead>
+          <tr>
+            <th scope="col">ID ticket</th>
+            <th scope="col">Nombre</th>
+            <th scope="col">Email</th>
+            <th scope="col">Telefono</th>
+            <th scope="col">Llave Evento</th>
+            <th scope="col">Tipo</th>
+            <th scope="col">Estado</th>
+            <th scope="col">Estado eticket</th>
+            <th scope="col">Total</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function parsePasslineCsv(file) {
+  if (!file) throw new Error('Selecciona un archivo CSV.');
+  const buffer = await file.arrayBuffer();
+  const text = new TextDecoder('utf-8').decode(buffer).replace(/^\uFEFF/, '');
+  const table = parseSemicolonCsv(text);
+  if (!table.length) return [];
+
+  const headers = table[0].map((header, index) => normalizePasslineHeader(header, index));
+  const seen = new Map();
+  const uniqueHeaders = headers.map((header) => {
+    const count = seen.get(header) ?? 0;
+    seen.set(header, count + 1);
+    return count ? `${header}.${count}` : header;
+  });
+
+  return table.slice(1)
+    .map((cells) => {
+      const row = {};
+      uniqueHeaders.forEach((header, index) => {
+        row[header] = cells[index] ?? '';
+      });
+      row.__source_file = file.name || '';
+      return row;
+    })
+    .filter((row) => Object.entries(row).some(([key, value]) => key !== '__source_file' && String(value ?? '').trim() !== ''));
+}
+
+function parseSemicolonCsv(text) {
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        cell += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ';' && !inQuotes) {
+      row.push(cell);
+      cell = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') index += 1;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = '';
+      continue;
+    }
+
+    cell += char;
+  }
+
+  if (cell.length || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function normalizePasslineHeader(header, index) {
+  const value = String(header ?? '').trim().replace(/^\uFEFF/, '');
+  return value || `Unnamed${index ? `.${index}` : ''}`;
+}
+
+function passlineColumnKey(label) {
+  return String(label ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function passlineValue(row, label) {
+  const target = passlineColumnKey(label);
+  const matches = Object.keys(row ?? {}).filter((key) => {
+    const base = String(key).replace(/\.\d+$/, '');
+    return passlineColumnKey(base) === target;
+  });
+
+  for (const key of matches) {
+    const value = String(row[key] ?? '').trim();
+    if (value) return value;
+  }
+  return '';
+}
+
+function passlineNumber(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return 0;
+  let normalized = raw.replace(/[^0-9,.-]/g, '');
+  if (normalized.includes(',') && normalized.includes('.')) {
+    normalized = normalized.replace(/\./g, '').replace(',', '.');
+  } else if (normalized.includes(',')) {
+    normalized = normalized.replace(',', '.');
+  } else {
+    normalized = normalized.replace(/,/g, '');
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function passlineBoolean(value) {
+  const normalized = passlineColumnKey(value);
+  if (['si', 's', 'yes', 'true', '1'].includes(normalized)) return true;
+  if (['no', 'n', 'false', '0'].includes(normalized)) return false;
+  return null;
+}
+
+function passlineDateTime(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+
+  const match = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!match) return null;
+  const year = Number(match[3].length === 2 ? `20${match[3]}` : match[3]);
+  const date = new Date(year, Number(match[2]) - 1, Number(match[1]), Number(match[4] ?? 0), Number(match[5] ?? 0), Number(match[6] ?? 0));
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function normalizePasslineRow(row, fileName = '') {
+  const ticketId = passlineValue(row, 'ID ticket');
+  const { __source_file: sourceFile, ...rawRow } = row ?? {};
+  return {
+    event_key: passlineValue(row, 'Llave Evento') || null,
+    event_date: passlineDateTime(passlineValue(row, 'Fecha Evento')),
+    purchase_id: passlineValue(row, 'ID Compra') || null,
+    ticket_id: ticketId,
+    buyer_name: passlineValue(row, 'Nombre') || null,
+    buyer_email: passlineValue(row, 'Email') || null,
+    buyer_phone: passlineValue(row, 'Telefono') || null,
+    ticket_type: passlineValue(row, 'Tipo') || null,
+    purchase_status: passlineValue(row, 'Estado') || null,
+    ticket_status: passlineValue(row, 'Estado del eticket') || null,
+    is_courtesy: passlineBoolean(passlineValue(row, 'Cortesia')),
+    rrpp: passlineValue(row, 'RRPP') || null,
+    rrpp_email: passlineValue(row, 'Email RRPP') || null,
+    rrpp_name: passlineValue(row, 'Nombre RRPP') || null,
+    total: passlineNumber(passlineValue(row, 'Total')),
+    service_fee: passlineNumber(passlineValue(row, 'Cargo por Servicio')),
+    discount_code: passlineValue(row, 'Codigo descuento') || null,
+    discount_amount: passlineNumber(passlineValue(row, 'Monto descuento')),
+    validation_datetime: passlineDateTime(passlineValue(row, 'Fecha/Hora Validacion')),
+    activation_code: passlineValue(row, 'Codigo Activacion') || null,
+    raw_row: rawRow,
+    source_file: fileName || sourceFile || null,
+  };
+}
+
+async function previewPasslineImport(rows) {
+  const importState = passlineImportState();
+  await ensureUsersLoaded();
+  const trackingIndex = buildPasslineTrackingIndex(state.data.users ?? []);
+  const normalizedRows = rows
+    .map((row) => normalizePasslineRow(row, row.__source_file || importState.fileName))
+    .map((row) => applyPasslineTracking(row, trackingIndex))
+    .filter((row) => row.ticket_id);
+  const existingIds = await fetchExistingPasslineTicketIds(normalizedRows.map((row) => row.ticket_id));
+  const summary = buildPasslineSummary(normalizedRows, existingIds);
+  state.data.passlineImport = {
+    ...importState,
+    rawRows: rows,
+    rows: normalizedRows,
+    summary,
+    importSummary: null,
+    error: state.data.passlineSchemaMissing ? 'La tabla passline_tickets todavia no existe en Supabase. Ya puedes revisar el preview; aplica la migracion antes de importar.' : '',
+  };
+  return state.data.passlineImport;
+}
+
+async function fetchExistingPasslineTicketIds(ticketIds = []) {
+  const ids = [...new Set(ticketIds.filter(Boolean))];
+  const existing = new Set();
+  for (let index = 0; index < ids.length; index += 500) {
+    const chunk = ids.slice(index, index + 500);
+    const { data, error } = await supabase
+      .from('passline_tickets')
+      .select('ticket_id')
+      .in('ticket_id', chunk);
+    if (error) {
+      if (isMissingSupabaseRelationError(error)) {
+        state.data.passlineSchemaMissing = true;
+        return existing;
+      }
+      throw error;
+    }
+    state.data.passlineSchemaMissing = false;
+    (data ?? []).forEach((row) => existing.add(row.ticket_id));
+  }
+  return existing;
+}
+
+function buildPasslineSummary(rows = [], existingIds = new Set()) {
+  return rows.reduce((summary, row) => {
+    const statusText = passlineColumnKey(`${row.purchase_status ?? ''} ${row.ticket_status ?? ''}`);
+    const validated = Boolean(row.validation_datetime) || statusText.includes('validado');
+    const cancelled = /anulad|cancel|devuelt|refund/.test(statusText);
+    summary.totalRows += 1;
+    summary.totalSold += Number(row.total ?? 0);
+    if (existingIds.has(row.ticket_id)) summary.updatedTickets += 1;
+    else summary.newTickets += 1;
+    if (cancelled) summary.cancelledTickets += 1;
+    if (!cancelled) summary.activeTickets += 1;
+    if (validated) summary.validatedTickets += 1;
+    if (row.is_courtesy) summary.courtesyTickets += 1;
+    return summary;
+  }, {
+    totalRows: 0,
+    newTickets: 0,
+    updatedTickets: 0,
+    cancelledTickets: 0,
+    activeTickets: 0,
+    validatedTickets: 0,
+    courtesyTickets: 0,
+    totalSold: 0,
+  });
+}
+
+async function importPasslineTickets(rows) {
+  if (!canImportPasslineTickets()) throw new Error('No tienes permiso para importar Passline Tickets.');
+  const validRows = rows.filter((row) => row.ticket_id);
+  if (!validRows.length) throw new Error('No hay tickets validos para importar.');
+  if (state.data.passlineSchemaMissing) throw new Error('Falta aplicar la migracion que crea public.passline_tickets en Supabase.');
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) throw new Error('Sesion de Supabase no disponible.');
+
+  const existingIds = await fetchExistingPasslineTicketIds(validRows.map((row) => row.ticket_id));
+  const summary = buildPasslineSummary(validRows, existingIds);
+  const importedAt = new Date().toISOString();
+  for (let index = 0; index < validRows.length; index += 500) {
+    const chunk = validRows.slice(index, index + 500).map((row) => ({
+      ...row,
+      imported_by: user.id,
+      imported_at: importedAt,
+    }));
+    const { error } = await supabase
+      .from('passline_tickets')
+      .upsert(chunk, { onConflict: 'ticket_id' });
+    if (error) throw error;
+  }
+
+  return summary;
+}
+
+async function handlePasslinePreview() {
+  const fileInput = document.getElementById('js-passline-csv-file');
+  const files = [...(fileInput?.files ?? [])];
+  const importState = passlineImportState();
+  try {
+    if (!files.length) throw new Error('Selecciona al menos un archivo CSV.');
+    const parsedFiles = await Promise.all(files.map((file) => parsePasslineCsv(file)));
+    const rawRows = parsedFiles.flat();
+    const fileLabel = files.length === 1
+      ? files[0].name
+      : `${files.length} archivos: ${files.map((file) => file.name).join(', ')}`;
+    state.data.passlineImport = {
+      ...importState,
+      fileName: fileLabel,
+      rawRows,
+      error: '',
+    };
+    await previewPasslineImport(rawRows);
+    showToast('Preview de Passline listo.', 'success');
+  } catch (error) {
+    console.error('[HR] passline preview:', error);
+    state.data.passlineImport = { ...importState, error: error?.message || 'No se pudo leer el CSV.' };
+    showToast(state.data.passlineImport.error, 'error');
+  }
+  renderSection('erp-csv-upload');
+}
+
+async function handlePasslineImport() {
+  const importState = passlineImportState();
+  if (importState.isImporting) return;
+  state.data.passlineImport = { ...importState, isImporting: true, error: '' };
+  renderSection('erp-csv-upload');
+
+  try {
+    const importSummary = await importPasslineTickets(importState.rows ?? []);
+    state.data.passlineImport = { ...state.data.passlineImport, importSummary, isImporting: false, error: '' };
+    showToast('Tickets Passline importados.', 'success');
+  } catch (error) {
+    console.error('[HR] passline import:', error);
+    state.data.passlineImport = { ...state.data.passlineImport, isImporting: false, error: error?.message || 'No se pudo importar el CSV.' };
+    showToast(state.data.passlineImport.error, 'error');
+  }
+  renderSection('erp-csv-upload');
+}
 async function renderErpOps() {
   await ensureUsersLoaded();
   const events = await ensureFinanceEventsLoaded();
   const participants = await fetchAllEventParticipants();
-  const activeForm = state.data.erpOpsForm || 'transaction';
+  const financeEntities = await fetchFinanceEntities();
+  const paymentMethods = await fetchPaymentMethods();
+  const services = await fetchServices();
+  const memberships = await fetchMembershipOptionsForOps();
+  const activeForm = persistedDataValue('erpOpsForm', 'transaction');
+  const mergeDuplicateMode = persistedDataValue('mergeDuplicateMode', 'email');
   const opsForms = {
     transaction: {
       label: 'Finanzas',
-      html: renderTransactionForm('transaction-create'),
+      html: renderTransactionForm('transaction-create', paymentMethods, services),
     },
     session: {
       label: 'Sesion',
@@ -2462,40 +5785,28 @@ async function renderErpOps() {
           <label class="db-field"><span>Concepto</span><input name="concept" data-session-concept required /></label>
           <div class="db-form__row">
             <label class="db-field"><span>Status</span><select name="status">${ERP_STATUS_OPTIONS.map((status) => optionHTML(status, status, 'sin apartado')).join('')}</select></label>
-            <label class="db-field"><span>Tipo</span><select name="type" data-session-type required>${SESSION_TYPE_OPTIONS.map((item) => optionHTML(item.value, item.label, '')).join('')}</select></label>
+            <label class="db-field"><span>Tipo</span><select name="type" data-session-type required>${renderSessionTypeOptions(services)}</select></label>
           </div>
           <div class="db-form__row">
             <label class="db-field"><span>Hora de inicio</span><select name="hour" data-session-start required>${renderHalfHourOptions()}</select></label>
             <label class="db-field"><span>Hora de final</span><input name="sc_end" data-session-end type="time" readonly /></label>
           </div>
           <div class="db-form__row">
-            <label class="db-field"><span>Costo</span><input name="cost" data-session-cost type="number" step="0.01" value="${SESSION_TYPE_OPTIONS[0].cost}" readonly /></label>
+            <label class="db-field"><span>Costo</span><input name="cost" data-session-cost type="number" step="0.01" value="${defaultSessionServiceCost(services)}" readonly /></label>
             <label class="db-field"><span>Promo</span><input name="promo" /></label>
           </div>
           <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
-          <div class="db-form__actions">
-            <button class="btn-primary" type="submit">Crear sesion</button>
-            <button class="db-btn-secondary" type="button" data-action="operation-receipt">Compartir o descargar comprobante</button>
-          </div>
+          ${renderOperationCreateActions('CREAR')}
         </form>
       `,
     },
     download: {
       label: 'Descarga',
-      html: `
-        <form class="db-form" data-form="download-create">
-          ${renderErpUserPicker('user_id', 'Usuario')}
-          ${renderUserAutofillFields()}
-          <label class="db-field"><span>Nombre</span><input name="name" required /></label>
-          <label class="db-field"><span>Ruta storage</span><input name="storage_path" required /></label>
-          <label class="db-field"><span>Tipo</span><select name="type">${ERP_TYPE_OPTIONS.map((type) => optionHTML(type, type, '')).join('')}</select></label>
-          <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
-          <div class="db-form__actions">
-            <button class="btn-primary" type="submit">Crear descarga</button>
-            <button class="db-btn-secondary" type="button" data-action="operation-receipt">Compartir o descargar comprobante</button>
-          </div>
-        </form>
-      `,
+      html: renderDownloadOpsForm(memberships),
+    },
+    beatSale: {
+      label: 'Beat a la venta',
+      html: renderBeatSaleOpsForm(),
     },
     contract: {
       label: 'Contrato',
@@ -2504,10 +5815,7 @@ async function renderErpOps() {
           ${renderErpUserPicker('user_id', 'Usuario')}
           ${renderUserAutofillFields()}
           <label class="db-field"><span>Contrato</span><input name="contract" required placeholder="URL o ruta" /></label>
-          <div class="db-form__actions">
-            <button class="btn-primary" type="submit">Crear contrato</button>
-            <button class="db-btn-secondary" type="button" data-action="operation-receipt">Compartir o descargar comprobante</button>
-          </div>
+          ${renderOperationCreateActions('CREAR')}
         </form>
       `,
     },
@@ -2553,16 +5861,54 @@ async function renderErpOps() {
     },
     eventMovement: {
       label: 'Nuevo movimiento',
-      html: renderEventMovementOpsForm(events, participants),
+      html: renderEventMovementOpsForm(events, participants, financeEntities, paymentMethods),
     },
     eventParticipant: {
       label: 'Nuevo participante',
-      html: renderEventParticipantForm(events),
+      html: renderEventParticipantForm(),
+    },
+    paymentMethod: {
+      label: 'Metodo de pago',
+      html: renderPaymentMethodOpsForm(),
+    },
+    service: {
+      label: 'Servicio',
+      html: renderServiceOpsForm(),
+    },
+    financeEntity: {
+      label: 'Entidad financiera',
+      html: `
+        <form class="db-form" data-form="finance-entity-create">
+          <div class="db-form__row">
+            <label class="db-field"><span>Clave</span><input name="entity_key" placeholder="productora_nombre" required /></label>
+            <label class="db-field"><span>Nombre</span><input name="name" required /></label>
+          </div>
+          <div class="db-form__row">
+            <label class="db-field"><span>Tipo</span><select name="entity_type">${[
+              ['producer', 'Productora'],
+              ['internal', 'Interna'],
+              ['partner', 'Socio'],
+              ['other', 'Otra'],
+            ].map(([value, label]) => optionHTML(value, label, 'producer')).join('')}</select></label>
+            <label class="db-field"><span>Status</span><select name="status">${[
+              ['active', 'Activo'],
+              ['inactive', 'Inactivo'],
+            ].map(([value, label]) => optionHTML(value, label, 'active')).join('')}</select></label>
+          </div>
+          <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
+          <button class="btn-primary" type="submit">Crear entidad financiera</button>
+        </form>
+      `,
+    },
+    membership: {
+      label: 'Membresías',
+      html: renderMembershipOpsForm(memberships),
     },
     userMerge: {
       label: 'Fusionar usuarios',
       html: `
         <form class="db-form" data-form="user-merge">
+          ${renderUserMergeDuplicateAlerts(mergeDuplicateMode)}
           ${renderUserPicker('keep_user_id', 'User ID histórico a conservar', '', {
             valueField: 'user_id',
             placeholder: 'Buscar perfil histórico',
@@ -2596,11 +5942,16 @@ async function renderErpOps() {
             ['transaction', 'Finanzas'],
             ['session', 'Sesion'],
             ['download', 'Descarga'],
+            ['beatSale', 'Beat a la venta'],
             ['contract', 'Contrato'],
             ['user', 'Usuario'],
             ['event', 'Evento'],
             ['eventMovement', 'Nuevo movimiento'],
             ['eventParticipant', 'Nuevo participante'],
+            ['financeEntity', 'Entidad financiera'],
+            ['paymentMethod', 'Metodo de pago'],
+            ['service', 'Servicio'],
+            ['membership', 'Membresías'],
             ['userMerge', 'Fusionar usuarios'],
           ].map(([value, label]) => optionHTML(value, label, activeForm)).join('')}
         </select>
@@ -2615,23 +5966,258 @@ async function renderErpOps() {
   `);
 }
 
-function renderEventParticipantForm(events = []) {
+function renderPaymentMethodOpsForm() {
+  return `
+    <form class="db-form" data-form="payment-method-create">
+      <div class="db-form__row">
+        <label class="db-field"><span>Clave</span><input name="key" placeholder="NU" required /></label>
+        <label class="db-field"><span>Nombre</span><input name="name" placeholder="NU" required /></label>
+      </div>
+      <div class="db-form__row">
+        <label class="db-field"><span>Status</span><select name="status"><option value="active" selected>active</option><option value="inactive">inactive</option></select></label>
+        <label class="db-field"><span>Orden</span><input name="sort_order" type="number" step="1" value="100" required /></label>
+      </div>
+      <button class="btn-primary" type="submit">Crear metodo</button>
+    </form>
+  `;
+}
+
+function renderServiceOpsForm() {
+  return `
+    <form class="db-form" data-form="service-create">
+      <div class="db-form__row">
+        <label class="db-field"><span>Clave</span><input name="key" placeholder="GRABACION" required /></label>
+        <label class="db-field"><span>Nombre</span><input name="name" placeholder="GRABACIÓN" required /></label>
+      </div>
+      <div class="db-form__row">
+        <label class="db-field"><span>Status</span><select name="status"><option value="active" selected>active</option><option value="inactive">inactive</option></select></label>
+        <label class="db-field"><span>Orden</span><input name="sort_order" type="number" step="1" value="100" required /></label>
+      </div>
+      <div class="db-form__row">
+        <label class="db-check"><input name="show_in_finance" type="checkbox" value="true" checked /> <span>Mostrar en finanzas</span></label>
+        <label class="db-check"><input name="show_in_session" type="checkbox" value="true" /> <span>Mostrar en sesión</span></label>
+      </div>
+      <div class="db-form__row">
+        <label class="db-field"><span>Costo sesión</span><input name="session_cost" type="number" step="0.01" min="0" /></label>
+        <label class="db-field"><span>Minutos sesión</span><input name="session_minutes" type="number" step="1" min="1" /></label>
+      </div>
+      <button class="btn-primary" type="submit">Crear servicio</button>
+    </form>
+  `;
+}
+
+function renderEventParticipantForm() {
   return `
     <form class="db-form" data-form="event-participant-create">
-      <label class="db-field"><span>Evento</span><select name="event_id" required>${events.map((event) => optionHTML(String(event.id ?? event.event_id), eventLabel(event), '')).join('')}</select></label>
       ${renderErpUserPicker('user_id', 'Usuario / participante')}
       ${renderUserAutofillFields()}
-      <div class="db-form__row">
-        <label class="db-field"><span>Rol en evento</span><input name="role" placeholder="Inversor, proveedor, venue..." /></label>
-        <label class="db-field"><span>Participación %</span><input name="participation_percent" type="number" step="0.01" min="0" max="100" /></label>
-      </div>
+      <label class="db-field"><span>Rol general</span><input name="role" placeholder="Inversor, proveedor, venue..." /></label>
+      <label class="db-field"><span>Status</span><select name="status">${['active', 'inactive'].map((status) => optionHTML(status, status, 'active')).join('')}</select></label>
       <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
       <button class="btn-primary" type="submit">Crear participante</button>
     </form>
   `;
 }
 
-function renderTransactionForm(formName) {
+async function fetchMembershipOptionsForOps() {
+  try {
+    const memberships = await fetchAllTableEditorRows(
+      'memberships',
+      'id, user_id, username, status, start_date, end_date, weekly_price, sessions_per_week, notes',
+      { field: 'start_date', direction: 'desc' }
+    );
+    state.data.membershipOpsOptions = memberships;
+    return memberships;
+  } catch (error) {
+    console.info('[HR] memberships options unavailable:', error?.message ?? error);
+    state.data.membershipOpsOptions = [];
+    return [];
+  }
+}
+
+function membershipOptionLabel(membership) {
+  const user = (state.data.users ?? []).find((item) => String(item.user_id) === String(membership.user_id));
+  const label = user ? userLabel(user.user_id) : (membership.username || membership.user_id || 'Usuario');
+  const dates = `${formatDisplayDateOnly(membership.start_date)}${membership.end_date ? ` a ${formatDisplayDateOnly(membership.end_date)}` : ''}`;
+  return `${label} · ${String(membership.status ?? 'active').toUpperCase()} · ${dates}`;
+}
+
+function renderDownloadOpsForm(memberships = []) {
+  return `
+    <form class="db-form" data-form="download-create">
+      ${renderErpUserPicker('user_id', 'Usuario')}
+      ${renderUserAutofillFields()}
+      <label class="db-field">
+        <span>¿Corresponde a una membresía?</span>
+        <select name="release_mode" data-download-release-mode>
+          <option value="immediate">No, liberar inmediatamente</option>
+          <option value="membership_delivery">Sí, liberar con un entregable</option>
+        </select>
+      </label>
+      <div class="db-form__row" data-download-membership-fields hidden>
+        <label class="db-field">
+          <span>Membresía</span>
+          <select name="membership_id" data-download-membership-id>
+            <option value="">Seleccionar membresía</option>
+            ${memberships.map((membership) => `
+              <option value="${escapeAttr(membership.id)}" data-membership-user-id="${escapeAttr(membership.user_id ?? '')}">
+                ${escapeHTML(membershipOptionLabel(membership))}
+              </option>
+            `).join('')}
+          </select>
+        </label>
+        <label class="db-field">
+          <span>Entregable / ciclo</span>
+          <select name="membership_cycle_number" data-download-cycle-number>
+            <option value="">Seleccionar ciclo</option>
+            ${renderMembershipCycleOptions()}
+          </select>
+        </label>
+      </div>
+      <label class="db-field"><span>Nombre</span><input name="name" required /></label>
+      <label class="db-field">
+        <span>Origen</span>
+        <select name="source_type" data-download-source-type>
+          <option value="link">Subir link</option>
+          <option value="file">Subir archivo a Cloud</option>
+        </select>
+      </label>
+      <label class="db-field" data-download-link-field><span>Ruta / link</span><input name="storage_path" data-download-storage-path required /></label>
+      <label class="db-field" data-download-file-field hidden>
+        <span>Archivo</span>
+        <input name="download_file" type="file" data-download-file />
+        <small class="db-field__hint">Se guardara en la carpeta downloads del usuario seleccionado.</small>
+      </label>
+      <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
+      <div class="db-upload-progress" data-download-upload-progress hidden>
+        <div class="db-upload-progress__head">
+          <span data-download-upload-progress-label>Esperando archivo</span>
+          <strong data-download-upload-progress-value>0%</strong>
+        </div>
+        <div class="db-upload-progress__track" aria-hidden="true">
+          <span data-download-upload-progress-bar style="width:0%"></span>
+        </div>
+      </div>
+      ${renderOperationCreateActions('CREAR')}
+    </form>
+  `;
+}
+
+function renderMembershipCycleOptions(totalCycles = 24) {
+  return Array.from({ length: totalCycles }, (_, index) => {
+    const cycle = index + 1;
+    const firstWeek = index * 4 + 1;
+    const lastWeek = firstWeek + 3;
+    return optionHTML(String(cycle), `Mes ${cycle} · Semanas ${firstWeek}-${lastWeek}`, '');
+  }).join('');
+}
+
+function renderMembershipOpsForm(memberships = []) {
+  const today = todayDateInputValue();
+  const cancellable = (memberships ?? [])
+    .filter((membership) => !['cancelled', 'expired'].includes(String(membership.status ?? '').toLowerCase()));
+
+  return `
+    <div class="db-membership-ops">
+      <section class="db-membership-ops__block">
+        <h2 class="db-membership-ops__title">Crear membresía</h2>
+          <form class="db-form" data-form="membership-create">
+            ${renderErpUserPicker('user_id', 'Usuario')}
+            ${renderUserAutofillFields()}
+            <div class="db-form__row">
+              <label class="db-field"><span>Inicio</span><input name="start_date" type="date" value="${escapeAttr(today)}" required /></label>
+              <label class="db-field"><span>Término</span><input name="end_date" type="date" /></label>
+            </div>
+            <div class="db-form__row">
+              <label class="db-field"><span>Precio semanal</span><input name="weekly_price" type="number" step="0.01" value="${MEMBERSHIP_WEEKLY_COST}" required /></label>
+              <label class="db-field"><span>Sesiones por semana</span><input name="sessions_per_week" type="number" step="1" min="1" value="1" required /></label>
+            </div>
+            <label class="db-field"><span>Status</span><select name="status">${['active', 'paused', 'cancelled', 'expired'].map((status) => optionHTML(status, status, 'active')).join('')}</select></label>
+            <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
+            <button class="btn-primary" type="submit">Crear membresía</button>
+          </form>
+      </section>
+      <section class="db-membership-ops__block">
+        <h2 class="db-membership-ops__title">Entrega de material</h2>
+          <form class="db-form" data-form="membership-delivery">
+            <input type="hidden" name="note_scope" value="delivery" />
+            <label class="db-field">
+              <span>Membresía</span>
+              <select name="membership_id">
+                <option value="">Sin public.memberships / legacy</option>
+                ${memberships.map((membership) => optionHTML(membership.id, membershipOptionLabel(membership), '')).join('')}
+              </select>
+            </label>
+            ${renderErpUserPicker('user_id', 'Usuario')}
+            ${renderUserAutofillFields()}
+            <div class="db-form__row">
+              <label class="db-field"><span>Ciclo</span><input name="cycle_number" type="number" step="1" min="1" value="1" required /></label>
+              <label class="db-field"><span>Fecha de entrega</span><input name="delivered_at" type="date" value="${escapeAttr(today)}" required /></label>
+            </div>
+            <label class="db-field"><span>Notas de entrega</span><textarea name="notes" rows="3"></textarea></label>
+            <button class="btn-primary" type="submit">Registrar entrega</button>
+          </form>
+      </section>
+      <section class="db-membership-ops__block">
+        <h2 class="db-membership-ops__title">Cancelar membresía</h2>
+          <form class="db-form" data-form="membership-cancel">
+            <label class="db-field">
+              <span>Membresía</span>
+              <select name="membership_id" required>
+                <option value="">Seleccionar membresía</option>
+                ${cancellable.map((membership) => optionHTML(membership.id, membershipOptionLabel(membership), '')).join('')}
+              </select>
+            </label>
+            <label class="db-field"><span>Fecha de término</span><input name="end_date" type="date" value="${escapeAttr(today)}" required /></label>
+            <label class="db-field"><span>Notas de cancelación</span><textarea name="notes" rows="3"></textarea></label>
+            <button class="db-btn-danger" type="submit">Cancelar membresía</button>
+          </form>
+      </section>
+    </div>
+  `;
+}
+
+function renderBeatSaleOpsForm() {
+  return `
+    <form class="db-form" data-form="beat-sale-create">
+      <div class="db-form__row">
+        <label class="db-field"><span>Nombre del beat</span><input name="name" required /></label>
+        <label class="db-field"><span>Slug</span><input name="slug" placeholder="se genera si lo dejas vacio" /></label>
+      </div>
+      <div class="db-form__row">
+        <label class="db-field"><span>Precio MXN</span><input name="price" type="number" min="0" step="0.01" required /></label>
+        <label class="db-field"><span>Stock</span><input name="stock" type="number" min="0" step="1" placeholder="vacio = ilimitado" /></label>
+      </div>
+      <label class="db-field"><span>Archivo de audio</span><input name="beat_file" type="file" accept="${escapeAttr(BEAT_AUDIO_ACCEPT)}" required /></label>
+      <label class="db-field"><span>Descripcion</span><textarea name="description" rows="3" placeholder="Licencia, mood, BPM o notas"></textarea></label>
+      <div class="db-form__row">
+        <label class="db-check"><input name="featured" type="checkbox" /> <span>Featured</span></label>
+        <label class="db-check"><input name="is_active" type="checkbox" checked /> <span>Activo en tienda</span></label>
+      </div>
+      <div class="db-upload-progress" data-beat-upload-progress hidden>
+        <div class="db-upload-progress__head">
+          <span data-beat-upload-progress-label>Esperando archivo</span>
+          <strong data-beat-upload-progress-value>0%</strong>
+        </div>
+        <div class="db-upload-progress__track" aria-hidden="true">
+          <span data-beat-upload-progress-bar style="width:0%"></span>
+        </div>
+      </div>
+      <button class="btn-primary" type="submit">Subir beat y publicar</button>
+    </form>
+  `;
+}
+
+function renderOperationCreateActions(createLabel = 'CREAR') {
+  return `
+    <div class="db-form__actions">
+      <button class="btn-primary" type="submit" data-operation-action="create-share">CREAR y COMPARTIR COMPROBANTE</button>
+      <button class="db-btn-secondary" type="submit" data-operation-action="create">${escapeHTML(createLabel)}</button>
+    </div>
+  `;
+}
+
+function renderTransactionForm(formName, paymentMethods = state.data.paymentMethods ?? [], services = state.data.services ?? []) {
   const today = todayDateInputValue();
   return `
     <form class="db-form" data-form="${escapeAttr(formName)}">
@@ -2639,7 +6225,7 @@ function renderTransactionForm(formName) {
       ${renderUserAutofillFields()}
       <div class="db-form__row">
         <label class="db-field"><span>Tipo</span><select name="type" required>${ERP_TYPE_OPTIONS.map((type) => optionHTML(type, type, '')).join('')}</select></label>
-        <label class="db-field"><span>Servicio</span><select name="service" data-transaction-service required>${SERVICE_OPTIONS.map((service) => optionHTML(service, service, '')).join('')}</select></label>
+        <label class="db-field"><span>Servicio</span><select name="service" data-transaction-service required>${renderServiceOptions(services)}</select></label>
       </div>
       <div class="db-form__row">
         <label class="db-field"><span>Monto</span><input name="amount" type="number" step="0.01" required /></label>
@@ -2648,14 +6234,11 @@ function renderTransactionForm(formName) {
       <label class="db-field" data-custom-concept-wrap hidden><span>Concepto personalizado</span><input name="concept_custom" data-custom-concept /></label>
       <label class="db-field"><span>Fecha</span><input name="date" type="date" value="${escapeAttr(today)}" required /></label>
       <div class="db-form__row">
-        <label class="db-field"><span>Via</span><select name="via">${['NU', 'NU CRED', 'EFECTIVO'].map((via) => optionHTML(via, via, '')).join('')}</select></label>
+        <label class="db-field"><span>Via</span><select name="via">${renderPaymentMethodOptions(paymentMethods)}</select></label>
         <label class="db-field"><span>ID transaccion</span><input name="id_trans" /></label>
       </div>
       <label class="db-field"><span>Notas</span><textarea name="notes" rows="3"></textarea></label>
-      <div class="db-form__actions">
-        <button class="btn-primary" type="submit">Crear transaccion</button>
-        <button class="db-btn-secondary" type="button" data-action="operation-receipt">Compartir o descargar comprobante</button>
-      </div>
+      ${renderOperationCreateActions('CREAR')}
     </form>
   `;
 }
@@ -2663,20 +6246,20 @@ function renderTransactionForm(formName) {
 function getFinanceFilters() {
   const now = new Date();
   return {
-    month: state.data.financeMonth ?? '',
-    year: state.data.financeYear ?? String(now.getFullYear()),
-    type: state.data.financeType ?? 'ambos',
-    scope: state.data.financeScope ?? 'studio',
-    studio: state.data.financeStudio ?? 'IXT',
-    eventId: state.data.financeEventId ?? '',
+    month: persistedDataValue('financeMonth', ''),
+    year: persistedDataValue('financeYear', String(now.getFullYear())),
+    type: persistedDataValue('financeType', 'ambos'),
+    scope: persistedDataValue('financeScope', 'studio'),
+    studio: persistedDataValue('financeStudio', 'IXT'),
+    eventId: persistedDataValue('financeEventId', ''),
   };
 }
 
 function getEventFinanceFilters(filters = getFinanceFilters()) {
   return {
     ...filters,
-    month: state.data.financeMonth ?? '',
-    year: state.data.financeYear ?? '',
+    month: persistedDataValue('financeMonth', ''),
+    year: persistedDataValue('financeYear', ''),
   };
 }
 
@@ -2780,7 +6363,7 @@ function renderFinanceScopeFilters(filters, events = []) {
   const secondaryLabel = filters.scope === 'events' ? 'Evento' : 'Estudio';
 
   return `
-    <div class="db-toolbar">
+    <div class="db-toolbar hr-table-toolbar">
       <label class="db-field db-field--compact">
         <span>Origen</span>
         <select data-action="finance-filter" data-filter-key="financeScope">
@@ -2803,7 +6386,7 @@ function renderFinanceFilters(filters) {
   const years = Array.from({ length: 6 }, (_, i) => String(new Date().getFullYear() - i));
   const months = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
   return `
-    <div class="db-toolbar">
+    <div class="db-toolbar hr-table-toolbar">
       <label class="db-field db-field--compact"><span>Mes</span><select data-action="finance-filter" data-filter-key="financeMonth">${optionHTML('', 'Todos los meses', filters.month)}${months.map((month) => optionHTML(month, month, filters.month)).join('')}</select></label>
       <label class="db-field db-field--compact"><span>Año</span><select data-action="finance-filter" data-filter-key="financeYear">${optionHTML('', 'Todos los años', filters.year)}${years.map((year) => optionHTML(year, year, filters.year)).join('')}</select></label>
       <label class="db-field db-field--compact"><span>Tipo</span><select data-action="finance-filter" data-filter-key="financeType">${[
@@ -2852,7 +6435,7 @@ function eventAccessFor(event, adminDefault = hasRole('admin')) {
   return {
     can_view: adminDefault || Boolean(event?.can_view),
     can_add_finance: adminDefault || Boolean(event?.can_add_finance),
-    can_edit_finance: adminDefault || Boolean(event?.can_edit_finance),
+    can_edit_finance: adminDefault,
     can_view_scrum: adminDefault || Boolean(event?.can_view_scrum),
     can_edit_scrum: adminDefault || Boolean(event?.can_edit_scrum),
   };
@@ -2875,6 +6458,196 @@ function participantName(userId) {
   if (!userId) return '-';
   const participant = (state.data.eventParticipantsAll ?? []).find((item) => String(item.user_id) === String(userId));
   return participant ? participantLabel(participant) : userLabel(userId);
+}
+
+async function fetchFinanceEntities() {
+  if (Array.isArray(state.data.financeEntities)) return state.data.financeEntities;
+
+  const { data, error } = await supabase
+    .from('finance_entities')
+    .select('id, entity_key, name, entity_type, status, notes')
+    .eq('status', 'active')
+    .order('name', { ascending: true });
+
+  if (error) {
+    console.info('[HR] finance entities unavailable:', error.message);
+    state.data.financeEntities = [];
+    return [];
+  }
+
+  state.data.financeEntities = data ?? [];
+  return state.data.financeEntities;
+}
+async function fetchPaymentMethods() {
+  if (Array.isArray(state.data.paymentMethods)) return state.data.paymentMethods;
+
+  const { data, error } = await supabase
+    .from('payment_methods')
+    .select('id, key, name, status, sort_order')
+    .eq('status', 'active')
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true });
+
+  if (error) {
+    console.info('[HR] payment methods unavailable:', error.message);
+    state.data.paymentMethods = [];
+    return [];
+  }
+
+  state.data.paymentMethods = data ?? [];
+  return state.data.paymentMethods;
+}
+
+async function fetchServices() {
+  if (Array.isArray(state.data.services)) return state.data.services;
+
+  const { data, error } = await supabase
+    .from('services')
+    .select('id, key, name, status, sort_order, show_in_finance, show_in_session, session_cost, session_minutes')
+    .eq('status', 'active')
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true });
+
+  if (error) {
+    console.info('[HR] services unavailable:', error.message);
+    state.data.services = [];
+    return [];
+  }
+
+  state.data.services = data ?? [];
+  return state.data.services;
+}
+
+function financeEntityLabel(entity) {
+  if (!entity) return '-';
+  const type = entity.entity_type ? ` · ${entity.entity_type}` : '';
+  return `${entity.name ?? entity.entity_key ?? 'Entidad'}${type}`;
+}
+
+function renderFinanceEntityOptions(entities = [], selectedValue = '', placeholder = 'Sin asignar') {
+  return [
+    optionHTML('', placeholder, selectedValue),
+    ...entities.map((entity) => optionHTML(String(entity.id), financeEntityLabel(entity), selectedValue)),
+  ].join('');
+}
+
+function renderPaymentMethodOptions(methods = [], selectedValue = '') {
+  const normalizedSelected = String(selectedValue ?? '');
+  const activeOptions = (methods ?? []).map((method) => optionHTML(method.name, method.name, normalizedSelected));
+  if (normalizedSelected && !(methods ?? []).some((method) => String(method.name) === normalizedSelected)) {
+    activeOptions.unshift(optionHTML(normalizedSelected, `${normalizedSelected} (existente)`, normalizedSelected));
+  }
+  return [optionHTML('', 'Seleccionar', normalizedSelected), ...activeOptions].join('');
+}
+
+function visibleFinanceServices(services = []) {
+  return (services ?? []).filter((service) => service.show_in_finance !== false);
+}
+
+function visibleSessionServices(services = []) {
+  return (services ?? []).filter((service) => service.show_in_session === true);
+}
+
+function renderServiceOptions(services = [], selectedValue = '') {
+  const normalizedSelected = String(selectedValue ?? '');
+  const financeServices = visibleFinanceServices(services);
+  const source = financeServices.length
+    ? financeServices.map((service) => service.name)
+    : SERVICE_OPTIONS;
+  const activeOptions = source.map((serviceName) => optionHTML(serviceName, serviceName, normalizedSelected));
+  if (normalizedSelected && !source.some((serviceName) => String(serviceName) === normalizedSelected)) {
+    activeOptions.unshift(optionHTML(normalizedSelected, `${normalizedSelected} (existente)`, normalizedSelected));
+  }
+  return [optionHTML('', 'Seleccionar', normalizedSelected), ...activeOptions].join('');
+}
+
+function renderSessionTypeOptions(services = [], selectedValue = '') {
+  const normalizedSelected = String(selectedValue ?? '');
+  const sessionServices = visibleSessionServices(services);
+  const source = sessionServices.length
+    ? sessionServices.map((service) => service.name)
+    : SESSION_TYPE_OPTIONS.map((item) => item.value);
+  const activeOptions = source.map((serviceName) => optionHTML(serviceName, serviceName, normalizedSelected));
+  if (normalizedSelected && !source.some((serviceName) => String(serviceName) === normalizedSelected)) {
+    activeOptions.unshift(optionHTML(normalizedSelected, `${normalizedSelected} (existente)`, normalizedSelected));
+  }
+  return activeOptions.join('');
+}
+
+function serviceSessionConfig(service) {
+  return {
+    value: service?.name ?? '',
+    label: service?.name ?? '',
+    minutes: Number(service?.session_minutes || 0),
+    cost: Number(service?.session_cost || 0),
+  };
+}
+
+function defaultSessionServiceCost(services = []) {
+  const first = visibleSessionServices(services)[0];
+  return first ? serviceSessionConfig(first).cost : SESSION_TYPE_OPTIONS[0].cost;
+}
+
+function eventConceptOptionFor(value = '') {
+  const concept = String(value ?? '').trim();
+  return EVENT_FINANCE_CONCEPT_OPTIONS.includes(concept) && concept !== 'OTRO' ? concept : 'OTRO';
+}
+
+function renderEventConceptControl(selectedConcept = '', formId = '') {
+  const selectedOption = eventConceptOptionFor(selectedConcept);
+  const customValue = selectedOption === 'OTRO' ? selectedConcept : '';
+  const formAttr = formId ? ` form="${escapeAttr(formId)}"` : '';
+  return `
+    <div data-event-concept-scope>
+      <label class="db-field"><span>Concept</span><select name="concept_option" data-event-concept required${formAttr}>${EVENT_FINANCE_CONCEPT_OPTIONS.map((concept) => optionHTML(concept, concept, selectedOption)).join('')}</select></label>
+      <label class="db-field" data-event-concept-custom-wrap ${selectedOption === 'OTRO' ? '' : 'hidden'}><span>Concepto personalizado</span><input name="concept_custom" data-event-concept-custom value="${escapeAttr(customValue)}" ${selectedOption === 'OTRO' ? 'required' : 'disabled'}${formAttr} /></label>
+    </div>
+  `;
+}
+
+function renderAllocationRows(entities = [], allocations = [], formId = '') {
+  if (!entities.length) return '<p class="db-empty">Sin entidades financieras activas.</p>';
+  const formAttr = formId ? ` form="${escapeAttr(formId)}"` : '';
+  const rowFormAttr = formId ? ` data-allocation-form="${escapeAttr(formId)}"` : '';
+  const byEntity = new Map((allocations ?? []).map((allocation) => [String(allocation.entity_id), allocation]));
+
+  return `
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="db-table hr-table hr-table-readable" aria-label="Allocations del movimiento">
+        <thead><tr><th scope="col">Entidad</th><th scope="col">Usar</th><th scope="col">Monto</th><th scope="col">%</th></tr></thead>
+        <tbody>
+          ${entities.map((entity) => {
+            const allocation = byEntity.get(String(entity.id));
+            return `
+              <tr data-allocation-row${rowFormAttr}>
+                <td>${escapeHTML(financeEntityLabel(entity))}<input type="hidden" data-allocation-entity value="${escapeAttr(entity.id)}"${formAttr} /></td>
+                <td><input type="checkbox" data-allocation-enabled ${allocation ? 'checked' : ''}${formAttr} aria-label="Asignar ${escapeAttr(financeEntityLabel(entity))}" /></td>
+                <td><input class="db-table-input hr-input" data-allocation-amount type="number" step="0.01" min="0" value="${escapeAttr(allocation?.amount ?? '')}"${formAttr} /></td>
+                <td><input class="db-table-input hr-input" data-allocation-percentage type="number" step="0.01" min="0" max="100" value="${escapeAttr(allocation?.percentage ?? '')}"${formAttr} /></td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderAllocationFieldset(entities = [], allocations = [], formId = '') {
+  return `
+    <fieldset class="db-field" data-allocation-fieldset>
+      <span>CORRESPONDE A</span>
+      ${renderAllocationRows(entities, allocations, formId)}
+      <small class="db-field__hint">Selecciona una o varias entidades. Usa montos que sumen el total del movimiento o porcentajes que sumen 100%.</small>
+    </fieldset>
+  `;
+}
+function financeEntityName(entityId, legacyUserId = null) {
+  if (entityId) {
+    const entity = (state.data.financeEntities ?? []).find((item) => String(item.id) === String(entityId));
+    if (entity) return financeEntityLabel(entity);
+  }
+  return legacyUserId ? participantName(legacyUserId) : '-';
 }
 
 function eventRightsTotals(event, transactions = []) {
@@ -2923,7 +6696,7 @@ function renderEventRightsChart(event, transactions = []) {
   `;
 }
 
-function internalInvestorRows(transactions = []) {
+function internalInvestorRows(transactions = [], totalCost = 0) {
   const totals = new Map();
 
   (transactions ?? [])
@@ -2935,11 +6708,10 @@ function internalInvestorRows(transactions = []) {
       totals.set(investorId, current);
     });
 
-  const grandTotal = [...totals.values()].reduce((sum, item) => sum + item.total, 0);
   return [...totals.values()]
     .map((item) => ({
       ...item,
-      percent: grandTotal > 0 ? (item.total / grandTotal) * 100 : 0,
+      percent: Number(totalCost) > 0 ? (item.total / Number(totalCost)) * 100 : 0,
     }))
     .sort((a, b) => b.total - a.total);
 }
@@ -2957,8 +6729,9 @@ function investorPieGradient(investors = []) {
   }).join(', ');
 }
 
-function renderEventInternalInvestors(transactions = []) {
-  const investors = internalInvestorRows(transactions);
+function renderEventInternalInvestors(event, transactions = []) {
+  const rightsTotals = eventRightsTotals(event, transactions);
+  const investors = internalInvestorRows(transactions, rightsTotals.totalCost);
   const total = investors.reduce((sum, investor) => sum + investor.total, 0);
   const colors = ['var(--red)', 'var(--teal)', '#f0ece4', '#9b5cff', '#f4b860', '#55a6ff', '#6ddf8d'];
   const pieGradient = investorPieGradient(investors);
@@ -2977,25 +6750,26 @@ function renderEventInternalInvestors(transactions = []) {
         <td><div class="db-investor-share"><i style="--bar:${Math.max(2, investor.percent)}%"></i></div></td>
       </tr>
     `).join('')
-    : '<tr class="db-table__empty-row"><td colspan="4" class="db-empty">Sin inversiones internas registradas.</td></tr>';
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="4" class="db-empty hr-table-empty">Sin inversiones internas registradas.</td></tr>';
 
   return `
     <article class="db-card db-event-investors">
-      <header class="db-card__header"><span class="section-label">Inversores internos</span></header>
+      <header class="db-card__header"><span class="section-label">Inversores internos sobre costo total</span></header>
       <div class="db-card__inner">
         <div class="db-event-investors__summary">
           <div class="db-pie-chart db-investor-pie" style="background:conic-gradient(${pieGradient})" aria-label="Distribucion de inversion interna"></div>
           <div class="db-event-investors__legend">${legend}</div>
           ${renderStatCard('Inversión interna total', money(total))}
+          ${renderStatCard('Costo total del evento', money(rightsTotals.totalCost))}
         </div>
-        <div class="db-table-wrap">
-          <table class="db-table" aria-label="Porcentaje de inversión por participante">
+        <div class="db-table-wrap hr-table-wrap">
+          <table class="db-table hr-table hr-table-readable" aria-label="Porcentaje de inversión sobre costo total por participante">
             <thead>
               <tr>
                 <th scope="col">Participante</th>
                 <th scope="col">Inversión</th>
-                <th scope="col">%</th>
-                <th scope="col">Participación</th>
+                <th scope="col">% costo total</th>
+                <th scope="col">Cobertura</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -3012,7 +6786,7 @@ function renderEventInfo(event) {
     <div class="db-grid db-grid--3col">
       ${renderStatCard('Evento', event.name ?? event.event_key ?? '-')}
       ${renderStatCard('Clave', event.event_key ?? '-')}
-      ${renderStatCard('Fecha / status', `${formatDateOnly(event.event_date)} · ${event.status ?? '-'}`)}
+      ${renderStatCard('Fecha / status', `${formatDisplayDateOnly(event.event_date)} · ${event.status ?? '-'}`)}
     </div>
   `;
 }
@@ -3069,7 +6843,7 @@ function eventSummaryFor(event, transactions = []) {
   };
 }
 
-function renderEventMovementForm(event, formName, participants = []) {
+function renderEventMovementForm(event, formName, participants = [], financeEntities = [], paymentMethods = state.data.paymentMethods ?? []) {
   const today = todayDateInputValue();
   return `
     <article class="db-card">
@@ -3083,15 +6857,15 @@ function renderEventMovementForm(event, formName, participants = []) {
             <label class="db-field"><span>Movement Type</span><select name="movement_type" required>${EVENT_MOVEMENT_TYPES.map((item) => optionHTML(item.value, item.label, '')).join('')}</select></label>
             <label class="db-field"><span>Amount</span><input name="amount" type="number" step="0.01" required /></label>
           </div>
-          <label class="db-field"><span>Concept</span><input name="concept" required /></label>
+          ${renderEventConceptControl()}
           <div class="db-form__row">
             <label class="db-field"><span>FROM</span><select name="from_user_id">${renderParticipantOptions(participants, '', 'Sin origen')}</select></label>
             <label class="db-field"><span>TO</span><select name="to_user_id">${renderParticipantOptions(participants, '', 'Sin destino')}</select></label>
           </div>
-          <label class="db-field"><span>CORRESPONDE A</span><select name="owner_user_id">${renderParticipantOptions(participants, '', 'Sin asignar')}</select></label>
+          ${renderAllocationFieldset(financeEntities)}
           <div class="db-form__row">
             <label class="db-field"><span>Monto Absorbido Internamente (M.A.I.)</span><input name="hidden_room_share" type="number" step="0.01" value="0" /></label>
-            <label class="db-field"><span>Payment Method</span><input name="payment_method" /></label>
+            <label class="db-field"><span>Payment Method</span><select name="payment_method">${renderPaymentMethodOptions(paymentMethods)}</select></label>
           </div>
           <label class="db-field"><span>Date</span><input name="movement_date" type="date" value="${escapeAttr(today)}" required /></label>
           <label class="db-field"><span>Notes</span><textarea name="notes" rows="3"></textarea></label>
@@ -3102,7 +6876,7 @@ function renderEventMovementForm(event, formName, participants = []) {
   `;
 }
 
-function renderEventMovementOpsForm(events = [], participants = []) {
+function renderEventMovementOpsForm(events = [], participants = [], financeEntities = [], paymentMethods = state.data.paymentMethods ?? []) {
   const today = todayDateInputValue();
   const availableEvents = events.filter((event) => event.id || event.event_id);
 
@@ -3122,15 +6896,15 @@ function renderEventMovementOpsForm(events = [], participants = []) {
         <label class="db-field"><span>Movement Type</span><select name="movement_type" required>${EVENT_MOVEMENT_TYPES.map((item) => optionHTML(item.value, item.label, '')).join('')}</select></label>
         <label class="db-field"><span>Amount</span><input name="amount" type="number" step="0.01" required /></label>
       </div>
-      <label class="db-field"><span>Concept</span><input name="concept" required /></label>
+      ${renderEventConceptControl()}
       <div class="db-form__row">
         <label class="db-field"><span>FROM</span><select name="from_user_id">${renderParticipantOptions(participants, '', 'Sin origen')}</select></label>
         <label class="db-field"><span>TO</span><select name="to_user_id">${renderParticipantOptions(participants, '', 'Sin destino')}</select></label>
       </div>
-      <label class="db-field"><span>CORRESPONDE A</span><select name="owner_user_id">${renderParticipantOptions(participants, '', 'Sin asignar')}</select></label>
+      ${renderAllocationFieldset(financeEntities)}
       <div class="db-form__row">
         <label class="db-field"><span>Monto Absorbido Internamente (M.A.I.)</span><input name="hidden_room_share" type="number" step="0.01" value="0" /></label>
-        <label class="db-field"><span>Payment Method</span><input name="payment_method" /></label>
+        <label class="db-field"><span>Payment Method</span><select name="payment_method">${renderPaymentMethodOptions(paymentMethods)}</select></label>
       </div>
       <label class="db-field"><span>Date</span><input name="movement_date" type="date" value="${escapeAttr(today)}" required /></label>
       <label class="db-field"><span>Notes</span><textarea name="notes" rows="3"></textarea></label>
@@ -3157,16 +6931,16 @@ function renderTransactionsTable(transactions) {
         <td>${escapeHTML(tx.concept ?? '-')}</td>
         <td>${escapeHTML(tx.type ?? '-')}</td>
         <td>${money(Number(tx.amount ?? 0))}</td>
-        <td>${escapeHTML(formatDateOnly(tx.date))}</td>
+        <td>${escapeHTML(formatDisplayDateOnly(tx.date))}</td>
         <td>${escapeHTML(tx.status ?? '-')}</td>
         <td>${escapeHTML(tx.username ?? tx.user_id ?? '-')}</td>
       </tr>
     `).join('')
-    : '<tr class="db-table__empty-row"><td colspan="6" class="db-empty">Sin transacciones en el periodo.</td></tr>';
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="6" class="db-empty hr-table-empty">Sin transacciones en el periodo.</td></tr>';
 
   return `
-    <div class="db-table-wrap">
-      <table class="db-table" aria-label="Desglose de transacciones">
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="db-table hr-table hr-table-readable" aria-label="Desglose de transacciones">
         <thead><tr>
           ${headers.map(([field, label]) => renderSortableHeader(tableId, field, label, activeSort)).join('')}
         </tr></thead>
@@ -3187,42 +6961,121 @@ function renderEventFinanceTransactionsTable(transactions, options = {}) {
     ['hidden_room_share', 'M.A.I.'],
     ['from_user_id', 'FROM'],
     ['to_user_id', 'TO'],
-    ['owner_user_id', 'Corresponde a'],
+    ['allocations', 'Corresponde a'],
     ['movement_date', 'Fecha'],
     ['payment_method', 'Metodo'],
     ['created_by_user_id', 'Creado por'],
     ['notes', 'Notas'],
   ];
+  const canEdit = Boolean(options.canEdit && hasRole('admin'));
   const rows = sortedTransactions.length
-    ? sortedTransactions.map((tx) => `
-      <tr>
-        <td>${escapeHTML(tx.concept ?? '-')}</td>
-        <td>${escapeHTML(movementTypeLabel(tx.movement_type) || tx.type || '-')}</td>
-        <td>${money(Number(tx.amount ?? 0))}</td>
-        <td>${money(Number(tx.hidden_room_share ?? eventFinanceAmount(tx) ?? 0))}</td>
-        <td>${escapeHTML(participantName(tx.from_user_id))}</td>
-        <td>${escapeHTML(participantName(tx.to_user_id))}</td>
-        <td>${escapeHTML(participantName(tx.owner_user_id))}</td>
-        <td>${escapeHTML(formatDateOnly(tx.movement_date ?? tx.date))}</td>
-        <td>${escapeHTML(tx.payment_method ?? tx.via ?? '-')}</td>
-        <td>${escapeHTML(tx.created_by_user_id ?? '-')}</td>
-        <td>${escapeHTML(tx.notes ?? '-')}</td>
-        ${options.canEdit ? `<td><button class="db-btn-secondary" type="button" data-action="event-movement-edit" data-event-movement="${escapeAttr(encodeURIComponent(JSON.stringify(tx)))}">Editar</button></td>` : ''}
-      </tr>
-    `).join('')
-    : `<tr class="db-table__empty-row"><td colspan="${headers.length + (options.canEdit ? 1 : 0)}" class="db-empty">Sin transacciones en el periodo.</td></tr>`;
+    ? sortedTransactions.map((tx, index) => canEdit
+      ? renderEventFinanceTransactionEditorRow(tx, index, headers)
+      : renderEventFinanceTransactionReadableRow(tx)).join('')
+    : `<tr class="db-table__empty-row hr-table-empty"><td colspan="${headers.length + (canEdit ? 1 : 0)}" class="db-empty hr-table-empty">Sin transacciones en el periodo.</td></tr>`;
+  const tableClass = canEdit
+    ? 'db-table hr-table hr-table-editable db-table--editor'
+    : 'db-table hr-table hr-table-readable';
 
   return `
-    <div class="db-table-wrap">
-      <table class="db-table" aria-label="Desglose financiero de eventos">
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="${tableClass}" aria-label="Desglose financiero de eventos">
         <thead><tr>
           ${headers.map(([field, label]) => renderSortableHeader(tableId, field, label, activeSort)).join('')}
-          ${options.canEdit ? '<th scope="col">Acciones</th>' : ''}
+          ${canEdit ? '<th scope="col">Acciones</th>' : ''}
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
   `;
+}
+
+function renderEventFinanceTransactionReadableRow(tx) {
+  return `
+    <tr>
+      <td>${escapeHTML(tx.concept ?? '-')}</td>
+      <td>${escapeHTML(movementTypeLabel(tx.movement_type) || tx.type || '-')}</td>
+      <td>${money(Number(tx.amount ?? 0))}</td>
+      <td>${money(Number(tx.hidden_room_share ?? eventFinanceAmount(tx) ?? 0))}</td>
+      <td>${escapeHTML(participantName(tx.from_user_id))}</td>
+      <td>${escapeHTML(participantName(tx.to_user_id))}</td>
+      <td>${escapeHTML(transactionAllocationSummary(tx))}</td>
+      <td>${escapeHTML(formatDisplayDateOnly(tx.movement_date ?? tx.date))}</td>
+      <td>${escapeHTML(tx.payment_method ?? tx.via ?? '-')}</td>
+      <td>${escapeHTML(tx.created_by_user_id ?? '-')}</td>
+      <td>${escapeHTML(tx.notes ?? '-')}</td>
+    </tr>
+  `;
+}
+
+function renderEventFinanceTransactionEditorRow(tx, index, headers) {
+  const config = TABLE_EDITOR_CONFIG.hr_transactions;
+  const original = encodeURIComponent(JSON.stringify(tx));
+  const formId = `event-finance-table-form-${index}`;
+  const paymentMethods = state.data.paymentMethods ?? [];
+  const financeEntities = state.data.financeEntities ?? [];
+
+  return `
+    <tr>
+      ${headers.map(([field]) => {
+        const value = eventFinanceEditorCellValue(field, tx);
+        if (field === 'concept') {
+          return `<td class="db-table-cell--editable hr-cell-editable">${renderEventConceptControl(value, formId)}</td>`;
+        }
+        if (field === 'payment_method') {
+          return `<td class="db-table-cell--editable hr-cell-editable"><select class="db-table-input hr-input" form="${escapeAttr(formId)}" name="payment_method">${renderPaymentMethodOptions(paymentMethods, value)}</select></td>`;
+        }
+        if (field === 'allocations') {
+          return `<td class="db-table-cell--editable hr-cell-editable">${renderAllocationFieldset(financeEntities, transactionAllocations(tx), formId)}</td>`;
+        }
+
+        const isEditable = config.editableFields.includes(field);
+        if (!isEditable) {
+          return `<td class="db-table-cell--readonly"><code>${escapeHTML(String(value || '-'))}</code></td>`;
+        }
+
+        return `
+          <td class="db-table-cell--editable hr-cell-editable">
+            <input
+              class="db-table-input hr-input"
+              form="${escapeAttr(formId)}"
+              name="${escapeAttr(field)}"
+              value="${escapeAttr(value)}"
+            />
+          </td>
+        `;
+      }).join('')}
+      <td class="db-table-cell--actions">
+        <form class="db-inline-form" id="${escapeAttr(formId)}" data-form="event-finance-table-update">
+          <input type="hidden" name="table_name" value="hr_transactions" />
+          <input type="hidden" name="original" value="${escapeAttr(original)}" />
+          <button class="db-btn-secondary" type="submit">Guardar</button>
+        </form>
+      </td>
+    </tr>
+  `;
+}
+
+function eventFinanceEditorCellValue(field, tx) {
+  if (field === 'movement_type') return tx.movement_type ?? tx.type ?? '';
+  if (field === 'hidden_room_share') return tx.hidden_room_share ?? eventFinanceAmount(tx) ?? '';
+  if (field === 'movement_date') return tx.movement_date ?? tx.date ?? '';
+  if (field === 'payment_method') return tx.payment_method ?? tx.via ?? '';
+  return tx[field] ?? '';
+}
+function transactionAllocations(tx = {}) {
+  return Array.isArray(tx.hr_transaction_allocations) ? tx.hr_transaction_allocations : [];
+}
+
+function transactionAllocationSummary(tx = {}) {
+  const allocations = transactionAllocations(tx);
+  if (!allocations.length) return financeEntityName(tx.owner_entity_id, tx.owner_user_id);
+  return allocations.map((allocation) => {
+    const label = financeEntityName(allocation.entity_id);
+    if (allocation.percentage !== null && allocation.percentage !== undefined) return `${label} ${Number(allocation.percentage).toFixed(2).replace(/\.00$/, '')}%`;
+    if (allocation.amount !== null && allocation.amount !== undefined) return `${label} ${money(allocation.amount)}`;
+    return label;
+  }).join(' · ');
 }
 
 async function renderErpPermissions() {
@@ -3274,18 +7127,19 @@ async function renderErpPermissions() {
 
   const rows = (users ?? []).length
     ? users.map(renderPermissionUserRow).join('')
-    : `<tr class="db-table__empty-row"><td colspan="6" class="db-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin usuarios registrados.'}</td></tr>`;
+    : `<tr class="db-table__empty-row hr-table-empty"><td colspan="6" class="db-empty hr-table-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin usuarios registrados.'}</td></tr>`;
+  const permissionSearch = tableSearchFor('js-permissions-table-body');
 
   return sectionShell('ERP', 'Permisos', 'title-erp-permissions', `
-    <div class="db-toolbar">
+    <div class="db-toolbar hr-table-toolbar">
       <label class="db-field db-field--compact db-field--search">
         <span>Buscar</span>
-        <input data-table-search data-table-target="js-permissions-table-body" data-table-count="js-permissions-table-count" placeholder="Buscar por nombre, usuario, rol o permiso" />
+        <input data-table-search data-table-target="js-permissions-table-body" data-table-count="js-permissions-table-count" placeholder="Buscar por nombre, usuario, rol o permiso" value="${escapeAttr(permissionSearch)}" />
         <small id="js-permissions-table-count" class="db-field__hint">${(users ?? []).length} filas visibles</small>
       </label>
     </div>
-    <div class="db-table-wrap">
-      <table class="db-table db-table--permissions" aria-label="Administracion de roles y permisos">
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="db-table hr-table hr-table-editable db-table--permissions" aria-label="Administracion de roles y permisos">
         <thead>
           <tr>
             <th scope="col">Nombre</th>
@@ -3336,7 +7190,7 @@ async function renderErpAuthAudit() {
     + Number(totals.duplicate_user_ids ?? 0);
 
   return sectionShell('ERP', 'Auth / Registros', 'title-erp-auth-audit', `
-    ${renderAuthAuditFilterBar(state.data.authAuditFilter ?? 'all')}
+    ${renderAuthAuditFilterBar(persistedDataValue('authAuditFilter', 'all'))}
     <div class="db-grid db-grid--3col">
       ${renderStatCard('Auth users', String(totals.auth_users ?? 0))}
       ${renderStatCard('Perfiles public.users', String(totals.public_profiles ?? 0))}
@@ -3354,7 +7208,7 @@ async function renderErpAuthAudit() {
 
 function renderAuthAuditFilterBar(activeFilter = 'all') {
   return `
-    <div class="db-toolbar">
+    <div class="db-toolbar hr-table-toolbar">
       <label class="db-field db-field--compact">
         <span>Filtro</span>
         <select data-action="auth-audit-filter" aria-label="Filtrar auditoría de Auth">
@@ -3373,16 +7227,17 @@ function renderAuthAuditFilterBar(activeFilter = 'all') {
 
 function authAuditBlockAttrs(groups = []) {
   const groupText = groups.join(' ');
-  const activeFilter = state.data.authAuditFilter ?? 'all';
+  const activeFilter = persistedDataValue('authAuditFilter', 'all');
   const hidden = activeFilter !== 'all' && !groups.includes(activeFilter);
   return `data-auth-audit-groups="${escapeAttr(groupText)}"${hidden ? ' hidden' : ''}`;
 }
 
 function renderAuditTableSearch(tableId, rowCount, label = 'Buscar') {
+  const searchQuery = tableSearchFor(tableId);
   return `
     <label class="db-field db-field--compact db-field--search">
       <span>${escapeHTML(label)}</span>
-      <input data-table-search data-table-target="${escapeAttr(tableId)}" data-table-count="${escapeAttr(`${tableId}-count`)}" placeholder="Buscar por email, User ID, perfil o estado" />
+      <input data-table-search data-table-target="${escapeAttr(tableId)}" data-table-count="${escapeAttr(`${tableId}-count`)}" placeholder="Buscar por email, User ID, perfil o estado" value="${escapeAttr(searchQuery)}" />
       <small id="${escapeAttr(`${tableId}-count`)}" class="db-field__hint">${rowCount} filas visibles</small>
     </label>
   `;
@@ -3412,14 +7267,14 @@ function renderAuthUsersTable(title, users = [], dateField = 'created_at', group
         </tr>
       `;
     }).join('')
-    : '<tr class="db-table__empty-row"><td colspan="6" class="db-empty">Sin registros.</td></tr>';
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="6" class="db-empty hr-table-empty">Sin registros.</td></tr>';
 
   return `
     <article class="db-auth-audit-block" ${authAuditBlockAttrs(groups)}>
       <h2 class="db-auth-audit-block__title">${escapeHTML(title)}</h2>
       ${renderAuditTableSearch(tableId, users.length)}
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="${escapeAttr(title)}">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="${escapeAttr(title)}">
           <thead>
             <tr>
               <th scope="col">Fecha</th>
@@ -3458,14 +7313,14 @@ function renderPublicProfilesTable(title, profiles = [], groups = ['public'], ta
         </tr>
       `;
     }).join('')
-    : '<tr class="db-table__empty-row"><td colspan="5" class="db-empty">Sin registros.</td></tr>';
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="5" class="db-empty hr-table-empty">Sin registros.</td></tr>';
 
   return `
     <article class="db-auth-audit-block" ${authAuditBlockAttrs(groups)}>
       <h2 class="db-auth-audit-block__title">${escapeHTML(title)}</h2>
       ${renderAuditTableSearch(tableId, profiles.length)}
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="${escapeAttr(title)}">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="${escapeAttr(title)}">
           <thead>
             <tr>
               <th scope="col">Email public.users</th>
@@ -3500,14 +7355,14 @@ function renderDuplicateEmailAudit(emailGroups = [], groups = ['alerts'], tableI
         </tr>
       `;
     }).join('')
-    : '<tr class="db-table__empty-row"><td colspan="4" class="db-empty">Sin emails duplicados.</td></tr>';
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="4" class="db-empty hr-table-empty">Sin emails duplicados.</td></tr>';
 
   return `
     <article class="db-auth-audit-block" ${authAuditBlockAttrs(groups)}>
       <h2 class="db-auth-audit-block__title">Emails duplicados</h2>
       ${renderAuditTableSearch(tableId, emailGroups.length)}
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="Emails duplicados">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="Emails duplicados">
           <thead>
             <tr>
               <th scope="col">Email</th>
@@ -3539,14 +7394,14 @@ function renderDuplicateUserIdAudit(userIdGroups = [], groups = ['alerts'], tabl
         </tr>
       `;
     }).join('')
-    : '<tr class="db-table__empty-row"><td colspan="3" class="db-empty">Sin User ID duplicados.</td></tr>';
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="3" class="db-empty hr-table-empty">Sin User ID duplicados.</td></tr>';
 
   return `
     <article class="db-auth-audit-block" ${authAuditBlockAttrs(groups)}>
       <h2 class="db-auth-audit-block__title">User ID duplicados</h2>
       ${renderAuditTableSearch(tableId, userIdGroups.length)}
-      <div class="db-table-wrap">
-        <table class="db-table" aria-label="User ID duplicados">
+      <div class="db-table-wrap hr-table-wrap">
+        <table class="db-table hr-table hr-table-readable" aria-label="User ID duplicados">
           <thead>
             <tr>
               <th scope="col">User ID</th>
@@ -3617,12 +7472,19 @@ async function renderAdminTableEditor() {
     `);
   }
 
-  const tableName = state.data.adminTableName || 'users';
+  const tableName = state.data.adminTableName || setAdminTableName(readStoredAdminTableName());
   const config = TABLE_EDITOR_CONFIG[tableName] || TABLE_EDITOR_CONFIG.users;
   let data = [];
+  const searchQuery = adminTableSearchFor(tableName);
 
   try {
-    data = await fetchAllTableEditorRows(tableName, config.select, config.defaultSort);
+    data = tableName === 'membership_dashboard'
+      ? await fetchComputedMembershipDashboardRows(searchQuery)
+      : await fetchAllTableEditorRows(tableName, config.select, config.defaultSort, {
+        maxRows: ADMIN_TABLE_INITIAL_ROW_LIMIT,
+        searchQuery,
+        config,
+      });
   } catch (error) {
     console.error('[HR] renderAdminTableEditor:', error);
     if (isSessionStaleError(error)) markSessionStale(error.message || 'admin table fetch');
@@ -3631,63 +7493,199 @@ async function renderAdminTableEditor() {
     `);
   }
 
+  if (typeof config.rowFilter === 'function') {
+    data = (data ?? []).filter(config.rowFilter);
+  }
+
   state.data.adminTableRows = data ?? [];
 
   const columns = [...config.lockedFields, ...config.editableFields]
     .filter((field, index, arr) => arr.indexOf(field) === index);
   const visibleColumns = columns.filter((field) => !(config.hiddenColumns ?? []).includes(field));
+  const showAllColumns = persistedDataValue(`adminTableShowAll:${tableName}`, '0') === '1';
+  const summaryColumns = getAdminTableSummaryColumns(visibleColumns, config);
+  const displayedColumns = showAllColumns ? visibleColumns : summaryColumns;
+  const canToggleColumns = tableName !== 'membership_dashboard' && visibleColumns.length > summaryColumns.length;
   const tableId = `admin-${tableName}`;
   const defaultSort = config.defaultSort ?? { field: '', direction: 'asc' };
   const activeSort = getTableSort(tableId, defaultSort.field, defaultSort.direction);
   const sortField = visibleColumns.includes(activeSort.field) ? activeSort.field : '';
   const sortedData = sortRowsByColumn(data ?? [], sortField, activeSort.direction);
-  const searchQuery = adminTableSearchFor(tableName);
   const visibleData = sortedData.filter((row) => rowMatchesSearch(row, columns, searchQuery));
+  const membershipDashboardContext = tableName === 'membership_dashboard'
+    ? renderAdminMembershipDashboardContext(visibleData, searchQuery)
+    : '';
+  const isMembershipDashboard = tableName === 'membership_dashboard';
+  const membershipDashboardHasUser = isMembershipDashboard && Boolean(searchQuery);
+  const isDownloadsUserView = tableName === 'downloads';
+  const searchControl = isMembershipDashboard
+    ? renderMembershipDashboardUserPicker(searchQuery)
+    : `
+      <label class="db-field db-field--compact db-field--search">
+        <span>Buscar</span>
+        <input data-table-search data-admin-table-name="${escapeAttr(tableName)}" data-table-target="js-admin-table-body" data-table-count="js-admin-table-count" placeholder="Buscar por nombre, email, user_id..." value="${escapeAttr(searchQuery)}" />
+        <small id="js-admin-table-count" class="db-field__hint">${searchQuery ? `${visibleData.length} resultado${visibleData.length === 1 ? '' : 's'}` : `${visibleData.length} filas cargadas`}</small>
+      </label>
+    `;
 
   const suspiciousAdminEmpty = hasRole('admin') && tableName === 'users' && !searchQuery && (data ?? []).length === 0;
   if (suspiciousAdminEmpty) markSessionStale('admin users table returned 0 rows');
 
-  const rows = sortedData.length
-    ? sortedData.map((row, index) => renderAdminTableEditorRow(tableName, config, row, index, {
-      hidden: Boolean(searchQuery) && !rowMatchesSearch(row, columns, searchQuery),
+  const rowsToRender = (searchQuery ? visibleData : sortedData).slice(0, ADMIN_TABLE_RENDER_LIMIT);
+  const rows = rowsToRender.length
+    ? rowsToRender.map((row, index) => renderAdminTableEditorRow(tableName, config, row, index, {
+      hidden: false,
+      visibleColumns: displayedColumns,
     })).join('')
-    : `<tr class="db-table__empty-row"><td colspan="99" class="db-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin filas disponibles.'}</td></tr>`;
+    : `<tr class="db-table__empty-row hr-table-empty"><td colspan="99" class="db-empty hr-table-empty">${suspiciousAdminEmpty ? 'No se pudieron validar tus permisos. Actualiza sesión.' : 'Sin filas disponibles.'}</td></tr>`;
+  const membershipDashboardTable = isMembershipDashboard
+    ? renderMembershipDashboardTable(visibleData, { canEditMaterialDelivery: true })
+    : '';
+  const downloadsUserTable = isDownloadsUserView
+    ? renderAdminDownloadsUserViewTable(rowsToRender)
+    : '';
 
   return sectionShell('ERP', 'BB.DD', 'title-admin-table-editor', `
-    <div class="db-toolbar">
+    <div class="db-toolbar hr-table-toolbar">
       <label class="db-field db-field--compact">
         <span>Tabla</span>
         <select data-action="table-editor-table" aria-label="Seleccionar tabla">
           ${Object.entries(TABLE_EDITOR_CONFIG).filter(([, item]) => !item.hidden).map(([key, item]) => optionHTML(key, item.label, tableName)).join('')}
         </select>
       </label>
-      <label class="db-field db-field--compact db-field--search">
-        <span>Buscar</span>
-        <input data-table-search data-admin-table-name="${escapeAttr(tableName)}" data-table-target="js-admin-table-body" data-table-count="js-admin-table-count" placeholder="Buscar por nombre, email, user_id..." value="${escapeAttr(searchQuery)}" />
-        <small id="js-admin-table-count" class="db-field__hint">${searchQuery ? `${visibleData.length} resultado${visibleData.length === 1 ? '' : 's'}` : `${visibleData.length} filas visibles`}</small>
+      ${searchControl}
+      ${canToggleColumns ? `
+      <label class="db-column-toggle">
+        <input type="checkbox" data-action="admin-table-toggle-columns" data-table-name="${escapeAttr(tableName)}" ${showAllColumns ? 'checked' : ''} />
+        <span>${showAllColumns ? 'Ocultar columnas' : 'Mostrar todas las columnas'}</span>
       </label>
-      ${config.readOnly ? '' : '<button class="db-btn-secondary" type="button" data-action="admin-table-save-all">GUARDAR</button>'}
-      <button class="db-btn-secondary" type="button" data-action="export-admin-pdf" data-table-label="${escapeAttr(config.label)}">Exportar PDF</button>
+      ` : ''}
+      ${config.readOnly && !isMembershipDashboard ? '' : '<button class="db-btn-secondary" type="button" data-action="admin-table-save-all">GUARDAR</button>'}
+      ${isMembershipDashboard ? '' : `<button class="db-btn-secondary" type="button" data-action="export-admin-pdf" data-table-label="${escapeAttr(config.label)}">Exportar PDF</button>`}
     </div>
     ${tableName === 'users' ? '<p class="db-empty">El campo email se guarda a través de Auth (Edge Function). El cambio se aplica al confirmar el correo.</p>' : ''}
-    <div class="db-table-wrap">
-      <table class="db-table db-table--editor" aria-label="Editor de ${escapeAttr(config.label)}">
+    ${membershipDashboardContext}
+    ${isMembershipDashboard && !membershipDashboardHasUser ? '<p class="db-empty">Selecciona un usuario para consultar su dashboard de membresía.</p>' : `
+    ${isMembershipDashboard ? membershipDashboardTable : isDownloadsUserView ? downloadsUserTable : `
+    <div class="db-table-wrap hr-table-wrap">
+      <table class="db-table hr-table hr-table-editable db-table--editor" aria-label="Editor de ${escapeAttr(config.label)}">
         <thead>
           <tr>
-            ${visibleColumns.map((field) => renderSortableHeader(tableId, field, field, activeSort)).join('')}
+            ${displayedColumns.map((field) => renderSortableHeader(tableId, field, adminFieldLabel(config, field), activeSort)).join('')}
             ${config.readOnly ? '' : '<th scope="col">Acciones</th>'}
           </tr>
         </thead>
         <tbody id="js-admin-table-body">${rows}</tbody>
       </table>
     </div>
+    `}
+    ${isMembershipDashboard ? renderMembershipSyncFooter() : ''}
+    `}
   `);
+}
+
+function renderAdminDownloadsUserViewTable(rows = []) {
+  const body = rows.length
+    ? rows.map((item) => {
+      const original = encodeURIComponent(JSON.stringify(item));
+      const cells = [
+        escapeHTML(item.user_id ?? '-'),
+        escapeHTML(item.name ?? '-'),
+        escapeHTML(item.type ?? '-'),
+        escapeHTML(downloadReleaseLabel(item)),
+        escapeHTML(item.notes ?? '-'),
+        renderDownloadAction(item),
+        '<button class="db-btn-danger db-download-admin-remove" type="button" data-action="admin-table-delete" data-table-name="downloads" data-row-original="' + escapeAttr(original) + '" title="Desasigna esta descarga del usuario; el archivo en Cloud se conserva">Quitar descarga</button>',
+      ];
+      return '<tr>' + cells.map((cell) => '<td>' + cell + '</td>').join('') + '</tr>';
+    }).join('')
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="7" class="db-empty hr-table-empty">Sin descargas disponibles.</td></tr>';
+
+  return '<div class="db-table-wrap hr-table-wrap">' +
+    '<table class="db-table hr-table hr-table-readable" aria-label="Descargas como las ve el usuario">' +
+    '<thead><tr>' +
+    '<th scope="col">Usuario</th>' +
+    '<th scope="col">Producto</th>' +
+    '<th scope="col">Formato</th>' +
+    '<th scope="col">Origen</th>' +
+    '<th scope="col">Notas</th>' +
+    '<th scope="col">Descarga</th>' +
+    '<th scope="col">Acciones</th>' +
+    '</tr></thead>' +
+    '<tbody id="js-admin-table-body">' + body + '</tbody>' +
+    '</table></div>';
+}
+function renderAdminMembershipDashboardContext(rows = [], searchQuery = '') {
+  if (!searchQuery || !rows.length) return '';
+
+  const users = new Set(rows.map((row) => String(row.user_id ?? '')).filter(Boolean));
+  if (users.size !== 1) {
+    return `<p class="db-empty">Filtra hasta un solo usuario para ver los avisos de su membresía.</p>`;
+  }
+
+  return `
+    ${renderMembershipNotices(rows)}
+    ${renderMembershipSummary(rows)}
+  `;
+}
+
+function renderMembershipDashboardUserPicker(selectedUserId = '') {
+  const users = state.data.users?.length
+    ? state.data.users
+    : uniqueUsers(state.data.membershipDashboardUsers ?? []);
+
+  const previousUsers = state.data.users;
+  state.data.users = users;
+  const picker = renderUserPicker('membership_user_id', 'Buscar usuario', selectedUserId, {
+    placeholder: 'Buscar usuario',
+    emptyLabel: 'Sin usuarios encontrados.',
+  }).replace('class="db-field db-user-picker"', 'class="db-field db-field--compact db-field--search db-user-picker" data-membership-user-picker="true"');
+  state.data.users = previousUsers;
+
+  return picker;
+}
+
+function getAdminTableSummaryColumns(visibleColumns = [], config = {}) {
+  if (Array.isArray(config.summaryFields) && config.summaryFields.length) {
+    return config.summaryFields.filter((field) => visibleColumns.includes(field));
+  }
+
+  const selected = [];
+  const available = new Set(visibleColumns);
+
+  ADMIN_TABLE_SUMMARY_COLUMN_GROUPS.forEach((group) => {
+    group.forEach((field) => {
+      if (available.has(field) && !selected.includes(field)) selected.push(field);
+    });
+  });
+
+  return selected.length ? selected : visibleColumns.slice(0, 5);
+}
+
+function isAdminTableBooleanField(tableName, field) {
+  return tableName === 'services' && ['show_in_finance', 'show_in_session'].includes(field);
+}
+
+function renderAdminTableBooleanCell(tableName, field, value, formId, cellToneClass = '') {
+  const checked = parseBooleanField(value);
+  const label = field === 'show_in_finance' ? 'Finanzas' : 'Sesión';
+
+  return `
+    <td class="db-table-cell--editable hr-cell-editable${escapeAttr(cellToneClass)}">
+      <input type="hidden" form="${escapeAttr(formId)}" name="${escapeAttr(field)}" value="false" />
+      <label class="db-check db-check--compact">
+        <input form="${escapeAttr(formId)}" name="${escapeAttr(field)}" type="checkbox" value="true" ${checked ? 'checked' : ''} />
+        <span>${escapeHTML(label)}</span>
+      </label>
+    </td>
+  `;
 }
 
 function renderAdminTableEditorRow(tableName, config, row, index, options = {}) {
   const columns = [...config.lockedFields, ...config.editableFields]
     .filter((field, fieldIndex, arr) => arr.indexOf(field) === fieldIndex);
-  const visibleColumns = columns.filter((field) => !(config.hiddenColumns ?? []).includes(field));
+  const visibleColumns = options.visibleColumns
+    ?? columns.filter((field) => !(config.hiddenColumns ?? []).includes(field));
 
   const original = encodeURIComponent(JSON.stringify(row));
   const searchText = columns
@@ -3696,20 +7694,30 @@ function renderAdminTableEditorRow(tableName, config, row, index, options = {}) 
     .join(' ')
     .toLowerCase();
 
+  const rowClass = tableName === 'membership_dashboard'
+    ? ` class="db-membership-row db-membership-row--${escapeAttr(membershipRowTone(row))}"`
+    : '';
+
   return `
-    <tr data-search-row data-search-text="${escapeAttr(searchText)}"${options.hidden ? ' hidden' : ''}>
+    <tr${rowClass} data-search-row data-search-text="${escapeAttr(searchText)}"${options.hidden ? ' hidden' : ''}>
       ${visibleColumns.map((field) => {
-        const value = row[field] ?? '';
+        const value = adminTableCellValue(tableName, field, row);
         const isEditable = config.editableFields.includes(field);
+        const cellToneClass = tableName === 'membership_dashboard' ? membershipCellClass(field, row) : '';
         if (config.lockedFields.includes(field) && !isEditable) {
-          return `<td class="db-table-cell--readonly"><code class="${field === 'temp_password' ? 'db-readonly-secret' : ''}">${escapeHTML(String(value))}</code></td>`;
+          return `<td class="db-table-cell--readonly${escapeAttr(cellToneClass)}"><code class="${field === 'temp_password' ? 'db-readonly-secret' : ''}">${escapeHTML(String(value))}</code></td>`;
+        }
+
+        const formId = `admin-table-form-${index}`;
+        if (isAdminTableBooleanField(tableName, field)) {
+          return renderAdminTableBooleanCell(tableName, field, value, formId, cellToneClass);
         }
 
         return `
-          <td class="db-table-cell--editable">
+          <td class="db-table-cell--editable hr-cell-editable${escapeAttr(cellToneClass)}">
             <input
-              class="db-table-input"
-              form="admin-table-form-${index}"
+              class="db-table-input hr-input"
+              form="${escapeAttr(formId)}"
               name="${escapeAttr(field)}"
               value="${escapeAttr(value)}"
             />
@@ -3723,6 +7731,7 @@ function renderAdminTableEditorRow(tableName, config, row, index, options = {}) 
           <input type="hidden" name="original" value="${escapeAttr(original)}" />
           <button class="db-btn-secondary" type="submit">Guardar</button>
         </form>
+        ${renderAdminTableRowExtraActions(tableName, row, original)}
         <button class="db-btn-danger" type="button" data-action="admin-table-delete" data-table-name="${escapeAttr(tableName)}" data-row-original="${escapeAttr(original)}">Eliminar</button>
         ${tableName === 'users' && row.temp_password ? `<button class="db-btn-secondary" type="button" data-action="share-login" data-user-row="${escapeAttr(original)}">Compartir</button>` : ''}
       </td>
@@ -3731,6 +7740,205 @@ function renderAdminTableEditorRow(tableName, config, row, index, options = {}) 
   `;
 }
 
+function renderAdminTableRowExtraActions(tableName, row, original) {
+  const actions = [];
+
+  if (adminTableRowSupportsReceipt(tableName)) {
+    actions.push('<button class="db-btn-secondary" type="button" data-action="admin-operation-receipt-share" data-table-name="' + escapeAttr(tableName) + '" data-row-original="' + escapeAttr(original) + '">Compartir PDF</button>');
+  }
+
+  if (tableName === 'memberships') {
+    const status = String(row?.status ?? '').toLowerCase();
+    const canCancel = !['cancelled', 'expired'].includes(status);
+    const canFinish = status !== 'expired';
+
+    if (canCancel) {
+      actions.push('<button class="db-btn-secondary" type="button" data-action="membership-cancel-row" data-row-original="' + escapeAttr(original) + '">Cancelar</button>');
+    }
+    if (canFinish) {
+      actions.push('<button class="db-btn-secondary" type="button" data-action="membership-finish-row" data-row-original="' + escapeAttr(original) + '">Finalizar</button>');
+    }
+  }
+
+  return actions.join('');
+}
+
+function adminTableRowSupportsReceipt(tableName) {
+  return ['transactions', 'sessions', 'downloads', 'contracts'].includes(tableName);
+}
+function adminTableCellValue(tableName, field, row) {
+  if (tableName === 'membership_dashboard') {
+    if (field === 'saldo') return formatMembershipRowBalance(row);
+    if (field === 'fecha_esperada' || field === 'fecha_de_sesion' || field === 'fecha_de_saldo') return formatDisplayDateOnly(row[field]);
+    if (field === 'sesiones_usadas') return formatMembershipSessionDates(row) || '-';
+    if (field === 'periodo') return row.periodo || '-';
+  }
+
+  if (tableName === 'users' && field === 'occupations') return displayOccupationsValue(row[field]);
+  if (tableName === 'users' && field === 'passline_tracking') return displayPasslineTrackingValue(row[field]);
+
+  return row[field] ?? '';
+}
+
+function membershipRowTone(row) {
+  const saldo = Number(row?.saldo ?? 0);
+  if (row?.saldo_tipo === 'pendiente') return 'neutral';
+  if (saldo < 0 || (row?.estado === 'ATRASADO' && !row?.fecha_de_saldo)) return 'debt';
+  if (saldo > 0) return 'credit';
+  return 'neutral';
+}
+
+function membershipFieldTone(field, row) {
+  const value = String(row?.[field] ?? '').toUpperCase();
+  if (field === 'estado') {
+    if (value === 'ATRASADO') return 'danger';
+    if (value === 'ADELANTADO' || value === 'CORRIENTE') return 'success';
+    if (value === 'PENDIENTE') return 'warning';
+  }
+  if (field === 'estado_operativo') {
+    if (value === 'ACTIVE') return 'success';
+    if (value === 'PAUSED') return 'warning';
+    if (value === 'CANCELLED' || value === 'EXPIRED') return 'danger';
+  }
+  if (field === 'saldo') {
+    const saldo = Number(row?.saldo ?? 0);
+    if (row?.saldo_tipo === 'pendiente') return 'warning';
+    if (saldo < 0) return 'danger';
+    if (saldo > 0) return 'success';
+  }
+  return 'neutral';
+}
+
+function membershipCellClass(field, row) {
+  const tone = membershipFieldTone(field, row);
+  return tone === 'neutral' ? '' : ` db-membership-cell--${tone}`;
+}
+
+function renderMembershipDashboardTable(rows = [], options = {}) {
+  const deliveryByWeek = membershipDeliveryByWeek(rows);
+  const body = rows.length
+    ? rows.map((row) => renderMembershipDashboardRow(row, deliveryByWeek.get(Number(row.semana ?? 0)), options)).join('')
+    : `
+      <tr class="db-table__empty-row hr-table-empty">
+        <td colspan="8" class="db-empty hr-table-empty">Sin datos de membresía.</td>
+      </tr>
+    `;
+
+  return `
+    <div class="db-table-wrap hr-table-wrap db-table-wrap--membership">
+      <table class="db-table hr-table hr-table-editable" aria-label="Membresía">
+        <thead>
+          <tr>
+            <th scope="col">Semana</th>
+            <th scope="col">Fecha de sesión</th>
+            <th scope="col">Estado</th>
+            <th scope="col">Saldo</th>
+            <th scope="col">Fecha de saldo</th>
+            <th scope="col">Entrega programada</th>
+            <th scope="col">Fecha de entrega</th>
+            <th scope="col">Notas</th>
+          </tr>
+        </thead>
+        <tbody id="js-admin-table-body">${body}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function formatMembershipSessionDates(row) {
+  if (Array.isArray(row?.sesiones_usadas_lista) && row.sesiones_usadas_lista.length) {
+    return formatDisplayDateList(row.sesiones_usadas_lista);
+  }
+
+  return formatDisplayDateList(
+    String(row?.sesiones_usadas ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+  );
+}
+
+function renderMembershipDashboardRow(row, delivery = null, options = {}) {
+  const sessionDates = formatMembershipSessionDates(row);
+  const displayNotes = row.notas && row.notas !== '-' ? row.notas : '-';
+  const deliveryFormId = membershipDeliveryFormId(row);
+  const sessionNotesFormId = membershipSessionNotesFormId(row);
+  const cycleNumber = Math.floor((Number(row.semana ?? 1) - 1) / 4) + 1;
+  const computedDelivery = delivery ?? (row.material_estimated_delivery ? {
+    estimatedDelivery: row.material_estimated_delivery,
+    deliveryDelayWeeks: row.material_delivery_delay_weeks,
+    delayApplied: row.material_delivery_delay_label,
+    deliveredAt: row.material_delivered_at,
+  } : null);
+  const deliveredAtText = computedDelivery?.deliveredAt
+    ? formatDisplayDateOnly(computedDelivery.deliveredAt)
+    : 'No entregado';
+
+  return `
+    <tr class="db-membership-row db-membership-row--${escapeAttr(membershipRowTone(row))}">
+      <td>${escapeHTML(String(row.semana ?? '-'))}</td>
+      <td>${escapeHTML(sessionDates || 'Sin sesión registrada')}</td>
+      <td class="${escapeAttr(membershipCellClass('estado', row).trim())}">${escapeHTML(row.estado ?? '-')}</td>
+      <td class="${escapeAttr(membershipCellClass('saldo', row).trim())}">${formatMembershipRowBalance(row)}</td>
+      <td>${escapeHTML(formatDisplayDateOnly(row.fecha_de_saldo))}</td>
+      <td>${escapeHTML(formatDisplayDateOnly(computedDelivery?.estimatedDelivery))}<br><small>${escapeHTML(computedDelivery ? (computedDelivery.delayApplied || `${computedDelivery.deliveryDelayWeeks ?? 0} semanas`) : 'Sin entrega calculada')}</small></td>
+      <td>${options.canEditMaterialDelivery ? renderMembershipDeliveryDateInput(row, computedDelivery, deliveryFormId, cycleNumber, deliveredAtText) : escapeHTML(deliveredAtText)}</td>
+      <td>${options.canEditMaterialDelivery ? renderMembershipSessionNotesInput(row, sessionNotesFormId) : escapeHTML(displayNotes || '-')}</td>
+    </tr>
+  `;
+}
+
+function membershipDeliveryFormId(row) {
+  return [
+    'membership-delivery',
+    row.membership_id ?? 'legacy',
+    row.user_id ?? 'user',
+    row.semana ?? '0',
+  ]
+    .map((part) => String(part).replace(/[^a-zA-Z0-9_-]/g, '-'))
+    .join('-');
+}
+
+function membershipSessionNotesFormId(row) {
+  return [
+    'membership-session-notes',
+    row.session_id ?? 'none',
+    row.membership_id ?? 'legacy',
+    row.semana ?? '0',
+  ]
+    .map((part) => String(part).replace(/[^a-zA-Z0-9_-]/g, '-'))
+    .join('-');
+}
+
+function renderMembershipDeliveryDateInput(row, delivery, formId, cycleNumber, deliveredAtText) {
+  const isDelivered = Boolean(delivery?.deliveredAt);
+  return `
+    <form class="db-membership-delivery-form" id="${formId}" data-form="membership-delivery" data-stay-section="admin-table-editor">
+      <input type="hidden" name="membership_id" value="${escapeAttr(row.membership_id ?? '')}" />
+      <input type="hidden" name="user_id" value="${escapeAttr(row.user_id ?? '')}" />
+      <input type="hidden" name="cycle_number" value="${escapeAttr(String(cycleNumber))}" />
+      <input type="hidden" name="delivered_at_original" value="${escapeAttr(delivery?.deliveredAt ?? '')}" />
+      <span class="db-membership-delivery-status db-membership-delivery-status--${isDelivered ? 'done' : 'pending'}">${escapeHTML(deliveredAtText)}</span>
+      <input class="db-table-input hr-input hr-cell-editable db-table-input--compact db-membership-editable-cell" name="delivered_at" type="date" value="${escapeAttr(delivery?.deliveredAt ?? '')}" aria-label="Fecha real de entrega" />
+    </form>
+  `;
+}
+
+function renderMembershipSessionNotesInput(row, formId) {
+  const sessionId = row.session_id ? String(row.session_id) : '';
+  const notes = row.session_notes ?? '';
+  if (!sessionId) return '-';
+
+  return `
+    <div class="db-membership-delivery-edit">
+      <form id="${formId}" data-form="membership-session-notes" data-stay-section="admin-table-editor">
+        <input type="hidden" name="session_id" value="${escapeAttr(sessionId)}" />
+        <input type="hidden" name="notes_original" value="${escapeAttr(notes || '')}" />
+        <textarea class="db-table-input hr-input hr-cell-editable db-table-input--notes db-membership-editable-cell" name="notes" rows="3" aria-label="Notas de sesión">${escapeHTML(notes || '')}</textarea>
+      </form>
+    </div>
+  `;
+}
 
 /* -- RENDER HELPER ------------------------------------------ */
 /**
@@ -3755,20 +7963,26 @@ function sectionShell(label, title, titleId, bodyHTML) {
 async function ensureUsersLoaded() {
   if (state.data.users?.length) return state.data.users;
 
-  const { data, error } = await supabase
-    .from('users')
-    .select('user_id, display_name, username, email')
-    .order('display_name', { ascending: true });
-
-  if (error) {
+  try {
+    const users = await fetchAllTableEditorRows(
+      'users',
+      'id, user_id, display_name, username, email, passline_tracking',
+      { field: 'display_name', direction: 'asc' }
+    );
+    state.data.users = uniqueUsers(users);
+    return state.data.users;
+  } catch (error) {
     console.error('[HR] ensureUsersLoaded:', error);
     showToast('No se pudieron cargar usuarios.', 'error');
     state.data.users = [];
     return [];
   }
+}
 
-  state.data.users = uniqueUsers(data);
-  return state.data.users;
+function parseBooleanField(value) {
+  if (typeof value === 'boolean') return value;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return ['true', '1', 'yes', 'si', 'sí', 'on', 'active'].includes(normalized);
 }
 
 function formValues(form) {
@@ -3807,7 +8021,15 @@ function todayDateInputValue() {
 }
 
 function sessionTypeConfig(value) {
+  const rawValue = String(value ?? '').trim();
+  const services = visibleSessionServices(state.data.services ?? []);
+  const exactService = services.find((service) => String(service.name) === rawValue);
+  if (exactService) return serviceSessionConfig(exactService);
+
   const canonicalValue = canonicalSessionTypeValue(value);
+  const canonicalService = services.find((service) => canonicalSessionTypeValue(service.name) === canonicalValue || String(service.name) === canonicalValue);
+  if (canonicalService) return serviceSessionConfig(canonicalService);
+
   return SESSION_TYPE_OPTIONS.find((item) => item.value === canonicalValue) ?? SESSION_TYPE_OPTIONS[0];
 }
 
@@ -3864,15 +8086,293 @@ function updateTransactionConceptFields(form) {
   }
 }
 
+function updateDownloadMembershipFields(form) {
+  if (!form || form.dataset.form !== 'download-create') return;
+  const releaseMode = form.querySelector('[data-download-release-mode]')?.value || 'immediate';
+  const sourceType = form.querySelector('[data-download-source-type]')?.value || 'link';
+  const linkField = form.querySelector('[data-download-link-field]');
+  const fileField = form.querySelector('[data-download-file-field]');
+  const storageInput = form.querySelector('[data-download-storage-path]');
+  const fileInput = form.querySelector('[data-download-file]');
+  const membershipFields = form.querySelector('[data-download-membership-fields]');
+  const membershipInput = form.querySelector('[data-download-membership-id]');
+  const cycleInput = form.querySelector('[data-download-cycle-number]');
+  const linked = releaseMode === 'membership_delivery';
+  const fileMode = sourceType === 'file';
+
+  if (linkField) linkField.hidden = fileMode;
+  if (fileField) fileField.hidden = !fileMode;
+  if (storageInput) {
+    storageInput.required = !fileMode;
+    if (fileMode) storageInput.value = '';
+  }
+  if (fileInput) fileInput.required = fileMode;
+
+  if (membershipFields) membershipFields.hidden = !linked;
+  if (membershipInput) {
+    membershipInput.required = linked;
+    if (!linked) membershipInput.value = '';
+  }
+  if (cycleInput) {
+    cycleInput.required = linked;
+    if (!linked) cycleInput.value = '';
+  }
+
+  if (linked) {
+    const userId = form.querySelector('.db-user-picker input[type="hidden"][name="user_id"]')?.value || '';
+    updateDownloadMembershipOptions(form, userId);
+  }
+}
+
+function resolveOperationalUserId(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const user = (state.data.users ?? []).find((item) => (
+    String(item.user_id ?? '') === raw
+    || String(item.id ?? '') === raw
+  ));
+  return String(user?.user_id ?? raw).trim();
+}
+
+function getUserDownloadCloudPath(userId) {
+  const operationalUserId = resolveOperationalUserId(userId);
+  const user = (state.data.users ?? []).find((item) => String(item.user_id) === operationalUserId);
+  const slugSource = user?.username || user?.display_name || user?.email || operationalUserId;
+  return `/users/${sanitizeCloudSegment(operationalUserId)}__${sanitizeCloudSegment(slugSource)}/downloads`;
+}
+
+function sanitizeCloudSegment(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'user';
+}
+
+function slugifyStoreValue(value) {
+  return sanitizeCloudSegment(value).replace(/_+/g, '-');
+}
+
+function fileBaseName(fileName) {
+  return String(fileName || '').replace(/\.[^.]+$/, '');
+}
+
+function fileExtension(fileName) {
+  const match = String(fileName || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+  return match ? match[1] : '';
+}
+
+function isAllowedBeatAudioFile(file) {
+  const mime = String(file?.type || '').toLowerCase();
+  if (mime.startsWith('audio/')) return true;
+  return BEAT_AUDIO_EXTENSIONS.has(fileExtension(file?.name));
+}
+
+function setUploadProgress(form, scope, percent, label) {
+  const progress = form.querySelector(`[data-${scope}-upload-progress]`);
+  const bar = form.querySelector(`[data-${scope}-upload-progress-bar]`);
+  const labelEl = form.querySelector(`[data-${scope}-upload-progress-label]`);
+  const valueEl = form.querySelector(`[data-${scope}-upload-progress-value]`);
+  const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+  if (progress) progress.hidden = false;
+  if (bar) bar.style.width = `${safePercent}%`;
+  if (labelEl) labelEl.textContent = label;
+  if (valueEl) valueEl.textContent = `${Math.round(safePercent)}%`;
+}
+
+function resetUploadProgress(form, scope, label = 'Esperando archivo') {
+  setUploadProgress(form, scope, 0, label);
+  const progress = form.querySelector(`[data-${scope}-upload-progress]`);
+  if (progress) progress.hidden = true;
+}
+
+function setOperationFormPending(form, pending, label = 'Procesando...') {
+  const submitButtons = [...form.querySelectorAll('button[type="submit"]')];
+  submitButtons.forEach((button) => {
+    if (pending) {
+      button.dataset.originalText = button.dataset.originalText || button.textContent || '';
+      button.disabled = true;
+      button.textContent = label;
+    } else {
+      button.disabled = false;
+      if (button.dataset.originalText) button.textContent = button.dataset.originalText;
+      delete button.dataset.originalText;
+    }
+  });
+}
+
+function setBeatUploadProgress(form, percent, label) {
+  setUploadProgress(form, 'beat', percent, label);
+}
+
+function resetBeatUploadProgress(form) {
+  resetUploadProgress(form, 'beat', 'Esperando archivo');
+}
+
+function setDownloadUploadProgress(form, percent, label) {
+  setUploadProgress(form, 'download', percent, label);
+}
+
+function resetDownloadUploadProgress(form) {
+  resetUploadProgress(form, 'download', 'Esperando archivo');
+}
+
+function slugWithAttempt(slug, attempt) {
+  return attempt <= 1 ? slug : `${slug}-${attempt}`;
+}
+
+function isDuplicateSlugError(error) {
+  return error?.code === '23505'
+    && String(error?.message || error?.details || '').includes('store_products_slug_key');
+}
+
+async function insertBeatStoreProductWithUniqueSlug(payload) {
+  for (let attempt = 1; attempt <= 20; attempt += 1) {
+    const candidate = {
+      ...payload,
+      slug: slugWithAttempt(payload.slug, attempt),
+    };
+    const { data, error } = await supabase
+      .from('store_products')
+      .insert(candidate)
+      .select('id, slug')
+      .maybeSingle();
+
+    if (!error) {
+      showToast(
+        candidate.slug === payload.slug
+          ? 'Beat publicado en tienda.'
+          : `Beat publicado como ${candidate.slug}.`,
+        'success'
+      );
+      return { ok: true, data, slug: candidate.slug };
+    }
+
+    if (!isDuplicateSlugError(error)) {
+      console.error('[HR] store_products insert:', error);
+      showToast('No se pudo guardar. Revisa permisos/RLS.', 'error');
+      return { ok: false, data: null, error };
+    }
+  }
+
+  showToast('No se pudo generar un slug disponible para el beat.', 'error');
+  return { ok: false, data: null };
+}
+
+async function handleBeatSaleCreate(form, values) {
+  const submitButton = form.querySelector('button[type="submit"]');
+  const originalButtonText = submitButton?.textContent ?? '';
+  const file = form.querySelector('input[name="beat_file"]')?.files?.[0];
+  if (!file) {
+    showToast('Selecciona un archivo de audio.', 'error');
+    return;
+  }
+  if (!isAllowedBeatAudioFile(file)) {
+    showToast('El archivo debe ser audio: mp3, wav, m4a, aac, ogg, flac, aif o aiff.', 'error');
+    return;
+  }
+
+  const name = String(values.name || fileBaseName(file.name) || 'Beat').trim();
+  const slug = slugifyStoreValue(values.slug || fileBaseName(file.name) || name);
+  const price = Number(values.price || 0);
+  if (!name || !slug || !Number.isFinite(price) || price < 0) {
+    showToast('Nombre, slug o precio invalido.', 'error');
+    return;
+  }
+
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = 'Subiendo...';
+  }
+
+  try {
+    setBeatUploadProgress(form, 8, 'Validando audio');
+    showToast('Subiendo beat a Cloud...', 'info');
+    setBeatUploadProgress(form, 18, 'Preparando carpeta');
+    await ensureCloudFolderPath(BEAT_STORE_CLOUD_PATH);
+    setBeatUploadProgress(form, 38, 'Subiendo audio');
+    const upload = await uploadCloudFileToPath(file, BEAT_STORE_CLOUD_PATH);
+    setBeatUploadProgress(form, 78, 'Publicando producto');
+    const payload = {
+      slug,
+      name,
+      description: String(values.description || '').trim() || null,
+      category: 'beats',
+      price,
+      currency: 'MXN',
+      file_url: upload?.url || buildCloudFileFallbackUrl(BEAT_STORE_CLOUD_PATH, file.name),
+      stock: values.stock !== null && values.stock !== undefined && values.stock !== '' ? Number(values.stock) : null,
+      is_digital: true,
+      is_active: values.is_active === 'on',
+      featured: values.featured === 'on',
+    };
+
+    const result = await insertBeatStoreProductWithUniqueSlug(payload);
+    if (result.ok) {
+      setBeatUploadProgress(form, 100, 'Publicado');
+      form.reset();
+      setTimeout(() => resetBeatUploadProgress(form), 1200);
+    }
+  } catch (err) {
+    console.error('[HR] beat sale upload:', err);
+    setBeatUploadProgress(form, 100, 'Error al subir');
+    showToast(err?.message || 'No se pudo subir el beat.', 'error');
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = originalButtonText || 'Subir beat y publicar';
+    }
+  }
+}
+
+function updateDownloadMembershipOptions(form, userId = '') {
+  const membershipInput = form?.querySelector('[data-download-membership-id]');
+  if (!membershipInput) return;
+
+  const options = [...membershipInput.options].filter((option) => option.value);
+  const matching = [];
+  options.forEach((option) => {
+    const matches = !userId || String(option.dataset.membershipUserId ?? '') === String(userId);
+    option.hidden = !matches;
+    option.disabled = !matches;
+    if (matches) matching.push(option);
+  });
+
+  const selected = membershipInput.selectedOptions?.[0];
+  if (selected?.disabled) membershipInput.value = '';
+  if (userId && matching.length === 1) membershipInput.value = matching[0].value;
+}
+
 function formatDateOnly(value) {
   if (!value) return '-';
   return String(value).slice(0, 10);
 }
 
+function formatDisplayDateOnly(value) {
+  const raw = formatDateOnly(value);
+  if (!raw || raw === '-') return '-';
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return raw;
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}/${date.getFullYear()}`;
+}
+
+function formatDisplayDateList(values = []) {
+  return values
+    .map((value) => formatDisplayDateOnly(value))
+    .filter((value) => value && value !== '-')
+    .join(', ');
+}
+
 function formatDateTime(value) {
   if (!value) return '-';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return formatDateOnly(value);
+  if (Number.isNaN(date.getTime())) return formatDisplayDateOnly(value);
   return date.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
@@ -3906,7 +8406,139 @@ function compareDateOnly(a, b) {
   return String(formatDateOnly(a)).localeCompare(String(formatDateOnly(b)));
 }
 
-function buildMembershipRows(sessions = [], transactions = []) {
+function dateOnlyToLocalDate(value) {
+  const raw = formatDateOnly(value);
+  if (!raw || raw === '-') return null;
+  const [year, month, day] = raw.split('-').map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  return new Date(year, month - 1, day);
+}
+
+function addDaysToDateOnly(value, days) {
+  const date = dateOnlyToLocalDate(value);
+  if (!date) return null;
+  date.setDate(date.getDate() + Number(days || 0));
+  return date.toISOString().slice(0, 10);
+}
+
+function getWeekStartMonday(value) {
+  const date = dateOnlyToLocalDate(value);
+  if (!date) return null;
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  return date.toISOString().slice(0, 10);
+}
+
+function getWeekEndSunday(value) {
+  const start = getWeekStartMonday(value);
+  return start ? addDaysToDateOnly(start, 6) : null;
+}
+
+function membershipIdOf(row) {
+  return row?.membership_id ?? row?.membershipId ?? null;
+}
+
+function rowMatchesMembership(row, membership) {
+  const rowMembershipId = membershipIdOf(row);
+  if (rowMembershipId) return String(rowMembershipId) === String(membership.id);
+  return String(row?.user_id ?? '') === String(membership.user_id ?? '');
+}
+
+function membershipEndDate(membership, today = todayDateInputValue()) {
+  if (membership.end_date) return formatDateOnly(membership.end_date);
+  return formatDateOnly(today);
+}
+
+function generateMembershipWeeks(membership, today = todayDateInputValue()) {
+  const startDate = getWeekStartMonday(membership.start_date);
+  const endDate = getWeekEndSunday(membershipEndDate(membership, today));
+  if (!dateOnlyToLocalDate(startDate) || compareDateOnly(startDate, endDate) > 0) return [];
+
+  const weeks = [];
+  let weekStart = startDate;
+  let index = 1;
+
+  while (weekStart && compareDateOnly(weekStart, endDate) <= 0) {
+    weeks.push({
+      membership,
+      semana: index,
+      fecha_esperada: weekStart,
+      week_end: getWeekEndSunday(weekStart),
+      weekly_price: Number(membership.weekly_price ?? MEMBERSHIP_WEEKLY_COST) || MEMBERSHIP_WEEKLY_COST,
+    });
+    weekStart = addDaysToDateOnly(startDate, index * 7);
+    index += 1;
+  }
+
+  return weeks;
+}
+
+function sessionsForMembershipWeek(week, sessions = []) {
+  return sessions.filter((session) => {
+    if (!rowMatchesMembership(session, week.membership)) return false;
+    if (!(isMembershipValue(session.type) || isMembershipValue(session.concept))) return false;
+    const sessionDate = formatDateOnly(session.session_date);
+    return compareDateOnly(sessionDate, week.fecha_esperada) >= 0
+      && compareDateOnly(sessionDate, week.week_end) <= 0;
+  }).sort((a, b) => compareDateOnly(a.session_date, b.session_date) || String(a.id ?? '').localeCompare(String(b.id ?? '')));
+}
+
+function membershipSessionNotes(sessions = []) {
+  const notes = sessions
+    .map((session) => ({
+      date: formatDisplayDateOnly(session.session_date),
+      notes: String(session.notes ?? '').trim(),
+    }))
+    .filter((session) => session.notes);
+
+  if (!notes.length) return '-';
+  if (notes.length === 1) return notes[0].notes;
+  return notes.map((session) => `${session.date}: ${session.notes}`).join(' · ');
+}
+
+function membershipWeekObligation(week, sessions = []) {
+  return week.weekly_price;
+}
+
+function buildLegacyMembershipsFromSessions(sessions = []) {
+  const grouped = new Map();
+
+  (sessions ?? [])
+    .filter((session) => isMembershipValue(session.type) || isMembershipValue(session.concept))
+    .forEach((session) => {
+      const userId = String(session.user_id ?? '').trim();
+      if (!userId) return;
+      const current = grouped.get(userId);
+      const sessionDate = formatDateOnly(session.session_date);
+      if (!current) {
+        grouped.set(userId, {
+          id: `legacy-${userId}`,
+          user_id: userId,
+          username: session.username ?? null,
+          status: 'active',
+          start_date: sessionDate,
+          end_date: sessionDate,
+          weekly_price: MEMBERSHIP_WEEKLY_COST,
+          sessions_per_week: 1,
+          notes: 'Membresía histórica sin registro en public.memberships.',
+          legacy: true,
+        });
+        return;
+      }
+
+      if (compareDateOnly(sessionDate, current.start_date) < 0) current.start_date = sessionDate;
+      if (compareDateOnly(sessionDate, current.end_date) > 0) current.end_date = sessionDate;
+    });
+
+  return [...grouped.values()];
+}
+
+function buildMembershipRows(memberships = [], sessions = [], transactions = [], materialDeliveries = []) {
+  const sourceMemberships = (memberships ?? []).length
+    ? memberships
+    : buildLegacyMembershipsFromSessions(sessions);
+
   const membershipSessions = (sessions ?? [])
     .filter((session) => isMembershipValue(session.type) || isMembershipValue(session.concept))
     .sort((a, b) => compareDateOnly(a.session_date, b.session_date) || String(a.id ?? '').localeCompare(String(b.id ?? '')));
@@ -3921,46 +8553,174 @@ function buildMembershipRows(sessions = [], transactions = []) {
     .filter((tx) => tx.amount > 0)
     .sort((a, b) => compareDateOnly(a.date, b.date) || String(a.id ?? '').localeCompare(String(b.id ?? '')));
 
-  let paymentIndex = 0;
-  let accumulatedPaid = 0;
   const today = todayDateInputValue();
+  const rows = [];
 
-  return membershipSessions.map((session, index) => {
-    const requiredTotal = (index + 1) * MEMBERSHIP_WEEKLY_COST;
+  sourceMemberships
+    .slice()
+    .sort((a, b) => compareDateOnly(a.start_date, b.start_date) || String(a.id ?? '').localeCompare(String(b.id ?? '')))
+    .forEach((membership) => {
+      const membershipSessionRows = membershipSessions.filter((session) => rowMatchesMembership(session, membership));
+      const latestSessionDate = membershipSessionRows.reduce((latest, session) => {
+        const sessionDate = formatDateOnly(session.session_date);
+        return !latest || compareDateOnly(sessionDate, latest) > 0 ? sessionDate : latest;
+      }, null);
+      const generationEndDate = latestSessionDate && compareDateOnly(latestSessionDate, today) > 0
+        ? latestSessionDate
+        : today;
+      const weeks = generateMembershipWeeks(membership, generationEndDate);
+      const payments = membershipPayments.filter((tx) => rowMatchesMembership(tx, membership));
+      let paymentIndex = 0;
+      let availableCredit = 0;
+      let availableCreditDate = null;
 
-    // Saldo acumulado: los pagos se aplican al adeudo total del usuario,
-    // no a una semana exacta. Esta fecha marca cuándo el acumulado alcanzó
-    // para cubrir la obligación de esta sesión.
-    while (paymentIndex < membershipPayments.length && accumulatedPaid < requiredTotal) {
-      accumulatedPaid += membershipPayments[paymentIndex].amount;
-      paymentIndex += 1;
-    }
+      weeks.forEach((week) => {
+        const weekSessions = sessionsForMembershipWeek(week, membershipSessionRows);
+        const firstSession = weekSessions[0] ?? null;
+        const usedSessionDates = [...new Set(weekSessions.map((session) => formatDateOnly(session.session_date)))];
+        const weekObligation = membershipWeekObligation(week, weekSessions);
 
-    const coveringPayment = accumulatedPaid >= requiredTotal
-      ? membershipPayments[paymentIndex - 1]
-      : null;
-    const fechaSesion = formatDateOnly(session.session_date);
-    const fechaSaldo = coveringPayment?.date ?? null;
-    const saldo = accumulatedPaid - requiredTotal;
-    let estado = 'PENDIENTE';
+        while (paymentIndex < payments.length && compareDateOnly(payments[paymentIndex].date, week.fecha_esperada) <= 0) {
+          availableCredit += payments[paymentIndex].amount;
+          availableCreditDate = payments[paymentIndex].date;
+          paymentIndex += 1;
+        }
 
-    if (fechaSaldo) {
-      if (fechaSaldo < fechaSesion) estado = 'ADELANTADO';
-      else if (fechaSaldo === fechaSesion) estado = 'CORRIENTE';
-      else estado = 'ATRASADO';
-    } else if (fechaSesion <= today) {
-      estado = 'ATRASADO';
-    }
+        let coveringPayment = null;
+        while (availableCredit < weekObligation && paymentIndex < payments.length) {
+          availableCredit += payments[paymentIndex].amount;
+          coveringPayment = payments[paymentIndex];
+          availableCreditDate = payments[paymentIndex].date;
+          paymentIndex += 1;
+        }
+
+        const covered = availableCredit >= weekObligation;
+        const fechaSaldo = covered ? (coveringPayment?.date ?? availableCreditDate ?? week.fecha_esperada) : null;
+        let estado = 'PENDIENTE';
+        let saldo = null;
+        let saldo_tipo = null;
+
+        if (covered) {
+          if (fechaSaldo < week.fecha_esperada) estado = 'ADELANTADO';
+          else if (compareDateOnly(fechaSaldo, week.week_end) <= 0) estado = 'CORRIENTE';
+          else estado = 'ATRASADO';
+
+          availableCredit -= weekObligation;
+          saldo = availableCredit > 0 ? availableCredit : null;
+          if (availableCredit <= 0) availableCreditDate = null;
+        } else if (compareDateOnly(week.week_end, today) < 0) {
+          estado = 'ATRASADO';
+          saldo = availableCredit - weekObligation;
+          saldo_tipo = 'adeudo';
+          availableCredit = 0;
+          availableCreditDate = null;
+        } else if (availableCredit < weekObligation) {
+          saldo = availableCredit - weekObligation;
+          saldo_tipo = 'pendiente';
+        }
+
+        rows.push({
+          membership_id: membership.id,
+          membership_start_date: formatDateOnly(membership.start_date),
+          membership_end_date: membership.end_date ? formatDateOnly(membership.end_date) : null,
+          user_id: membership.user_id,
+          username: membership.username,
+          semana: week.semana,
+          periodo: `${formatDateOnly(week.fecha_esperada)} a ${formatDateOnly(week.week_end)}`,
+          fecha_esperada: week.fecha_esperada,
+          week_end: week.week_end,
+          obligacion: weekObligation,
+          session_id: firstSession?.id ?? null,
+          session_notes: firstSession?.notes ?? '',
+          fecha_de_sesion: firstSession ? formatDateOnly(firstSession.session_date) : null,
+          sesiones_usadas: usedSessionDates.join(', '),
+          sesiones_usadas_lista: usedSessionDates,
+          estado,
+          estado_operativo: String(membership.status ?? 'active').toUpperCase(),
+          fecha_de_saldo: fechaSaldo,
+          saldo,
+          saldo_tipo,
+          notas: membershipSessionNotes(weekSessions),
+        });
+      });
+    });
+
+  return applyMembershipComputedDeliveries(applyMembershipMaterialDeliveries(rows, materialDeliveries));
+}
+
+function materialDeliveryKey({ membershipId = null, userId = null, cycleNumber = null }) {
+  return [
+    membershipId ? String(membershipId) : 'legacy',
+    userId ? String(userId) : '',
+    Number(cycleNumber ?? 0),
+  ].join('|');
+}
+
+function applyMembershipMaterialDeliveries(rows = [], materialDeliveries = []) {
+  if (!rows.length || !materialDeliveries?.length) return rows;
+
+  const deliveriesByKey = new Map();
+  materialDeliveries.forEach((delivery) => {
+    const cycleNumber = Number(delivery.cycle_number ?? delivery.cycleNumber ?? 0);
+    if (!Number.isFinite(cycleNumber) || cycleNumber < 1) return;
+    const key = materialDeliveryKey({
+      membershipId: delivery.membership_id ?? null,
+      userId: delivery.user_id,
+      cycleNumber,
+    });
+    deliveriesByKey.set(key, delivery);
+  });
+
+  return rows.map((row) => {
+    const weekNumber = Number(row.semana ?? 0);
+    if (!Number.isFinite(weekNumber) || weekNumber < 1) return row;
+    const cycleNumber = Math.floor((weekNumber - 1) / 4) + 1;
+    const exactKey = materialDeliveryKey({
+      membershipId: row.membership_id ?? null,
+      userId: row.user_id,
+      cycleNumber,
+    });
+    const legacyKey = materialDeliveryKey({
+      membershipId: null,
+      userId: row.user_id,
+      cycleNumber,
+    });
+    const delivery = deliveriesByKey.get(exactKey) ?? deliveriesByKey.get(legacyKey);
+    if (!delivery) return row;
 
     return {
-      semana: index + 1,
-      fecha_de_sesion: fechaSesion,
-      estado,
-      fecha_de_saldo: fechaSaldo,
-      saldo,
-      notas: session.notes || session.status || '-',
+      ...row,
+      material_cycle_number: cycleNumber,
+      material_delivered_at: delivery.delivered_at ? formatDateOnly(delivery.delivered_at) : null,
+      material_delivery_notes: delivery.notes ?? '',
     };
   });
+}
+
+function formatMembershipRowBalance(row) {
+  const saldo = Number(row?.saldo ?? 0);
+  if (!row || row.saldo === null || row.saldo === undefined || saldo === 0) return '-';
+  if (saldo < 0) {
+    return row.saldo_tipo === 'pendiente'
+      ? `Pendiente por pagar ${money(Math.abs(saldo))}`
+      : `Adeudo ${money(Math.abs(saldo))}`;
+  }
+  return `Crédito ${money(saldo)}`;
+}
+
+function membershipCurrentCreditValue(rows = []) {
+  const latestByMembership = new Map();
+
+  rows.forEach((row) => {
+    const key = String(row.membership_id ?? `legacy-${row.user_id ?? ''}`);
+    const current = latestByMembership.get(key);
+    if (!current || Number(row.semana ?? 0) >= Number(current.semana ?? 0)) {
+      latestByMembership.set(key, row);
+    }
+  });
+
+  return [...latestByMembership.values()]
+    .reduce((sum, row) => sum + Math.max(0, Number(row.saldo ?? 0)), 0);
 }
 
 function renderMembershipNotices(membershipRows = []) {
@@ -3969,7 +8729,11 @@ function renderMembershipNotices(membershipRows = []) {
   const paidLateCount = membershipRows
     .filter((row) => row.estado === 'ATRASADO' && row.fecha_de_saldo)
     .length;
-  const latestBalance = Number(membershipRows[membershipRows.length - 1]?.saldo ?? 0);
+  const openBalance = membershipRows
+    .filter((row) => row.saldo_tipo === 'adeudo' || row.saldo_tipo === 'pendiente')
+    .reduce((sum, row) => sum + Math.min(0, Number(row.saldo ?? 0)), 0);
+  const currentCredit = membershipCurrentCreditValue(membershipRows);
+  const latestBalance = openBalance < 0 ? openBalance : currentCredit;
   const notices = [];
 
   if (paidLateCount > 0) {
@@ -4001,6 +8765,342 @@ function renderMembershipNotices(membershipRows = []) {
       ${notices.map((notice) => `
         <p class="db-membership-notice db-membership-notice--${escapeAttr(notice.tone)}">${escapeHTML(notice.text)}</p>
       `).join('')}
+    </div>
+  `;
+}
+
+function membershipBalanceParts(rows = []) {
+  const overdue = rows
+    .filter((row) => row.saldo_tipo === 'adeudo')
+    .reduce((sum, row) => sum + Math.min(0, Number(row.saldo ?? 0)), 0);
+  const pending = rows
+    .filter((row) => row.saldo_tipo === 'pendiente')
+    .reduce((sum, row) => sum + Math.min(0, Number(row.saldo ?? 0)), 0);
+  const credit = membershipCurrentCreditValue(rows);
+  return { overdue, pending, credit };
+}
+
+function membershipOverdueBalanceSummary(rows = []) {
+  const { overdue, credit } = membershipBalanceParts(rows);
+  if (overdue < 0) return money(Math.abs(overdue));
+  if (credit > 0) return `Crédito ${money(credit)}`;
+  return 'Sin saldo vencido';
+}
+
+function membershipPendingBalanceSummary(rows = []) {
+  const { pending } = membershipBalanceParts(rows);
+  return pending < 0 ? money(Math.abs(pending)) : 'Sin saldo pendiente';
+}
+
+function membershipSummaryTone(key, value) {
+  const normalized = normalizeCatalogValue(value);
+  if (key === 'status') {
+    if (normalized === 'CON ADEUDO') return 'danger';
+    if (normalized === 'ACTIVE') return 'success';
+    if (normalized === 'PAUSED') return 'warning';
+      if (normalized === 'CANCELLED' || normalized === 'EXPIRED') return 'danger';
+  }
+  if (key === 'overdue-balance') {
+    if (normalized.includes('SIN SALDO')) return 'success';
+    if (normalized.includes('CREDITO')) return 'success';
+    return 'danger';
+  }
+  if (key === 'pending-balance') {
+    return 'muted';
+  }
+  if (key === 'balance') {
+    if (normalized.includes('ADEUDO') || normalized.includes('ATRASO')) return 'danger';
+    if (normalized.includes('CREDITO') || normalized.includes('CORRIENTE')) return 'success';
+  }
+  if (key === 'expired') {
+    return normalized.includes('SIN MEMBRESIAS VENCIDAS') ? 'success' : 'danger';
+  }
+  return 'neutral';
+}
+
+function membershipDisplayStatus(rows = []) {
+  const latest = rows
+    .slice()
+    .sort((a, b) => compareDateOnly(a.fecha_esperada, b.fecha_esperada))
+    .at(-1);
+  if (!latest) return '-';
+  if (rows.some(rowHasOpenMembershipDebt)) return 'CON ADEUDO';
+  return latest.estado_operativo || '-';
+}
+
+function monthLabel(monthKey) {
+  if (!monthKey) return '-';
+  const [year, month] = String(monthKey).split('-').map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return String(monthKey);
+  return new Date(year, month - 1, 1).toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+}
+
+function endOfNextMonth(monthKey) {
+  const [year, month] = String(monthKey).split('-').map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+  const date = new Date(year, month + 1, 0);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function membershipRowIsLate(row) {
+  const estado = normalizeCatalogValue(row?.estado);
+  const saldoTipo = normalizeCatalogValue(row?.saldo_tipo);
+  const balanceDate = formatDateOnly(row?.fecha_de_saldo);
+  const cutoffDate = formatDateOnly(row?.week_end);
+  return estado.includes('ATRASADO')
+    || saldoTipo === 'ADEUDO'
+    || (balanceDate && balanceDate !== '-' && cutoffDate && cutoffDate !== '-' && compareDateOnly(balanceDate, cutoffDate) > 0);
+}
+
+function rowHasOpenMembershipDebt(row) {
+  return normalizeCatalogValue(row?.saldo_tipo) === 'ADEUDO' || (membershipRowIsLate(row) && !row?.fecha_de_saldo);
+}
+
+function membershipCurrentOverdueValue(rows = []) {
+  return rows
+    .filter((row) => row.saldo_tipo === 'adeudo')
+    .reduce((sum, row) => sum + Math.min(0, Number(row.saldo ?? 0)), 0);
+}
+
+function membershipIsActiveAndCurrent(rows = []) {
+  const latest = rows
+    .slice()
+    .sort((a, b) => compareDateOnly(a.fecha_esperada, b.fecha_esperada))
+    .at(-1);
+  return latest?.estado_operativo === 'ACTIVE' && !rows.some(rowHasOpenMembershipDebt);
+}
+
+function membershipDeliveryDelayCutoffs(rows = []) {
+  return rows
+    .filter((row) => membershipRowIsLate(row))
+    .map((row) => ({
+      week: Number(row.semana ?? 0),
+      cutoff: formatDateOnly(row.week_end),
+      isOpen: normalizeCatalogValue(row.saldo_tipo) === 'ADEUDO',
+    }))
+    .filter((item) => Number.isFinite(item.week) && item.week > 0 && item.cutoff && item.cutoff !== '-')
+    .sort((a, b) => compareDateOnly(a.cutoff, b.cutoff) || a.week - b.week);
+}
+
+function resolveMembershipEstimatedDelivery(deliveryBase, cutoffs = [], options = {}) {
+  let estimatedDelivery = deliveryBase;
+  const appliedCutoffs = [];
+  const afterDate = options.afterDate ? formatDateOnly(options.afterDate) : null;
+
+  if (!estimatedDelivery) return { estimatedDelivery: null, appliedCutoffs };
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const cutoff of cutoffs) {
+      if (afterDate && compareDateOnly(cutoff.cutoff, afterDate) <= 0) continue;
+      if (appliedCutoffs.some((item) => `${item.week}|${item.cutoff}` === `${cutoff.week}|${cutoff.cutoff}`)) continue;
+      if (compareDateOnly(cutoff.cutoff, estimatedDelivery) < 0) {
+        appliedCutoffs.push(cutoff);
+        estimatedDelivery = addDaysToDateOnly(estimatedDelivery, 7);
+        changed = true;
+        break;
+      }
+    }
+  }
+
+  return { estimatedDelivery, appliedCutoffs };
+}
+
+function membershipMaterialDeliveries(rows = []) {
+  const sortedRows = rows
+    .slice()
+    .sort((a, b) => Number(a.semana ?? 0) - Number(b.semana ?? 0));
+  const cycles = new Map();
+  const today = todayDateInputValue();
+  const latest = sortedRows[sortedRows.length - 1] ?? {};
+  const membershipActive = latest.estado_operativo === 'ACTIVE';
+
+  sortedRows.forEach((row) => {
+    const weekNumber = Number(row.semana ?? 0);
+    if (!Number.isFinite(weekNumber) || weekNumber < 1) return;
+    const cycleNumber = Math.floor((weekNumber - 1) / 4) + 1;
+    const current = cycles.get(cycleNumber) ?? {
+      cycleNumber,
+      rows: [],
+      sessionDates: new Set(),
+    };
+
+    current.rows.push(row);
+    (Array.isArray(row.sesiones_usadas_lista) ? row.sesiones_usadas_lista : []).forEach((date) => {
+      current.sessionDates.add(formatDateOnly(date));
+    });
+    cycles.set(cycleNumber, current);
+  });
+
+  let accumulatedDeliveryDelayWeeks = 0;
+  let accumulatedOpenOverdueWeeks = 0;
+
+  return [...cycles.values()]
+    .sort((a, b) => a.cycleNumber - b.cycleNumber)
+    .map((cycle) => {
+      const rowList = cycle.rows.sort((a, b) => Number(a.semana ?? 0) - Number(b.semana ?? 0));
+      const firstWeek = (cycle.cycleNumber - 1) * 4 + 1;
+      const lastWeek = firstWeek + 3;
+      const periodStart = rowList[0]?.fecha_esperada ?? null;
+      const periodEnd = periodStart ? addDaysToDateOnly(periodStart, 27) : null;
+      const deliveryBase = periodEnd ? addDaysToDateOnly(periodEnd, 28) : null;
+      const cycleDelayCutoffs = membershipDeliveryDelayCutoffs(rowList);
+      const cycleDelayWeeks = cycleDelayCutoffs.length;
+      accumulatedDeliveryDelayWeeks = cycleDelayWeeks > 0 ? accumulatedDeliveryDelayWeeks + cycleDelayWeeks : 0;
+      const delayCutoffs = cycleDelayCutoffs;
+      const lateWeeks = delayCutoffs.filter((item) => !item.isOpen).length;
+      const overdueWeeks = delayCutoffs.filter((item) => item.isOpen).length;
+      accumulatedOpenOverdueWeeks = overdueWeeks > 0 ? accumulatedOpenOverdueWeeks + overdueWeeks : 0;
+      const currentPendingWeeks = rowList.filter((row) => row.saldo_tipo === 'pendiente').length;
+      const deliveryDelayWeeks = accumulatedDeliveryDelayWeeks;
+      const estimatedDelivery = deliveryBase ? addDaysToDateOnly(deliveryBase, deliveryDelayWeeks * 7) : null;
+      const deliveredRow = rowList.find((row) => row.material_delivered_at);
+      const deliveredAt = deliveredRow?.material_delivered_at ?? null;
+      const deliveryNotes = deliveredRow?.material_delivery_notes ?? null;
+      let status = 'PROGRAMADA';
+      let reason = 'Entrega programada según regla contractual';
+
+      if (deliveredAt) {
+        status = 'ENTREGADA';
+        reason = deliveryNotes || `Material entregado el ${formatDisplayDateOnly(deliveredAt)}`;
+      } else if (accumulatedOpenOverdueWeeks > 0) {
+        status = 'BLOQUEADA POR ADEUDO';
+        reason = overdueWeeks > 0
+          ? `${overdueWeeks} semana${overdueWeeks === 1 ? '' : 's'} vencida${overdueWeeks === 1 ? '' : 's'} sin pagar`
+          : 'Existe saldo vencido de un ciclo anterior';
+      } else if (!membershipActive) {
+        status = 'BLOQUEADA POR MEMBRESÍA INACTIVA';
+        reason = `Membresía ${latest.estado_operativo || '-'}`;
+      } else if (deliveryDelayWeeks > 0 && compareDateOnly(today, estimatedDelivery) < 0) {
+        status = 'DIFERIDA POR ATRASO';
+        reason = `${deliveryDelayWeeks} semana${deliveryDelayWeeks === 1 ? '' : 's'} de atraso acumulado`;
+      } else if (deliveryDelayWeeks === 0 && compareDateOnly(today, deliveryBase) < 0) {
+        status = 'PROGRAMADA';
+        reason = 'Sin atrasos; entrega programada al cierre del siguiente ciclo';
+      } else {
+        status = 'DISPONIBLE';
+        reason = deliveryDelayWeeks > 0
+          ? `${deliveryDelayWeeks} semana${deliveryDelayWeeks === 1 ? '' : 's'} de atraso acumulado aplicada${deliveryDelayWeeks === 1 ? '' : 's'}`
+          : 'Fecha de entrega alcanzada';
+      }
+
+      return {
+        cycle: `Mes ${cycle.cycleNumber}`,
+        firstWeek,
+        lastWeek,
+        includedWeeks: `Semana ${firstWeek} a Semana ${lastWeek}`,
+        workedPeriod: `${formatDisplayDateOnly(periodStart)} a ${formatDisplayDateOnly(periodEnd)}`,
+        deliveryBase,
+        lateWeeks,
+        deliveryDelayWeeks,
+        delayApplied: deliveryDelayWeeks ? `${deliveryDelayWeeks} semana${deliveryDelayWeeks === 1 ? '' : 's'}` : 'Sin atraso',
+        estimatedDelivery,
+        deliveredAt,
+        deliveryNotes,
+        overdueWeeks,
+        currentPendingWeeks,
+        status,
+        sessionDates: [...cycle.sessionDates].sort(compareDateOnly),
+        reason,
+      };
+    });
+}
+
+function membershipDeliveryByWeek(rows = []) {
+  const deliveries = membershipMaterialDeliveries(rows);
+  const byWeek = new Map();
+
+  deliveries.forEach((delivery) => {
+    for (let week = delivery.firstWeek; week <= delivery.lastWeek; week += 1) {
+      byWeek.set(week, delivery);
+    }
+  });
+
+  return byWeek;
+}
+
+function applyMembershipComputedDeliveries(rows = []) {
+  if (!rows.length) return rows;
+  const deliveryByWeek = membershipDeliveryByWeek(rows);
+
+  return rows.map((row) => {
+    const delivery = deliveryByWeek.get(Number(row.semana ?? 0));
+    if (!delivery) return row;
+    return {
+      ...row,
+      material_estimated_delivery: delivery.estimatedDelivery,
+      material_delivery_base: delivery.deliveryBase,
+      material_delivery_delay_weeks: delivery.deliveryDelayWeeks,
+      material_delivery_delay_label: delivery.delayApplied,
+      material_delivery_status: delivery.status,
+      material_delivery_reason: delivery.reason,
+    };
+  });
+}
+
+function nextMembershipDeliveryText(rows = []) {
+  const deliveries = membershipMaterialDeliveries(rows);
+  if (!deliveries.length) return 'Sin material trabajado';
+  const nextDelivery = deliveries.find((item) => item.status !== 'ENTREGADA');
+  if (!nextDelivery) return 'Sin próxima entrega';
+  return `${formatDisplayDateOnly(nextDelivery.estimatedDelivery)} · ${nextDelivery.status}`;
+}
+
+function renderMembershipSummary(rows = []) {
+  if (!rows.length) return '';
+
+  const today = todayDateInputValue();
+  const sortedAsc = rows
+    .slice()
+    .sort((a, b) => compareDateOnly(a.fecha_esperada, b.fecha_esperada));
+  const latest = sortedAsc[sortedAsc.length - 1] ?? {};
+  const upcoming = sortedAsc.find((row) => compareDateOnly(row.fecha_de_sesion || row.fecha_esperada, today) >= 0);
+  const expiredMemberships = new Map();
+
+  rows.forEach((row) => {
+    if (row.estado_operativo !== 'EXPIRED') return;
+    const membershipId = row.membership_id ?? `${row.user_id}-${row.fecha_esperada}`;
+    if (expiredMemberships.has(membershipId)) return;
+    expiredMemberships.set(membershipId, {
+      start: row.membership_start_date || row.fecha_esperada,
+      end: row.membership_end_date || row.fecha_esperada,
+    });
+  });
+
+  const expiredText = expiredMemberships.size
+    ? [...expiredMemberships.values()]
+      .map((item) => `${formatDisplayDateOnly(item.start)} a ${formatDisplayDateOnly(item.end)}`)
+      .join(', ')
+    : 'Sin membresías vencidas';
+
+  const items = [
+    { key: 'status', label: 'ESTADO DE MEMBRESÍA:', value: membershipDisplayStatus(rows) },
+    { key: 'overdue-balance', label: 'SALDO VENCIDO:', value: membershipOverdueBalanceSummary(rows) },
+    { key: 'pending-balance', label: 'SALDO PENDIENTE:', value: membershipPendingBalanceSummary(rows) },
+    { key: 'next-session', label: 'PRÓXIMA SESIÓN:', value: upcoming ? formatDisplayDateOnly(upcoming.fecha_de_sesion || upcoming.fecha_esperada) : 'Sin próxima sesión' },
+    { key: 'next-delivery', label: 'PRÓXIMA ENTREGA:', value: nextMembershipDeliveryText(rows) },
+    { key: 'expired', label: 'MEMBRESÍAS VENCIDAS:', value: expiredText },
+  ];
+
+  return `
+    <div class="db-membership-summary" aria-label="Resumen de membresía">
+      ${items.map((item) => `
+        <div class="db-membership-summary__item db-membership-summary__item--${escapeAttr(membershipSummaryTone(item.key, item.value))}">
+          <span>${escapeHTML(item.label)}</span>
+          <strong>${escapeHTML(item.value)}</strong>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderMembershipSyncFooter() {
+  const message = 'Hola, quiero reportar o aclarar información de mi dashboard de membresía en Mysauth OS.';
+  return `
+    <div class="db-membership-sync">
+      <p>Sincronizado desde Mysauth OS. ¿Crees que hay un error? Contáctanos para reportarlo, solicitar aclaraciones o actualización de datos.</p>
+      <a class="db-btn-secondary db-membership-sync__button" href="${escapeAttr(buildWhatsAppLink(MEMBERSHIP_SUPPORT_WHATSAPP, message))}" target="_blank" rel="noopener noreferrer">Mensaje por WhatsApp</a>
     </div>
   `;
 }
@@ -4079,14 +9179,279 @@ function renderStatCard(label, value) {
   `;
 }
 
+function renderServerStatusCard(label, value) {
+  return `
+    <article class="db-card db-card--server-status">
+      <div class="db-card__inner">
+        <span class="section-label">${escapeHTML(label)}</span>
+        <strong>${escapeHTML(value ?? '-')}</strong>
+      </div>
+    </article>
+  `;
+}
+
+function renderServerMetricCard(label, valueLabel, value, history, unit = '%', options = {}) {
+  const numeric = numberOrNull(value);
+  const max = Number(options.max || 100);
+  const percent = numeric === null ? null : Math.max(0, Math.min(100, (numeric / max) * 100));
+  const tone = metricTone(label, numeric);
+  const chart = options.chart === 'line'
+    ? renderServerSparkline(history, unit, max)
+    : renderServerPieChart(percent, label, tone);
+  return `
+    <article class="db-card db-card--server-metric db-card--server-metric-${tone}">
+      <div class="db-card__inner">
+        <div class="db-server-metric__head">
+          <span class="section-label">${escapeHTML(label)}</span>
+          <strong>${escapeHTML(valueLabel ?? '-')}</strong>
+        </div>
+        ${chart}
+      </div>
+    </article>
+  `;
+}
+
+function renderServerPieChart(percent, label, tone) {
+  const value = percent === null ? 0 : Number(percent.toFixed(1));
+  const angle = Math.max(0, Math.min(360, value * 3.6));
+  const display = percent === null ? 'Sin dato' : `${Math.round(value)}%`;
+  return `
+    <div class="db-server-pie db-server-pie--${escapeAttr(tone)}" style="--server-pie-angle:${escapeAttr(`${angle.toFixed(1)}deg`)};" aria-label="${escapeAttr(`${label}: ${display}`)}">
+      <span>${escapeHTML(display)}</span>
+    </div>
+  `;
+}
+
+function renderServerSparkline(history, unit = '%', max = 100) {
+  const values = (history ?? []).map(numberOrNull).filter((value) => value !== null).slice(-30);
+  if (!values.length) return '<div class="db-server-sparkline db-server-sparkline--empty">Sin datos</div>';
+  const width = 120;
+  const height = 34;
+  const chartValues = values.length === 1 ? [values[0], values[0]] : values;
+  const points = chartValues.map((value, index) => {
+    const x = (index / (chartValues.length - 1)) * width;
+    const normalized = Math.max(0, Math.min(1, value / max));
+    const y = height - normalized * height;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const latest = values[values.length - 1];
+  const latestLabel = unit === 'C' ? `${latest.toFixed(1)} C` : `${Math.round(latest)}%`;
+  return `
+    <div class="db-server-sparkline" aria-label="Historial: ${escapeAttr(latestLabel)}">
+      <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" focusable="false" aria-hidden="true">
+        <polyline points="${points}" />
+      </svg>
+      <span>${escapeHTML(latestLabel)}</span>
+    </div>
+  `;
+}
+
+function metricTone(label, value) {
+  if (value === null) return 'neutral';
+  if (label === 'Temperatura') {
+    if (value >= 80) return 'danger';
+    if (value >= 65) return 'warning';
+    return 'ok';
+  }
+  if (value >= 90) return 'danger';
+  if (value >= 75) return 'warning';
+  return 'ok';
+}
+
+function numberOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function percentDisplay(value) {
+  return value === null ? 'No disponible' : `${Math.round(value)}%`;
+}
+
+function appendServerStatusSample(serverStatus) {
+  const sample = {
+    at: Date.now(),
+    cpu: numberOrNull(serverStatus.cpuPercent),
+    ram: numberOrNull(serverStatus.memory?.percent ?? serverStatus.memoryPercent),
+    disk: numberOrNull(serverStatus.diskUsage?.percent ?? serverStatus.diskPercent),
+    temperature: numberOrNull(serverStatus.temperatureCelsius),
+  };
+  const samples = Array.isArray(state.data.serverStatusSamples) ? state.data.serverStatusSamples : [];
+  state.data.serverStatusSamples = [...samples, sample].filter((item) => Date.now() - item.at < 30 * 60 * 1000).slice(-30);
+  return state.data.serverStatusSamples;
+}
+
+async function fetchServerStatus() {
+  const cache = state.data.serverStatus;
+  const cacheAgeMs = 10_000;
+  if (cache && Date.now() - cache.fetchedAt < cacheAgeMs) {
+    return cache;
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) {
+    throw new Error('Sesion de Supabase no disponible');
+  }
+
+  const headers = {
+    'Accept': 'application/json',
+    'Authorization': `Bearer ${token}`,
+  };
+  const cloudStatusSource = {
+    label: 'mysauth-cloud',
+    url: `${CLOUD_HIDDENROOM_URL.replace(/\/$/, '')}/api/server-status`,
+  };
+  const supabaseStatusSource = {
+    label: 'supabase-fallback',
+    url: `${CLOUD_FUNCTION_BASE}/server-status`,
+  };
+  const statusSources = [
+    cloudStatusSource,
+    supabaseStatusSource,
+  ];
+  let payload = null;
+  let sourceLabel = '';
+  let lastError = null;
+
+  for (const source of statusSources) {
+    try {
+      const response = await fetch(source.url, { method: 'GET', headers });
+      const responsePayload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = responsePayload?.error || `No se pudo obtener el estado del servidor (${response.status})`;
+        if (response.status === 401 || response.status === 403) throw new Error(message);
+        lastError = new Error(message);
+        continue;
+      }
+      payload = responsePayload;
+      sourceLabel = source.label;
+      break;
+    } catch (err) {
+      lastError = err;
+      if (source.label !== 'mysauth-cloud') throw err;
+    }
+  }
+
+  if (!payload) {
+    throw lastError || new Error('No se pudo obtener el estado del servidor.');
+  }
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Respuesta invalida de estado de servidor');
+  }
+
+  const serverStatus = {
+    online: Boolean(payload.online),
+    hostname: payload.hostname ?? payload.host ?? null,
+    tailscaleIp: payload.tailscale_ip ?? payload.tailscaleIp ?? payload.tailscale ?? null,
+    uptime: payload.uptime ?? payload.uptime_human ?? null,
+    uptimeSeconds: payload.uptimeSeconds ?? payload.uptime_seconds ?? null,
+    platform: payload.platform ?? null,
+    checkedAt: payload.checkedAt ?? payload.checked_at ?? new Date().toISOString(),
+    cpu: payload.cpu ?? payload.cpu_status ?? null,
+    cpuPercent: payload.cpuPercent ?? payload.cpu_percent ?? null,
+    loadAverage: payload.loadAverage ?? payload.load_average ?? null,
+    cores: payload.cores ?? null,
+    ram: payload.ram ?? payload.memory_label ?? null,
+    memory: payload.memory ?? null,
+    disk: payload.disk ?? payload.storage ?? null,
+    diskUsage: payload.diskUsage ?? payload.disk_usage ?? null,
+    temperature: payload.temperature ?? payload.temp ?? null,
+    temperatureCelsius: payload.temperatureCelsius ?? payload.temperature_celsius ?? null,
+    source: payload.source ?? sourceLabel,
+    fetchedAt: Date.now(),
+  };
+  const remoteSamples = Array.isArray(payload.samples)
+    ? payload.samples.map((sample) => ({
+      at: sample.at ?? sample.checkedAt ?? sample.checked_at ?? Date.now(),
+      cpu: numberOrNull(sample.cpu ?? sample.cpuPercent ?? sample.cpu_percent),
+      ram: numberOrNull(sample.ram ?? sample.memoryPercent ?? sample.memory_percent ?? sample.ramPercent ?? sample.ram_percent),
+      disk: numberOrNull(sample.disk ?? sample.diskPercent ?? sample.disk_percent),
+      temperature: numberOrNull(sample.temperature ?? sample.temperatureCelsius ?? sample.temperature_celsius),
+    })).filter((sample) => sample.cpu !== null || sample.ram !== null || sample.disk !== null || sample.temperature !== null).slice(-50)
+    : [];
+  if (remoteSamples.length) {
+    state.data.serverStatusSamples = remoteSamples;
+    serverStatus.samples = remoteSamples;
+  } else {
+    serverStatus.samples = appendServerStatusSample(serverStatus);
+  }
+
+  state.data.serverStatus = serverStatus;
+  return serverStatus;
+}
+
 function eventLabel(event) {
   const name = event.name ?? `Evento ${event.id}`;
   const date = event.event_date ?? event.date;
-  return date ? `${name} · ${formatDateOnly(date)}` : name;
+  return date ? `${name} · ${formatDisplayDateOnly(date)}` : name;
 }
 
 async function fetchEventFinanceOptions(context = 'finance') {
   return fetchAdminEventFinanceOptions(context);
+}
+
+function isMissingSupabaseRelationError(error) {
+  const text = String([
+    error?.code,
+    error?.status,
+    error?.message,
+    error?.details,
+  ].filter(Boolean).join(' ')).toLowerCase();
+  return text.includes('404')
+    || text.includes('42p01')
+    || text.includes('pgrst205')
+    || text.includes('could not find')
+    || text.includes('does not exist');
+}
+
+async function fetchScrumEvents() {
+  const direct = await supabase
+    .from('hr_scrum_events')
+    .select('id, event_key, name, event_date, status, can_view_scrum, can_edit_scrum')
+    .order('event_date', { ascending: false });
+
+  if (!direct.error) return direct;
+  if (!isMissingSupabaseRelationError(direct.error)) return direct;
+
+  console.info('[HR] hr_scrum_events unavailable; using event permission fallback until migrations are applied.');
+
+  if (hasRole('admin')) {
+    const adminEvents = await supabase
+      .from('events')
+      .select('id, event_key, name, event_date, status')
+      .order('event_date', { ascending: false });
+
+    return {
+      data: (adminEvents.data ?? []).map((event) => ({
+        ...event,
+        can_view_scrum: true,
+        can_edit_scrum: true,
+      })),
+      error: adminEvents.error,
+    };
+  }
+
+  if (!state.user?.user_id) return { data: [], error: null };
+
+  const assigned = await supabase
+    .from('event_user_permissions')
+    .select('event_id, can_view_scrum, can_edit_scrum, events:event_id(id, event_key, name, event_date, status)')
+    .eq('user_id', state.user.user_id)
+    .or('can_view_scrum.eq.true,can_edit_scrum.eq.true');
+
+  if (assigned.error) return { data: null, error: assigned.error };
+
+  return {
+    data: (assigned.data ?? [])
+      .map((permission) => ({
+        ...(permission.events ?? {}),
+        id: permission.events?.id ?? permission.event_id,
+        can_view_scrum: permission.can_view_scrum,
+        can_edit_scrum: permission.can_edit_scrum,
+      }))
+      .filter((event) => event.id),
+    error: null,
+  };
 }
 
 async function fetchAdminEventFinanceOptions(context = 'finance') {
@@ -4135,12 +9500,13 @@ async function fetchAllEventParticipants() {
   if (Array.isArray(state.data.eventParticipantsAll)) return state.data.eventParticipantsAll;
 
   const { data, error } = await supabase
-    .from('event_participations')
-    .select('id, event_id, user_id, participation_percent, role, notes')
+    .from('participants')
+    .select('id, user_id, role, status, notes')
+    .eq('status', 'active')
     .order('user_id', { ascending: true });
 
   if (error) {
-    console.info('[HR] event participants unavailable:', error.message);
+    console.info('[HR] participants unavailable:', error.message);
     state.data.eventParticipantsAll = [];
     return [];
   }
@@ -4150,28 +9516,7 @@ async function fetchAllEventParticipants() {
 }
 
 async function fetchParticipantsForEvent(eventId) {
-  const all = await fetchAllEventParticipants();
-  if (!eventId) return all;
-
-  const cacheKey = String(eventId);
-  state.data.eventParticipantsByEvent ??= {};
-  if (Array.isArray(state.data.eventParticipantsByEvent[cacheKey])) {
-    return state.data.eventParticipantsByEvent[cacheKey];
-  }
-
-  const { data, error } = await supabase
-    .from('event_participations')
-    .select('id, event_id, user_id, participation_percent, role, notes')
-    .eq('event_id', eventId);
-
-  if (error) {
-    console.info('[HR] event participations unavailable:', error.message);
-    state.data.eventParticipantsByEvent[cacheKey] = all;
-    return all;
-  }
-
-  state.data.eventParticipantsByEvent[cacheKey] = data ?? [];
-  return state.data.eventParticipantsByEvent[cacheKey];
+  return fetchAllEventParticipants();
 }
 
 function normalizeEventFinanceOptions(events = []) {
@@ -4189,6 +9534,15 @@ function normalizeEventFinanceOptions(events = []) {
       return key && !seen.has(key) && seen.add(key);
     })
     .sort((a, b) => (b.event_date ?? '').localeCompare(a.event_date ?? '') || a.name.localeCompare(b.name, 'es'));
+}
+
+function scrumEventForId(eventId) {
+  return (state.data.scrumEvents ?? [])
+    .find((event) => String(event.id ?? event.event_id) === String(eventId));
+}
+
+function canEditScrumEventId(eventId) {
+  return canEditScrum(scrumEventForId(eventId));
 }
 
 function hasEventKeyCache(events) {
@@ -4214,34 +9568,37 @@ async function fetchPartnerContractsForCurrentUser() {
     .order('created_at', { ascending: false });
 }
 
-async function insertRow(table, payload, successMessage) {
-  const { error } = await supabase.from(table).insert(payload);
+async function insertRow(table, payload, successMessage, options = {}) {
+  const request = options.returning
+    ? supabase.from(table).insert(payload).select(options.returning).maybeSingle()
+    : supabase.from(table).insert(payload);
+  const { data, error } = await request;
   if (error) {
     console.error(`[HR] ${table} insert:`, error);
     showToast('No se pudo guardar. Revisa permisos/RLS.', 'error');
-    return false;
+    return { ok: false, data: null };
   }
 
   showToast(successMessage, 'success');
-  return true;
+  return { ok: true, data };
 }
 
 async function handleTaskCreate(form) {
-  if (!canEditScrum()) return showToast('No tienes permiso para editar SCRUM.', 'error');
   const payload = formValues(form);
+  if (!canEditScrumEventId(payload.event_id)) return showToast('No tienes permiso para editar SCRUM en este evento.', 'error');
   payload.created_by = state.user?.user_id ?? null;
   if (payload.due_date) payload.due_date = formatDateOnly(payload.due_date);
 
-  const ok = await insertRow('tasks', payload, 'Tarea creada.');
-  if (ok) {
+  const result = await insertRow('tasks', payload, 'Tarea creada.');
+  if (result.ok) {
     form.reset();
-    navigate('collab-tasks');
+    navigate(state.activeSection || 'collab-tasks');
   }
 }
 
 async function handleTaskUpdate(form) {
-  if (!canEditScrum()) return showToast('No tienes permiso para editar SCRUM.', 'error');
   const { id, ...payload } = formValues(form);
+  if (!canEditScrumEventId(payload.event_id)) return showToast('No tienes permiso para editar SCRUM en este evento.', 'error');
   payload.updated_at = new Date().toISOString();
   if (payload.due_date) payload.due_date = formatDateOnly(payload.due_date);
 
@@ -4253,11 +9610,12 @@ async function handleTaskUpdate(form) {
   }
 
   showToast('Tarea actualizada.', 'success');
-  navigate('collab-tasks');
+  navigate(state.activeSection || 'collab-tasks');
 }
 
 async function handleTaskStatus(taskId, status) {
-  if (!canEditScrum()) return showToast('No tienes permiso para editar SCRUM.', 'error');
+  const task = (state.data.tasks ?? []).find((item) => String(item.id) === String(taskId));
+  if (!canEditScrumEventId(task?.event_id)) return showToast('No tienes permiso para editar SCRUM en este evento.', 'error');
   const { error } = await supabase
     .from('tasks')
     .update({ status, updated_at: new Date().toISOString() })
@@ -4269,11 +9627,12 @@ async function handleTaskStatus(taskId, status) {
     return;
   }
 
-  navigate('collab-tasks');
+  navigate(state.activeSection || 'collab-tasks');
 }
 
 async function handleTaskDelete(taskId) {
-  if (!canEditScrum()) return showToast('No tienes permiso para editar SCRUM.', 'error');
+  const task = (state.data.tasks ?? []).find((item) => String(item.id) === String(taskId));
+  if (!canEditScrumEventId(task?.event_id)) return showToast('No tienes permiso para editar SCRUM en este evento.', 'error');
   if (!window.confirm('Borrar esta tarea?')) return;
 
   const { error } = await supabase.from('tasks').delete().eq('id', taskId);
@@ -4284,12 +9643,98 @@ async function handleTaskDelete(taskId) {
   }
 
   showToast('Tarea borrada.', 'success');
-  navigate('collab-tasks');
+  navigate(state.activeSection || 'collab-tasks');
 }
 
+async function prepareDownloadValues(form, values) {
+  const sourceType = String(values.source_type || 'link');
+  const releaseMode = String(values.release_mode || 'immediate');
+  values.release_mode = releaseMode === 'membership_delivery' ? 'membership_delivery' : 'immediate';
+
+  if (values.release_mode === 'membership_delivery') {
+    const membershipId = String(values.membership_id ?? '').trim();
+    const cycleNumber = Number(values.membership_cycle_number ?? 0);
+    if (!membershipId) {
+      showToast('Selecciona la membresía correspondiente a esta descarga.', 'error');
+      return false;
+    }
+    if (!Number.isFinite(cycleNumber) || cycleNumber < 1) {
+      showToast('Selecciona el ciclo de entrega.', 'error');
+      return false;
+    }
+
+    let membership = (state.data.membershipOpsOptions ?? [])
+      .find((item) => String(item.id) === membershipId);
+    if (!membership) {
+      const { data, error } = await supabase
+        .from('memberships')
+        .select('id, user_id')
+        .eq('id', membershipId)
+        .maybeSingle();
+      if (error || !data) {
+        console.error('[HR] download membership lookup:', error);
+        showToast('No se pudo validar la membresía seleccionada.', 'error');
+        return false;
+      }
+      membership = data;
+    }
+
+    const { data: delivery, error: deliveryError } = await supabase
+      .from('membership_material_deliveries')
+      .select('id')
+      .eq('membership_id', membershipId)
+      .eq('user_id', membership.user_id)
+      .eq('cycle_number', cycleNumber)
+      .maybeSingle();
+
+    if (deliveryError) {
+      console.error('[HR] download delivery lookup:', deliveryError);
+      showToast('No se pudo validar el entregable de membresía.', 'error');
+      return false;
+    }
+
+    values.user_id = membership.user_id;
+    values.membership_id = membershipId;
+    values.membership_cycle_number = cycleNumber;
+    values.membership_delivery_id = delivery?.id ?? null;
+  } else {
+    values.membership_id = null;
+    values.membership_delivery_id = null;
+    values.membership_cycle_number = null;
+  }
+
+  if (sourceType === 'file') {
+    const file = form.querySelector('[data-download-file]')?.files?.[0];
+    if (!file) {
+      showToast('Selecciona un archivo para subir a Cloud.', 'error');
+      return false;
+    }
+    if (!Number.isFinite(file.size) || file.size <= 0) {
+      showToast('El archivo esta vacio. Vuelve a exportarlo o elige otro archivo.', 'error');
+      return false;
+    }
+    const userId = String(values.user_id ?? '').trim();
+    if (!userId) {
+      showToast('Selecciona un usuario valido.', 'error');
+      return false;
+    }
+    const targetRoot = getUserDownloadCloudPath(userId);
+    setDownloadUploadProgress(form, 8, 'Validando archivo');
+    setDownloadUploadProgress(form, 24, 'Preparando carpeta');
+    await ensureCloudFolderPath(targetRoot);
+    setDownloadUploadProgress(form, 48, 'Subiendo archivo');
+    const upload = await uploadCloudFileToPath(file, targetRoot);
+    setDownloadUploadProgress(form, 78, 'Registrando descarga');
+    values.storage_path = upload?.url || buildCloudFileFallbackUrl(targetRoot, file.name);
+  }
+
+  return true;
+}
 async function handleErpForm(form) {
   const type = form.dataset.form;
   const values = formValues(form);
+  const operationAction = form.dataset.operationAction || 'create';
+  const shouldShareReceipt = operationAction === 'create-share';
 
   if (type === 'user-merge') {
     await handleAdminUserMerge(form, values);
@@ -4306,17 +9751,61 @@ async function handleErpForm(form) {
     return;
   }
 
+  if (type === 'membership-cancel') {
+    await handleMembershipCancel(form, values);
+    return;
+  }
+
+  if (type === 'membership-delivery') {
+    await handleMembershipDelivery(form, values);
+    return;
+  }
+
+  if (type === 'membership-session-notes') {
+    await handleMembershipSessionNotes(form, values);
+    return;
+  }
+
+  if (type === 'download-create') {
+    const isFileDownload = String(values.source_type || 'link') === 'file';
+    if (isFileDownload) {
+      setOperationFormPending(form, true, 'Subiendo...');
+    }
+    let prepared = false;
+    let uploadFailed = false;
+    try {
+      prepared = await prepareDownloadValues(form, values);
+    } catch (err) {
+      uploadFailed = true;
+      console.error('[HR] download upload:', err);
+      if (isFileDownload) setDownloadUploadProgress(form, 100, 'Error al subir');
+      showToast(err?.message || 'No se pudo preparar la descarga.', 'error');
+      return;
+    } finally {
+      if (!prepared) {
+        setOperationFormPending(form, false);
+        if (isFileDownload && !uploadFailed) resetDownloadUploadProgress(form);
+      }
+    }
+    if (!prepared) return;
+  }
+
+  if (type === 'beat-sale-create') {
+    await handleBeatSaleCreate(form, values);
+    return;
+  }
+
   if ('user_id' in values && !values.user_id) {
     showToast('Selecciona un usuario valido.', 'error');
     return;
   }
 
-  const numericKeys = ['amount', 'cost'];
+  const numericKeys = ['amount', 'cost', 'weekly_price', 'sessions_per_week', 'membership_cycle_number'];
   numericKeys.forEach((key) => {
     if (values[key] != null) values[key] = Number(values[key]);
   });
 
-  ['date', 'session_date', 'due_date', 'event_date'].forEach((key) => {
+  ['date', 'session_date', 'due_date', 'event_date', 'start_date', 'end_date'].forEach((key) => {
     if (values[key]) values[key] = formatDateOnly(values[key]);
   });
 
@@ -4331,13 +9820,58 @@ async function handleErpForm(form) {
     delete values.concept_custom;
   }
   if (type === 'session-create') {
-    values.type = canonicalSessionTypeValue(values.type);
+    values.type = canonicalServiceValue(values.type);
     if (isMembershipValue(values.type)) {
       values.type = MEMBERSHIP_CANONICAL;
       values.concept = MEMBERSHIP_CANONICAL;
       values.cost = MEMBERSHIP_WEEKLY_COST;
     }
     if (!values.status) values.status = 'sin apartado';
+  }
+  if (type === 'membership-create') {
+    values.status = String(values.status || 'active').toLowerCase();
+    values.weekly_price = Number(values.weekly_price || MEMBERSHIP_WEEKLY_COST);
+    values.sessions_per_week = Number(values.sessions_per_week || 1);
+    if (!values.end_date) values.end_date = null;
+  }
+  if (type === 'payment-method-create' || type === 'service-create') {
+    values.key = String(values.key ?? '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+    values.name = String(values.name ?? '').trim();
+    values.status = String(values.status || 'active').toLowerCase();
+    values.sort_order = Number(values.sort_order || 100);
+    if (type === 'service-create') {
+      values.show_in_finance = values.show_in_finance === 'true' || values.show_in_finance === 'on';
+      values.show_in_session = values.show_in_session === 'true' || values.show_in_session === 'on';
+      values.session_cost = values.session_cost == null ? null : Number(values.session_cost);
+      values.session_minutes = values.session_minutes == null ? null : Number(values.session_minutes);
+      if (!values.show_in_session) {
+        values.session_cost = null;
+        values.session_minutes = null;
+      }
+    }
+    if (!values.key || !values.name) {
+      showToast('Ingresa una clave y nombre validos.', 'error');
+      return;
+    }
+  }
+
+  if (type === 'finance-entity-create') {
+    values.entity_key = String(values.entity_key ?? '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    values.name = String(values.name ?? '').trim();
+    values.entity_type = String(values.entity_type || 'producer').toLowerCase();
+    values.status = String(values.status || 'active').toLowerCase();
+    values.notes = String(values.notes ?? '').trim() || null;
+
+    if (!values.entity_key || !values.name) {
+      showToast('Ingresa una clave y nombre válidos.', 'error');
+      return;
+    }
   }
 
   if (type === 'user-create') {
@@ -4350,30 +9884,306 @@ async function handleErpForm(form) {
   if (type === 'download-create' || type === 'contract-create') {
     delete operationPayload.username;
   }
+  if (type === 'download-create') {
+    delete operationPayload.source_type;
+    delete operationPayload.download_file;
+  }
 
   const map = {
     'transaction-create': ['transactions', withTargetUsername(operationPayload), 'Transaccion creada.'],
     'session-create': ['sessions', withTargetUsername(operationPayload), 'Sesion creada.'],
+    'membership-create': ['memberships', withTargetUsername(operationPayload), 'Membresía creada.'],
     'download-create': ['downloads', operationPayload, 'Descarga creada.'],
+    'beat-sale-create': ['store_products', operationPayload, 'Beat publicado.'],
     'contract-create': ['contracts', operationPayload, 'Contrato creado.'],
     'event-create': ['events', operationPayload, 'Evento creado.'],
+    'finance-entity-create': ['finance_entities', operationPayload, 'Entidad financiera creada.'],
+    'payment-method-create': ['payment_methods', operationPayload, 'Metodo de pago creado.'],
+    'service-create': ['services', operationPayload, 'Servicio creado.'],
   };
 
   const config = map[type];
   if (!config) return;
 
-  const ok = await insertRow(config[0], config[1], config[2]);
-  if (ok) {
+  const result = await insertRow(config[0], config[1], config[2], { returning: 'id' });
+  if (result.ok) {
     if (type === 'event-create') {
       // Fuerza a que los selectores y permisos usen el evento recién creado.
       state.data.financeEvents = null;
       state.data.collabFinanceEvents = null;
       state.data.permissionEvents = null;
-    } else {
-      await handleOperationReceipt(form, { silent: true });
+    } else if (type === 'finance-entity-create') {
+      state.data.financeEntities = null;
+    } else if (type === 'payment-method-create') {
+      state.data.paymentMethods = null;
+    } else if (type === 'service-create') {
+      state.data.services = null;
+      const nextServiceForm = operationPayload.show_in_session && !operationPayload.show_in_finance ? 'session' : 'transaction';
+      setPersistedDataValue('erpOpsForm', nextServiceForm);
+      form.reset();
+      delete form.dataset.operationAction;
+      navigate('erp-ops');
+      return;
+    } else if (shouldShareReceipt) {
+      await createUserNotification(
+        operationPayload.user_id,
+        operationNotificationMessage(type, operationPayload),
+        'success'
+      );
+      await handleOperationReceipt(form, { sharePreferred: true });
+    }
+    if (type === 'download-create' && String(values.source_type || 'link') === 'file') {
+      setDownloadUploadProgress(form, 100, 'Descarga creada');
     }
     form.reset();
+    if (type === 'download-create') {
+      updateDownloadMembershipFields(form);
+      setOperationFormPending(form, false);
+      setTimeout(() => resetDownloadUploadProgress(form), 1200);
+    }
+    delete form.dataset.operationAction;
+  } else if (type === 'download-create') {
+    if (String(values.source_type || 'link') === 'file') {
+      setDownloadUploadProgress(form, 100, 'Error al guardar');
+    }
+    setOperationFormPending(form, false);
   }
+}
+
+async function updateMembershipStatusAction({ membershipId, status, endDate, notes, successMessage, refreshSection = state.activeSection || 'admin-table-editor' }) {
+  if (!requireAdminMutation()) return false;
+  const cleanMembershipId = String(membershipId ?? '').trim();
+  if (!cleanMembershipId) {
+    showToast('Selecciona una membresia.', 'error');
+    return false;
+  }
+
+  const payload = {
+    status,
+    end_date: endDate ? formatDateOnly(endDate) : todayDateInputValue(),
+  };
+  const cleanNotes = String(notes ?? '').trim();
+  if (cleanNotes) payload.notes = cleanNotes;
+
+  const { error } = await supabase
+    .from('memberships')
+    .update(payload)
+    .eq('id', cleanMembershipId);
+
+  if (error) {
+    console.error('[HR] membership status action:', error);
+    showToast('No se pudo actualizar la membresia.', 'error');
+    return false;
+  }
+
+  showToast(successMessage || 'Membresia actualizada.', 'success');
+  navigate(refreshSection);
+  return true;
+}
+
+async function handleMembershipRowStatusAction(action, encodedRow) {
+  let row = null;
+  try {
+    row = JSON.parse(decodeURIComponent(encodedRow || ''));
+  } catch (error) {
+    console.error('[HR] membership row parse:', error);
+  }
+
+  if (!row?.id) {
+    showToast('No se pudo leer la membresia seleccionada.', 'error');
+    return;
+  }
+
+  const isCancel = action === 'cancel';
+  const status = isCancel ? 'cancelled' : 'expired';
+  const currentStatus = String(row.status ?? '').toLowerCase();
+  if (currentStatus === status) {
+    showToast(isCancel ? 'La membresia ya esta cancelada.' : 'La membresia ya esta finalizada.', 'info');
+    return;
+  }
+
+  const label = isCancel ? 'Cancelar' : 'Finalizar';
+  if (!window.confirm(label + ' esta membresia? Se marcara con fecha de termino de hoy.')) return;
+
+  const existingNotes = String(row.notes ?? '').trim();
+  const actionNote = todayDateInputValue() + ' - Membresia ' + (isCancel ? 'cancelada' : 'finalizada') + ' desde BB.DD.';
+  const notes = existingNotes ? existingNotes + '\n' + actionNote : actionNote;
+
+  await updateMembershipStatusAction({
+    membershipId: row.id,
+    status,
+    endDate: todayDateInputValue(),
+    notes,
+    successMessage: isCancel ? 'Membresia cancelada.' : 'Membresia finalizada.',
+    refreshSection: 'admin-table-editor',
+  });
+}
+async function handleMembershipCancel(form, values = formValues(form)) {
+  const membershipId = String(values.membership_id ?? '').trim();
+  if (!membershipId) {
+    showToast('Selecciona una membresía.', 'error');
+    return;
+  }
+
+  const payload = {
+    status: 'cancelled',
+    end_date: values.end_date ? formatDateOnly(values.end_date) : todayDateInputValue(),
+  };
+  const notes = String(values.notes ?? '').trim();
+  if (notes) payload.notes = notes;
+
+  const { error } = await supabase
+    .from('memberships')
+    .update(payload)
+    .eq('id', membershipId);
+
+  if (error) {
+    console.error('[HR] membership cancel:', error);
+    showToast('No se pudo cancelar la membresía.', 'error');
+    return;
+  }
+
+  showToast('Membresía cancelada.', 'success');
+  form.reset();
+  navigate('erp-ops');
+}
+
+async function handleMembershipDelivery(form, values = formValues(form)) {
+  if (!hasRole('admin')) {
+    showToast('Acceso no autorizado.', 'error');
+    return;
+  }
+  const staySection = form.dataset.staySection;
+  const ok = await saveMembershipDeliveryValues(values);
+  if (!ok) return;
+
+  showToast('Entrega de material guardada.', 'success');
+  if (staySection === 'admin-table-editor') {
+    navigate('admin-table-editor');
+  } else {
+    form.reset();
+    navigate('erp-ops');
+  }
+}
+
+async function saveMembershipDeliveryValues(values = {}) {
+  const membershipId = String(values.membership_id ?? '').trim() || null;
+  const cycleNumber = Number(values.cycle_number ?? 0);
+  const deliveredAt = values.delivered_at ? formatDateOnly(values.delivered_at) : null;
+  let userId = String(values.user_id ?? '').trim();
+
+  if (!Number.isFinite(cycleNumber) || cycleNumber < 1) {
+    showToast('Ingresa un ciclo valido.', 'error');
+    return false;
+  }
+
+  if (!deliveredAt) {
+    showToast('Ingresa la fecha real de entrega.', 'error');
+    return false;
+  }
+
+  if (membershipId) {
+    const cachedMembership = (state.data.membershipOpsOptions ?? [])
+      .find((membership) => String(membership.id) === membershipId);
+    if (cachedMembership?.user_id) {
+      userId = String(cachedMembership.user_id);
+    } else {
+      const { data, error } = await supabase
+        .from('memberships')
+        .select('user_id')
+        .eq('id', membershipId)
+        .maybeSingle();
+      if (error) {
+        console.error('[HR] membership delivery membership lookup:', error);
+        showToast('No se pudo validar la membresía.', 'error');
+        return false;
+      }
+      if (data?.user_id) userId = String(data.user_id);
+    }
+  }
+
+  if (!userId) {
+    showToast('Selecciona un usuario o una membresía.', 'error');
+    return false;
+  }
+
+  const payload = {
+    membership_id: membershipId,
+    user_id: userId,
+    cycle_number: cycleNumber,
+    delivered_at: deliveredAt,
+  };
+  if (values.note_scope === 'delivery' && Object.prototype.hasOwnProperty.call(values, 'notes')) {
+    payload.notes = String(values.notes ?? '').trim() || null;
+  }
+
+  let existingQuery = supabase
+    .from('membership_material_deliveries')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('cycle_number', cycleNumber)
+    .limit(1);
+
+  existingQuery = membershipId
+    ? existingQuery.eq('membership_id', membershipId)
+    : existingQuery.is('membership_id', null);
+
+  const { data: existingRows, error: lookupError } = await existingQuery;
+  if (lookupError) {
+    console.error('[HR] membership delivery lookup:', lookupError);
+    showToast('No se pudo revisar la entrega existente.', 'error');
+    return false;
+  }
+
+  const existingId = existingRows?.[0]?.id;
+  const request = existingId
+    ? supabase.from('membership_material_deliveries').update(payload).eq('id', existingId)
+    : supabase.from('membership_material_deliveries').insert(payload);
+
+  const { error } = await request;
+  if (error) {
+    console.error('[HR] membership delivery save:', error);
+    showToast('No se pudo guardar la entrega de material.', 'error');
+    return false;
+  }
+
+  return true;
+}
+
+async function handleMembershipSessionNotes(form, values = formValues(form)) {
+  if (!hasRole('admin')) {
+    showToast('Acceso no autorizado.', 'error');
+    return;
+  }
+
+  const ok = await saveMembershipSessionNotesValues(values);
+  if (!ok) return;
+
+  showToast('Notas de sesión guardadas.', 'success');
+  if (form.dataset.staySection === 'admin-table-editor') {
+    navigate('admin-table-editor');
+  }
+}
+
+async function saveMembershipSessionNotesValues(values = {}) {
+  const sessionId = String(values.session_id ?? '').trim();
+  if (!sessionId) {
+    showToast('Esta fila no tiene una sesión registrada para editar.', 'error');
+    return false;
+  }
+
+  const { error } = await supabase
+    .from('sessions')
+    .update({ notes: String(values.notes ?? '').trim() || null })
+    .eq('id', sessionId);
+
+  if (error) {
+    console.error('[HR] membership session notes save:', error);
+    showToast('No se pudieron guardar las notas de la sesión.', 'error');
+    return false;
+  }
+
+  return true;
 }
 
 async function handleAdminUserMerge(form, values = formValues(form)) {
@@ -4392,7 +10202,7 @@ async function handleAdminUserMerge(form, values = formValues(form)) {
   }
 
   const confirmed = window.confirm(
-    `Advertencia: vas a conectar el Auth/email de ${duplicateEmail} al User ID historico ${keepUserId}.\n\nSe conservaran los datos operativos del User ID historico. No se importara el historial del perfil duplicado. ¿Confirmas la fusion?`
+    `Advertencia: vas a vincular el historico operativo de ${keepUserId} al perfil con Auth/email ${duplicateEmail}.\n\nNo se modificaran Auth ni public.users. Solo se re-asignaran operaciones, sesiones, transacciones, premios, contratos, descargas y puntuaciones. Confirmas la fusion?`
   );
 
   if (!confirmed) return;
@@ -4415,10 +10225,10 @@ async function handleAdminUserMerge(form, values = formValues(form)) {
     }
 
     state.data.users = null;
-    showToast('Usuarios fusionados.', 'success');
+    showToast('Historico operativo vinculado.', 'success');
     if (holder) {
       holder.hidden = false;
-      holder.textContent = `Fusion realizada. User ID conservado: ${data?.kept_user_id ?? keepUserId}. Email activo: ${data?.email ?? duplicateEmail}.`;
+      holder.textContent = `Fusion realizada sin modificar Auth ni public.users. Historico: ${data?.historical_user_id ?? keepUserId}. User ID con Auth: ${data?.target_user_id ?? '-'}. Email activo: ${data?.email ?? duplicateEmail}.`;
     }
     form.reset();
   } catch (err) {
@@ -4439,35 +10249,31 @@ async function handleEventParticipantCreate(form, values = formValues(form)) {
   }
 
   const userId = String(values.user_id ?? '').trim();
-  const eventId = String(values.event_id ?? '').trim();
-  if (!userId || !eventId) {
-    showToast('Selecciona evento y usuario participante.', 'error');
+  if (!userId) {
+    showToast('Selecciona un usuario participante.', 'error');
     return;
   }
 
-  const percent = values.participation_percent == null ? null : Number(values.participation_percent);
   const participationPayload = {
-    event_id: eventId,
     user_id: userId,
-    participation_percent: Number.isFinite(percent) ? percent : null,
     role: values.role ?? null,
+    status: values.status ?? 'active',
     notes: values.notes ?? null,
   };
 
   const { error: participationError } = await supabase
-    .from('event_participations')
-    .upsert(participationPayload, { onConflict: 'event_id,user_id' });
+    .from('participants')
+    .upsert(participationPayload, { onConflict: 'user_id' });
 
   if (participationError) {
-    console.error('[HR] event participation insert:', participationError);
-    showToast('No se pudo guardar el participante del evento.', 'error');
+    console.error('[HR] participant upsert:', participationError);
+    showToast('No se pudo guardar el participante.', 'error');
     return;
   } else {
-    showToast('Participante vinculado al evento.', 'success');
+    showToast('Participante guardado.', 'success');
   }
 
   state.data.eventParticipantsAll = null;
-  state.data.eventParticipantsByEvent = {};
   form.reset();
   navigate('erp-ops');
 }
@@ -4507,7 +10313,8 @@ async function handleEventMovementCreate(form, values = formValues(form)) {
     hidden_room_share: signedHiddenRoomShare,
     from_user_id: values.from_user_id ?? null,
     to_user_id: values.to_user_id ?? null,
-    owner_user_id: values.owner_user_id ?? null,
+    owner_user_id: null,
+    owner_entity_id: values.owner_entity_id ?? null,
     payment_method: values.payment_method ?? null,
     movement_date: movementDate,
     notes: values.notes ?? null,
@@ -4520,8 +10327,8 @@ async function handleEventMovementCreate(form, values = formValues(form)) {
     'M.A.I.': signedHiddenRoomShare,
   };
 
-  const ok = await insertRow('hr_transactions', payload, 'Movimiento financiero creado.');
-  if (ok) {
+  const result = await insertRow('hr_transactions', payload, 'Movimiento financiero creado.');
+  if (result.ok) {
     form.reset();
     state.data.financeEvents = null;
     state.data.collabFinanceEvents = null;
@@ -4598,6 +10405,168 @@ async function handleEventMovementEdit(encodedTx) {
   navigate(state.activeSection);
 }
 
+async function handleEventFinanceTableUpdate(form) {
+  if (!requireAdminMutation()) return;
+
+  const values = formValues(form);
+  const config = TABLE_EDITOR_CONFIG.hr_transactions;
+  let original;
+  try {
+    original = JSON.parse(decodeURIComponent(values.original));
+  } catch (err) {
+    console.error('[HR] event finance table original parse:', err);
+    showToast('No se pudo leer la fila original.', 'error');
+    return;
+  }
+
+  const payload = {};
+  config.editableFields.forEach((field) => {
+    if (field in values) payload[field] = values[field];
+  });
+
+  if ('amount' in payload) {
+    const amount = Number(payload.amount);
+    if (!Number.isFinite(amount)) {
+      showToast('Monto invalido.', 'error');
+      return;
+    }
+    payload.amount = amount;
+  }
+
+  if ('hidden_room_share' in payload) {
+    const hiddenRoomShare = Number(payload.hidden_room_share);
+    if (!Number.isFinite(hiddenRoomShare)) {
+      showToast('M.A.I. invalido.', 'error');
+      return;
+    }
+    payload.hidden_room_share = hiddenRoomShare;
+    payload['M.A.I.'] = hiddenRoomShare;
+  }
+
+  if ('movement_type' in payload) {
+    payload.type = movementTypeConfig(payload.movement_type).legacyType;
+  }
+  if ('payment_method' in payload) {
+    payload.payment_method = payload.payment_method?.trim() || null;
+    payload.via = payload.payment_method;
+  }
+  if ('movement_date' in payload) {
+    payload.movement_date = payload.movement_date ? formatDateOnly(payload.movement_date) : null;
+    payload.date = payload.movement_date;
+  }
+  ['concept', 'from_user_id', 'to_user_id', 'owner_entity_id', 'notes'].forEach((field) => {
+    if (field in payload) payload[field] = payload[field]?.trim() || null;
+  });
+
+  const ok = await saveAdminTableRow('hr_transactions', config, original, payload, { confirmUserId: false });
+  if (ok) {
+    state.data.financeEvents = null;
+    state.data.collabFinanceEvents = null;
+    showToast('Movimiento actualizado.', 'success');
+    navigate(state.activeSection);
+  }
+}
+function operationReceiptFormTypeForTable(tableName) {
+  const formTypes = {
+    transactions: 'transaction-create',
+    sessions: 'session-create',
+    downloads: 'download-create',
+    contracts: 'contract-create',
+  };
+  return formTypes[tableName] ?? '';
+}
+
+function operationReceiptValuesFromRow(tableName, row = {}) {
+  if (tableName === 'transactions') {
+    return {
+      user_id: row.user_id,
+      username: row.username,
+      date: row.date,
+      type: row.type,
+      concept: row.concept,
+      amount: row.amount,
+      via: row.via,
+      id_trans: row.id_trans,
+      notes: row.notes,
+    };
+  }
+
+  if (tableName === 'sessions') {
+    return {
+      user_id: row.user_id,
+      username: row.username,
+      session_date: row.session_date,
+      type: row.type,
+      status: row.status,
+      concept: row.concept,
+      hour: row.hour,
+      sc_end: row.sc_end,
+      cost: row.cost,
+      promo: row.promo,
+      notes: row.notes,
+    };
+  }
+
+  if (tableName === 'downloads') {
+    return {
+      user_id: row.user_id,
+      name: row.name,
+      storage_path: row.storage_path,
+      release_mode: row.release_mode,
+      membership_id: row.membership_id,
+      membership_cycle_number: row.membership_cycle_number,
+      notes: row.notes,
+    };
+  }
+
+  if (tableName === 'contracts') {
+    return {
+      user_id: row.user_id,
+      contract: row.contract,
+      notes: row.notes,
+    };
+  }
+
+  return {};
+}
+
+function buildOperationReceiptForm(formType, values = {}) {
+  const form = document.createElement('form');
+  form.dataset.form = formType;
+
+  Object.entries(values).forEach(([name, value]) => {
+    if (value === undefined || value === null) return;
+    const input = document.createElement('input');
+    input.name = name;
+    input.value = String(value);
+    form.appendChild(input);
+  });
+
+  return form;
+}
+
+function parseAdminTableRowOriginal(encodedRow) {
+  try {
+    return JSON.parse(decodeURIComponent(encodedRow));
+  } catch (err) {
+    console.error('[HR] admin row receipt parse:', err);
+    showToast('No se pudo leer la operacion seleccionada.', 'error');
+    return null;
+  }
+}
+
+async function handleAdminOperationReceiptShare(tableName, encodedRow) {
+  if (!adminTableRowSupportsReceipt(tableName)) return;
+
+  const row = parseAdminTableRowOriginal(encodedRow);
+  if (!row) return;
+
+  const formType = operationReceiptFormTypeForTable(tableName);
+  const values = operationReceiptValuesFromRow(tableName, row);
+  const form = buildOperationReceiptForm(formType, values);
+  await handleOperationReceipt(form, { sharePreferred: true });
+}
+
 function operationReceiptTitle(formType) {
   const labels = {
     'transaction-create': 'Comprobante de transaccion',
@@ -4606,6 +10575,25 @@ function operationReceiptTitle(formType) {
     'contract-create': 'Comprobante de contrato',
   };
   return labels[formType] ?? 'Comprobante de operacion';
+}
+
+function operationNotificationMessage(formType, values = {}) {
+  if (formType === 'download-create' && values.release_mode === 'membership_delivery') {
+    return `Se preparó una descarga para tu membresía. Aparecerá en Descargas cuando se entregue el material del Mes ${values.membership_cycle_number ?? '-'}.`;
+  }
+
+  const labels = {
+    'transaction-create': 'Se registró una transacción en tu cuenta.',
+    'session-create': 'Se registró una sesión en tu cuenta.',
+    'download-create': 'Se agregó una descarga a tu cuenta.',
+    'contract-create': 'Se agregó un contrato a tu cuenta.',
+  };
+  const base = labels[formType] ?? 'Se registró una operación en tu cuenta.';
+  const amount = values.amount ? ` Monto: ${money(values.amount)}.` : '';
+  const date = values.date || values.session_date
+    ? ` Fecha: ${formatDisplayDateOnly(values.date || values.session_date)}.`
+    : '';
+  return `${base}${amount}${date}`;
 }
 
 function operationReceiptRows(form) {
@@ -4620,7 +10608,7 @@ function operationReceiptRows(form) {
 
   if (form.dataset.form === 'transaction-create') {
     rows.push(
-      ['Fecha', values.date ? formatDateOnly(values.date) : formatDateOnly(new Date().toISOString())],
+      ['Fecha', values.date ? formatDisplayDateOnly(values.date) : formatDisplayDateOnly(new Date().toISOString())],
       ['Tipo', values.type || '-'],
       ['Concepto', values.concept || '-'],
       ['Monto', money(values.amount || 0)],
@@ -4632,7 +10620,7 @@ function operationReceiptRows(form) {
   if (form.dataset.form === 'session-create') {
     const status = values.status || 'sin apartado';
     rows.push(
-      ['Fecha', values.session_date ? formatDateOnly(values.session_date) : '-'],
+      ['Fecha', values.session_date ? formatDisplayDateOnly(values.session_date) : '-'],
       ['Servicio', sessionConfig?.label || values.type || '-'],
       ['Status', status],
       ['Concepto', values.concept || '-'],
@@ -4647,8 +10635,14 @@ function operationReceiptRows(form) {
     rows.push(
       ['Nombre', values.name || '-'],
       ['Ruta storage', values.storage_path || '-'],
-      ['Tipo', values.type || '-']
+      ['Liberación', values.release_mode === 'membership_delivery' ? 'Entregable de membresía' : 'Inmediata']
     );
+    if (values.release_mode === 'membership_delivery') {
+      rows.push(
+        ['Membresía', values.membership_id || '-'],
+        ['Ciclo', values.membership_cycle_number || '-']
+      );
+    }
   }
 
   if (form.dataset.form === 'contract-create') {
@@ -4658,6 +10652,32 @@ function operationReceiptRows(form) {
   if (values.notes) rows.push(['Notas', values.notes]);
   rows.push(['Terminos y condiciones', 'Al agendar aceptas que leiste los terminos y condiciones del servicio adquirido, disponibles en hiddenroom.mx/docs']);
   return rows;
+}
+
+function downloadBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+async function shareReceiptBlob(blob, fileName, title) {
+  if (!navigator.share || typeof File === 'undefined') return false;
+
+  const file = new File([blob], fileName, { type: 'application/pdf' });
+  if (navigator.canShare && !navigator.canShare({ files: [file] })) return false;
+
+  await navigator.share({
+    title: `Hidden Room - ${title}`,
+    text: `Comprobante ${title}`,
+    files: [file],
+  });
+  return true;
 }
 
 async function handleOperationReceipt(form, options = {}) {
@@ -4685,15 +10705,24 @@ async function handleOperationReceipt(form, options = {}) {
 
     const fileName = `hidden-room-${title.toLowerCase().replace(/[^a-z0-9]+/gi, '-')}-${new Date().toISOString().slice(0, 10)}.pdf`;
     const blob = doc.output('blob');
-    const file = new File([blob], fileName, { type: 'application/pdf' });
 
-    if (!options.silent && navigator.canShare?.({ files: [file] }) && navigator.share) {
-      await navigator.share({ title: `Hidden Room - ${title}`, files: [file] });
-      if (!options.silent) showToast('Comprobante compartido.', 'success');
-      return;
+    if (options.sharePreferred) {
+      try {
+        const shared = await shareReceiptBlob(blob, fileName, title);
+        if (shared) {
+          if (!options.silent) showToast('Comprobante listo para compartir.', 'success');
+          return;
+        }
+      } catch (shareError) {
+        if (shareError?.name === 'AbortError') {
+          if (!options.silent) showToast('Compartir comprobante cancelado.', 'info');
+          return;
+        }
+        console.info('[HR] receipt share fallback:', shareError?.message ?? shareError);
+      }
     }
 
-    doc.save(fileName);
+    downloadBlob(blob, fileName);
     if (!options.silent) showToast('Comprobante PDF descargado.', 'success');
   } catch (err) {
     console.error('[HR] operation receipt:', err);
@@ -4726,7 +10755,8 @@ async function handleAdminUserCreate(values) {
 
     if (error) {
       console.error('[HR] admin-create-user function:', error);
-      showToast(error.message || 'No se pudo crear el usuario.', 'error');
+      const detail = await getFunctionErrorMessage(error);
+      showToast(detail || 'No se pudo crear el usuario.', 'error');
       return false;
     }
 
@@ -4741,6 +10771,18 @@ async function handleAdminUserCreate(values) {
   }
 }
 
+async function getFunctionErrorMessage(error) {
+  const fallback = error?.message || '';
+  const response = error?.context;
+  if (!response || typeof response.clone !== 'function') return fallback;
+
+  try {
+    const payload = await response.clone().json();
+    return payload?.error || payload?.message || fallback;
+  } catch {
+    return fallback;
+  }
+}
 function showAdminCreatedUserResult(values, result) {
   const holder = document.querySelector('[data-admin-create-user-result]');
   const tempPassword = result?.temp_password;
@@ -4798,6 +10840,11 @@ async function handleAccountUpdate(form) {
   const email = values.email?.trim();
   const password = values.password;
   const passwordConfirm = values.password_confirm;
+  const rawIgUsername = values.ig_username ?? '';
+  const igUsername = cleanInstagramUsername(rawIgUsername);
+  const currentIgUsername = cleanInstagramUsername(state.user?.ig_username);
+  const emailChanged = email !== (state.user?.email ?? '');
+  const igChanged = igUsername !== currentIgUsername;
 
   if (!email) {
     showToast('Ingresa un email valido.', 'error');
@@ -4809,37 +10856,68 @@ async function handleAccountUpdate(form) {
     return;
   }
 
+  if (rawIgUsername.trim() && igUsername.length < 2) {
+    showToast('Escribe un usuario de Instagram valido.', 'error');
+    return;
+  }
+
+  if (currentIgUsername && !rawIgUsername.trim()) {
+    showToast('El usuario de Instagram no puede quedar vacio.', 'error');
+    return;
+  }
+
   if (password || passwordConfirm) {
     if (password !== passwordConfirm) {
-      showToast('Las contrasenas no coinciden.', 'error');
+      showToast('Las contraseñas no coinciden.', 'error');
       return;
     }
 
     if (password.length < 8) {
-      showToast('La contrasena debe tener al menos 8 caracteres.', 'error');
+      showToast('La contraseña debe tener al menos 8 caracteres.', 'error');
       return;
     }
   }
 
-  const authPayload = { email };
-  if (password) authPayload.password = password;
+  let authUser = null;
+  let confirmedImmediately = true;
 
-  const { data, error } = await supabase.auth.updateUser(authPayload);
+  if (emailChanged || password) {
+    const authPayload = {};
+    if (emailChanged) authPayload.email = email;
+    if (password) authPayload.password = password;
 
-  if (error) {
-    console.error('[HR] account update:', error);
-    showToast(error.message || 'No se pudo actualizar la cuenta.', 'error');
-    return;
+    const { data, error } = await supabase.auth.updateUser(authPayload);
+
+    if (error) {
+      console.error('[HR] account update:', error);
+      showToast(error.message || 'No se pudo actualizar la cuenta.', 'error');
+      return;
+    }
+
+    authUser = data?.user ?? null;
+    // NOTE: public.users.email is intentionally NOT updated here.
+    // A database trigger syncs auth.users.email → public.users.email automatically.
+    confirmedImmediately = !emailChanged || authUser?.email === email;
   }
 
-  // NOTE: public.users.email is intentionally NOT updated here.
-  // A database trigger syncs auth.users.email → public.users.email automatically.
-  const confirmedImmediately = data?.user?.email === email;
+  if (igChanged) {
+    const { error: profileError } = await supabase
+      .from('users')
+      .update({ ig_username: igUsername })
+      .eq('id', state.user.id);
+
+    if (profileError) {
+      console.error('[HR] account instagram update:', profileError);
+      showToast(profileError.message || 'No se pudo actualizar tu Instagram.', 'error');
+      return;
+    }
+  }
 
   const nextUser = {
     ...state.user,
-    ...(data?.user ?? {}),
+    ...(authUser ?? {}),
     email: confirmedImmediately ? email : (state.user.email ?? email),
+    ig_username: igChanged ? igUsername : state.user?.ig_username,
   };
 
   setState({ user: nextUser });
@@ -4911,13 +10989,13 @@ async function handlePermissionAdd(form) {
     return;
   }
 
-  const ok = await insertRow(
+  const result = await insertRow(
     'user_permissions',
     { user_id: userUuid, permission_key: permissionKey },
     'Permiso agregado.'
   );
 
-  if (ok) navigate('erp-permissions');
+  if (result.ok) navigate('erp-permissions');
 }
 
 async function handlePermissionRemove(permissionId) {
@@ -4962,7 +11040,7 @@ function renderEventPermissionsEditor(user) {
         <tr data-search-row data-search-text="${escapeAttr(searchText)}">
           <td class="db-event-permissions__event">
             <strong>${escapeHTML(event.name ?? event.event_key ?? 'Evento')}</strong>
-            <small>${escapeHTML(event.event_key ?? '')} ${event.event_date ? `· ${formatDateOnly(event.event_date)}` : ''}</small>
+            <small>${escapeHTML(event.event_key ?? '')} ${event.event_date ? `· ${formatDisplayDateOnly(event.event_date)}` : ''}</small>
           </td>
           ${EVENT_PERMISSION_FLAGS.map(([flag, label]) => `
             <td>
@@ -4975,18 +11053,19 @@ function renderEventPermissionsEditor(user) {
         </tr>
       `;
     }).join('')
-    : '<tr class="db-table__empty-row"><td colspan="5" class="db-empty">Sin eventos disponibles.</td></tr>';
+    : '<tr class="db-table__empty-row hr-table-empty"><td colspan="5" class="db-empty hr-table-empty">Sin eventos disponibles.</td></tr>';
+  const eventPermissionSearch = tableSearchFor('js-event-permissions-body');
 
   return `
     <section class="db-event-permissions">
       <h3>Permisos por Evento</h3>
       <label class="db-field">
         <span>Buscar eventos</span>
-        <input data-table-search data-table-target="js-event-permissions-body" data-table-count="js-event-permissions-count" placeholder="Buscar evento" />
+        <input data-table-search data-table-target="js-event-permissions-body" data-table-count="js-event-permissions-count" placeholder="Buscar evento" value="${escapeAttr(eventPermissionSearch)}" />
         <small id="js-event-permissions-count" class="db-field__hint">${events.length} eventos visibles</small>
       </label>
-      <div class="db-table-wrap db-event-permissions__table-wrap">
-        <table class="db-table db-event-permissions__table" aria-label="Permisos por evento">
+      <div class="db-table-wrap hr-table-wrap db-event-permissions__table-wrap">
+        <table class="db-table hr-table hr-table-editable db-event-permissions__table" aria-label="Permisos por evento">
           <thead>
             <tr>
               <th scope="col">Evento</th>
@@ -5248,12 +11327,34 @@ async function handleAdminTableUpdate(form) {
 
   const ok = await saveAdminTableRow(tableName, config, original, payload, { confirmUserId: true });
   if (ok) {
+    if (tableName === 'payment_methods') state.data.paymentMethods = null;
+    if (tableName === 'services') state.data.services = null;
     showToast('Fila actualizada.', 'success');
     navigate('admin-table-editor');
   }
 }
 
 async function saveAdminTableRow(tableName, config, original, payload, options = {}) {
+  if (tableName === 'payment_methods' || tableName === 'services') {
+    if ('key' in payload) payload.key = String(payload.key ?? '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+    if ('name' in payload) payload.name = String(payload.name ?? '').trim();
+    if ('status' in payload) payload.status = String(payload.status || 'active').toLowerCase();
+    if ('sort_order' in payload) payload.sort_order = Number(payload.sort_order || 100);
+    if (tableName === 'services') {
+      if ('show_in_finance' in payload) payload.show_in_finance = parseBooleanField(payload.show_in_finance);
+      if ('show_in_session' in payload) payload.show_in_session = parseBooleanField(payload.show_in_session);
+      if ('session_cost' in payload) payload.session_cost = payload.session_cost === '' || payload.session_cost == null ? null : Number(payload.session_cost);
+      if ('session_minutes' in payload) payload.session_minutes = payload.session_minutes === '' || payload.session_minutes == null ? null : Number(payload.session_minutes);
+    }
+  }
+
+  if (tableName === 'users' && 'occupations' in payload) {
+    payload.occupations = normalizeOccupationsValue(payload.occupations);
+  }
+  if (tableName === 'users' && 'passline_tracking' in payload) {
+    payload.passline_tracking = normalizePasslineTrackingValue(payload.passline_tracking);
+  }
+
   if (tableName === 'users' && 'user_id' in payload && String(payload.user_id ?? '') !== String(original.user_id ?? '') && options.confirmUserId !== false) {
     const confirmed = window.confirm(
       `Advertencia: vas a cambiar el User ID operativo de este usuario.\n\nAnterior: ${original.user_id ?? '-'}\nNuevo: ${payload.user_id || '-'}\n\nEste campo conecta historial, sesiones, transacciones y membresias. Confirma solo si sabes que este cambio es intencional.`
@@ -5367,8 +11468,13 @@ function collectAdminTableFormChange(form, config) {
 async function handleAdminTableSaveAll() {
   if (!requireAdminMutation()) return;
 
-  const tableName = state.data.adminTableName || 'users';
+  const tableName = state.data.adminTableName || setAdminTableName(readStoredAdminTableName());
   persistAdminTableSearchFromDOM(tableName);
+  if (tableName === 'membership_dashboard') {
+    await handleMembershipDashboardSaveAll();
+    return;
+  }
+
   const config = TABLE_EDITOR_CONFIG[tableName];
 
   if (!config) {
@@ -5415,6 +11521,99 @@ async function handleAdminTableSaveAll() {
   navigate('admin-table-editor');
 }
 
+function collectMembershipDeliveryFormChange(form) {
+  const values = formValues(form);
+  const beforeDeliveredAt = values.delivered_at_original ?? '';
+  const afterDeliveredAt = values.delivered_at ?? '';
+  const changes = [];
+
+  if (String(beforeDeliveredAt) !== String(afterDeliveredAt)) {
+    changes.push({
+      field: 'Fecha de entrega',
+      beforeValue: beforeDeliveredAt ? formatDisplayDateOnly(beforeDeliveredAt) : '-',
+      afterValue: afterDeliveredAt ? formatDisplayDateOnly(afterDeliveredAt) : '-',
+    });
+  }
+
+  if (!changes.length) return null;
+
+  return {
+    type: 'delivery',
+    values,
+    changes,
+    label: `Ciclo ${values.cycle_number || '-'}`,
+  };
+}
+
+function collectMembershipSessionNotesFormChange(form) {
+  const values = formValues(form);
+  const beforeNotes = values.notes_original ?? '';
+  const afterNotes = values.notes ?? '';
+  const changes = [];
+
+  if (String(beforeNotes) !== String(afterNotes)) {
+    changes.push({
+      field: 'Notas de sesión',
+      beforeValue: beforeNotes || '-',
+      afterValue: afterNotes || '-',
+    });
+  }
+
+  if (!changes.length) return null;
+
+  return {
+    type: 'session-notes',
+    values,
+    changes,
+    label: `Sesión ${values.session_id || '-'}`,
+  };
+}
+
+async function handleMembershipDashboardSaveAll() {
+  if (!requireAdminMutation()) return;
+  persistAdminTableSearchFromDOM('membership_dashboard');
+
+  const deliveryForms = [...document.querySelectorAll('form[data-form="membership-delivery"][data-stay-section="admin-table-editor"]')];
+  const sessionNotesForms = [...document.querySelectorAll('form[data-form="membership-session-notes"][data-stay-section="admin-table-editor"]')];
+  const pending = [
+    ...deliveryForms.map(collectMembershipDeliveryFormChange),
+    ...sessionNotesForms.map(collectMembershipSessionNotesFormChange),
+  ]
+    .filter(Boolean);
+
+  if (!pending.length) {
+    showToast('No hay cambios pendientes.', 'info');
+    return;
+  }
+
+  const invalid = pending.find((item) => item.type === 'delivery' && !item.values.delivered_at);
+  if (invalid) {
+    showToast('Fecha de entrega es obligatoria para guardar cambios de entrega.', 'error');
+    return;
+  }
+
+  const summary = pending.flatMap((item, index) => item.changes.map((change) => (
+    `${index + 1}. ${item.label} - ${change.field}: ${change.beforeValue} -> ${change.afterValue}`
+  )));
+  const extraCount = Math.max(0, summary.length - 18);
+  const preview = summary.slice(0, 18).join('\n');
+  const confirmed = window.confirm(
+    `Vas a guardar ${pending.length} fila${pending.length === 1 ? '' : 's'} con ${summary.length} cambio${summary.length === 1 ? '' : 's'}:\n\n${preview}${extraCount ? `\n... y ${extraCount} cambio${extraCount === 1 ? '' : 's'} más.` : ''}\n\n¿Confirmas guardar estos cambios?`
+  );
+
+  if (!confirmed) return;
+
+  for (const item of pending) {
+    const ok = item.type === 'session-notes'
+      ? await saveMembershipSessionNotesValues(item.values)
+      : await saveMembershipDeliveryValues(item.values);
+    if (!ok) return;
+  }
+
+  showToast('Cambios guardados.', 'success');
+  navigate('admin-table-editor');
+}
+
 async function handleAdminTableDelete(tableName, encodedRow) {
   if (!requireAdminMutation()) return;
   persistAdminTableSearchFromDOM(tableName);
@@ -5443,9 +11642,13 @@ async function handleAdminTableDelete(tableName, encodedRow) {
   const readable = prefersConcept
     ? (original.concept || original.name || original.id || original.user_id || 'esta fila')
     : (original.display_name || original.username || original.concept || original.name || original.id || original.user_id || 'esta fila');
-  const confirmed = window.confirm(
-    `Advertencia: vas a eliminar permanentemente ${readable} de ${label}.\n\nEsta acción no se puede deshacer. ¿Confirmas la eliminación?`
-  );
+  const confirmed = tableName === 'downloads'
+    ? window.confirm(
+      `Vas a quitar la descarga ${readable} del usuario ${original.user_id || 'sin user_id'}.\n\nSolo se borra la asignacion en BB.DD.; el usuario y el archivo en Cloud se conservan.\n\nConfirmas?`
+    )
+    : window.confirm(
+      `Advertencia: vas a eliminar permanentemente ${readable} de ${label}.\n\nEsta accion no se puede deshacer. Confirmas la eliminacion?`
+    );
 
   if (!confirmed) return;
 
@@ -5478,7 +11681,9 @@ async function handleAdminTableDelete(tableName, encodedRow) {
     return;
   }
 
-  showToast('Fila eliminada.', 'success');
+  if (tableName === 'payment_methods') state.data.paymentMethods = null;
+  if (tableName === 'services') state.data.services = null;
+  showToast(tableName === 'downloads' ? 'Descarga desasignada. Usuario y archivo Cloud conservados.' : 'Fila eliminada.', 'success');
   navigate('admin-table-editor');
 }
 
@@ -5551,7 +11756,7 @@ async function handleAdminPdfExport(tableLabel = 'Tabla administrativa') {
     return;
   }
 
-  const tableName = state.data.adminTableName || 'users';
+  const tableName = state.data.adminTableName || setAdminTableName(readStoredAdminTableName());
   const config = TABLE_EDITOR_CONFIG[tableName] || {};
   const configuredColumns = [...(config.lockedFields ?? []), ...(config.editableFields ?? [])]
     .filter((field, index, arr) => arr.indexOf(field) === index);
@@ -5621,7 +11826,7 @@ async function handleFinancePdfExport() {
 
   const rows = isCollabFinance ? (state.data.collabFinanceRows ?? []) : (state.data.erpFinanceRows ?? []);
   const filters = isCollabFinance
-    ? (state.data.collabFinanceFilters ?? { ...getEventFinanceFilters(), scope: 'events', eventId: state.data.collabFinanceEventId ?? '' })
+    ? (state.data.collabFinanceFilters ?? { ...getEventFinanceFilters(), scope: 'events', eventId: persistedDataValue('collabFinanceEventId', '') })
     : (state.data.erpFinanceFilters ?? getFinanceFilters());
   const events = isCollabFinance ? (state.data.collabFinanceEvents ?? []) : (state.data.financeEvents ?? []);
   const selectedEvent = isCollabFinance
@@ -5668,8 +11873,8 @@ async function handleFinancePdfExport() {
           money(Number(tx.hidden_room_share ?? eventFinanceAmount(tx) ?? 0)),
           participantName(tx.from_user_id),
           participantName(tx.to_user_id),
-          participantName(tx.owner_user_id),
-          formatDateOnly(tx.movement_date ?? tx.date),
+          financeEntityName(tx.owner_entity_id, tx.owner_user_id),
+          formatDisplayDateOnly(tx.movement_date ?? tx.date),
           tx.payment_method ?? tx.via ?? '-',
           tx.created_by_user_id ?? '-',
           tx.notes ?? '-',
@@ -5678,7 +11883,7 @@ async function handleFinancePdfExport() {
           tx.concept ?? '-',
           tx.type ?? '-',
           money(Number(tx.amount ?? 0)),
-          formatDateOnly(tx.date),
+          formatDisplayDateOnly(tx.date),
           tx.status ?? '-',
           tx.username ?? tx.user_id ?? '-',
         ]),
@@ -5705,6 +11910,7 @@ function filterTableRows(input) {
   const tableName = input.dataset.adminTableName;
   const query = input.value.trim();
   if (tableName) setAdminTableSearch(tableName, query);
+  else setTableSearch(input, query);
 
   const normalizedQuery = normalizeSearchText(query);
   let visibleCount = 0;
@@ -5737,8 +11943,8 @@ function applyAuthAuditFilter(filter = 'all') {
 
 /** Prevent XSS when injecting user-supplied strings into innerHTML */
 function escapeHTML(str) {
-  if (typeof str !== 'string') return '';
-  return str
+  if (str === null || str === undefined) return '';
+  return String(str)
     .replace(/&/g,  '&amp;')
     .replace(/</g,  '&lt;')
     .replace(/>/g,  '&gt;')
@@ -5762,7 +11968,7 @@ function enhancePasswordToggles(root = document) {
     button.type = 'button';
     button.className = 'db-password-toggle';
     button.dataset.action = 'toggle-password';
-    button.setAttribute('aria-label', 'Ver contrasena');
+    button.setAttribute('aria-label', 'Ver contraseña');
     button.innerHTML = '<span class="password-eye" aria-hidden="true"></span>';
     wrapper.appendChild(button);
   });
@@ -5796,20 +12002,25 @@ function filterUserPicker(search, { clearSelection = false } = {}) {
 
   if (clearSelection && hidden) hidden.value = '';
   if (clearSelection) syncUserAutofillFields(picker, null);
+  if (clearSelection) updateDownloadMembershipOptions(picker?.closest('form'), '');
   if (!menu) return;
 
-  menu.hidden = false;
-  let visibleCount = 0;
-  menu.querySelectorAll('.db-user-option').forEach((option) => {
-    const text = normalizeSearchText(option.dataset.searchText || option.textContent);
-    const visible = query ? text.includes(query) : true;
-    option.hidden = !visible;
-    option.style.display = visible ? '' : 'none';
-    if (visible) visibleCount += 1;
-  });
+  const valueField = picker?.dataset.userValueField || 'user_id';
+  const requiredField = picker?.dataset.userRequiredField || '';
+  const limit = Number(picker?.dataset.userPickerLimit || USER_PICKER_RENDER_LIMIT);
+  const users = uniqueUsers(state.data.users)
+    .filter((user) => !requiredField || String(user?.[requiredField] ?? '').trim());
+  const matchedUsers = (query
+    ? users.filter((user) => userPickerSearchText(user).includes(query))
+    : users)
+    .slice(0, Number.isFinite(limit) ? limit : USER_PICKER_RENDER_LIMIT);
+
+  menu.querySelectorAll('.db-user-option, [data-user-picker-clipped]').forEach((item) => item.remove());
+  menu.insertAdjacentHTML('afterbegin', renderUserPickerOptions(matchedUsers, { valueField }));
 
   const empty = menu.querySelector('[data-user-picker-empty]');
-  if (empty) empty.hidden = visibleCount > 0;
+  if (empty) empty.hidden = matchedUsers.length > 0;
+  menu.hidden = false;
 }
 
 
@@ -5821,6 +12032,13 @@ function attachMainDelegation() {
   const main = document.getElementById('js-main');
 
   main?.addEventListener('click', (e) => {
+    const directCloudDownload = e.target.closest('[data-direct-cloud-download="true"]');
+    if (directCloudDownload) {
+      e.preventDefault();
+      downloadCloudFileFromPortal(directCloudDownload);
+      return;
+    }
+
     const passwordToggle = e.target.closest('[data-action="toggle-password"]');
     if (passwordToggle) {
       const input = passwordToggle.closest('.db-password-field')?.querySelector('input');
@@ -5829,7 +12047,7 @@ function attachMainDelegation() {
         input.type = visible ? 'password' : 'text';
         input.dataset.passwordVisible = visible ? 'false' : 'true';
         passwordToggle.innerHTML = '<span class="password-eye" aria-hidden="true"></span>';
-        passwordToggle.setAttribute('aria-label', visible ? 'Ver contrasena' : 'Ocultar contrasena');
+        passwordToggle.setAttribute('aria-label', visible ? 'Ver contraseña' : 'Ocultar contraseña');
       }
       return;
     }
@@ -5848,12 +12066,18 @@ function attachMainDelegation() {
       if (hidden) hidden.value = userOption.dataset.userValue ?? '';
       if (search) search.value = userOption.dataset.userDisplay || userLabel(userOption.dataset.userId);
       syncUserAutofillFields(picker, user);
+      updateDownloadMembershipOptions(picker?.closest('form'), user?.user_id ?? '');
       picker?.querySelector('.db-user-picker__menu')?.setAttribute('hidden', '');
       picker?.querySelectorAll('.db-user-option').forEach((option) => {
         option.hidden = false;
         option.style.display = '';
       });
       if (user) search?.setAttribute('aria-label', usernameLabel(user));
+      if (picker?.dataset.membershipUserPicker === 'true') {
+        setAdminTableSearch('membership_dashboard', hidden?.value || '');
+        navigate('admin-table-editor');
+        return;
+      }
     }
 
     const taskCard = e.target.closest('.db-task-card[data-task-id]');
@@ -5866,7 +12090,7 @@ function attachMainDelegation() {
     }
 
     if (action === 'task-cancel') {
-      navigate('collab-tasks');
+      navigate(state.activeSection || 'collab-tasks');
     }
 
     if (taskCard && action === 'task-delete') {
@@ -5898,6 +12122,124 @@ function attachMainDelegation() {
       }
     }
 
+    if (action === 'copy-cloud-hiddenroom-url') {
+      const btn = e.target.closest('[data-url]');
+      const url = btn?.dataset.url;
+      if (url) {
+        navigator.clipboard?.writeText(url)
+          .then(() => showToast('URL copiada a portapapeles.', 'success'))
+          .catch(() => showToast('No se pudo copiar automáticamente.', 'error'));
+      }
+    }
+
+    if (action === 'cloud-upload-file') {
+      document.getElementById('js-cloud-file-input')?.click();
+      return;
+    }
+
+    if (action === 'cloud-create-folder') {
+      const name = window.prompt('Nombre de la nueva carpeta');
+      if (name) {
+        createCloudFolder(name)
+          .then(() => renderSection(state.activeSection))
+          .catch((err) => showToast(err.message || 'No se pudo crear la carpeta.', 'error'));
+      }
+      return;
+    }
+
+    if (action === 'cloud-open-folder' || action === 'cloud-breadcrumb') {
+      const btn = e.target.closest('[data-path]');
+      const path = btn?.dataset.path;
+      if (path) {
+        setState({ erpCloud: { currentPath: normalizeCloudPath(path) } });
+        renderSection(state.activeSection);
+      }
+      return;
+    }
+
+    if (action === 'cloud-delete-item') {
+      const btn = e.target.closest('[data-item-type][data-item-name]');
+      if (btn) {
+        deleteCloudFile(btn.dataset.itemType, btn.dataset.itemName)
+          .then(() => renderSection(state.activeSection))
+          .catch((err) => showToast(err.message || 'No se pudo eliminar.', 'error'));
+      }
+      return;
+    }
+
+    if (action === 'cloud-copy-link') {
+      const btn = e.target.closest('[data-url]');
+      const url = btn?.dataset.url;
+      if (url) {
+        navigator.clipboard?.writeText(url)
+          .then(() => showToast('Enlace copiado.', 'success'))
+          .catch(() => showToast('No se pudo copiar automáticamente.', 'error'));
+      }
+      return;
+    }
+
+    if (action === 'ig-analyze-media') {
+      const btn = e.target.closest('[data-media-id]');
+      handleIgAnalyzeMedia(btn?.dataset.mediaId);
+      return;
+    }
+
+    if (action === 'ig-export-csv') {
+      const btn = e.target.closest('[data-ranking]');
+      exportIgRankingCsv(btn?.dataset.ranking || 'total');
+      return;
+    }
+
+    if (action === 'ig-export-pdf') {
+      exportIgAnalysisPdf();
+      return;
+    }
+
+    if (action === 'ig-export-comments-markdown') {
+      exportIgCommentsMarkdown();
+      return;
+    }
+
+
+    if (action === 'instagram-scraper-rank-pdf') {
+      exportInstagramScraperRankPdf();
+      return;
+    }
+
+    if (action === 'instagram-scraper-rank-md') {
+      exportInstagramScraperRankMarkdown();
+      return;
+    }
+
+    if (action === 'instagram-scraper-reset-analysis') {
+      resetInstagramScraperAnalysis();
+      return;
+    }
+    if (action === 'instagram-scraper-pdf') {
+      downloadInstagramScraperPdf();
+      return;
+    }
+
+    if (action === 'instagram-scraper-md') {
+      downloadInstagramScraperMarkdown();
+      return;
+    }
+
+    if (action === 'instagram-scraper-load-last') {
+      loadInstagramScraperLastResult();
+      return;
+    }
+
+    if (action === 'ig-reset-analysis') {
+      const igState = getIgMentionState();
+      igState.analysis = null;
+      igState.selectedMedia = null;
+      igState.isAnalyzing = false;
+      igState.error = '';
+      renderSection('erp-ig-mention-rank');
+      return;
+    }
+
     if (action === 'refresh-session') {
       handleRefreshSession();
     }
@@ -5923,14 +12265,36 @@ function attachMainDelegation() {
       handleFinancePdfExport();
     }
 
+    if (action === 'passline-preview') {
+      handlePasslinePreview();
+      return;
+    }
+
+    if (action === 'passline-import') {
+      handlePasslineImport();
+      return;
+    }
+
     if (action === 'event-movement-edit') {
       const btn = e.target.closest('[data-event-movement]');
       if (btn?.dataset.eventMovement) handleEventMovementEdit(btn.dataset.eventMovement);
     }
 
+    if (action === 'membership-cancel-row' || action === 'membership-finish-row') {
+      const btn = e.target.closest('[data-row-original]');
+      if (btn) handleMembershipRowStatusAction(action === 'membership-cancel-row' ? 'cancel' : 'finish', btn.dataset.rowOriginal);
+      return;
+    }
+
     if (action === 'admin-table-delete') {
       const btn = e.target.closest('[data-table-name][data-row-original]');
       if (btn) handleAdminTableDelete(btn.dataset.tableName, btn.dataset.rowOriginal);
+    }
+
+    if (action === 'admin-operation-receipt-share') {
+      const btn = e.target.closest('[data-table-name][data-row-original]');
+      if (btn) handleAdminOperationReceiptShare(btn.dataset.tableName, btn.dataset.rowOriginal);
+      return;
     }
 
     if (action === 'operation-receipt') {
@@ -5940,6 +12304,16 @@ function attachMainDelegation() {
   });
 
   main?.addEventListener('change', (e) => {
+    const cloudFileInput = e.target.closest('#js-cloud-file-input');
+    if (cloudFileInput && cloudFileInput.files?.length) {
+      const file = cloudFileInput.files[0];
+      uploadCloudFile(file)
+        .then(() => renderSection(state.activeSection))
+        .catch((err) => showToast(err.message || 'No se pudo subir el archivo.', 'error'))
+        .finally(() => { if (cloudFileInput) cloudFileInput.value = ''; });
+      return;
+    }
+
     const statusSelect = e.target.closest('select[data-action="task-status"]');
     const taskCard = statusSelect?.closest('.db-task-card[data-task-id]');
     if (statusSelect && taskCard) {
@@ -5954,24 +12328,39 @@ function attachMainDelegation() {
     const tableSelect = e.target.closest('select[data-action="table-editor-table"]');
     if (tableSelect) {
       persistAdminTableSearchFromDOM();
-      state.data.adminTableName = tableSelect.value;
+      setAdminTableName(tableSelect.value);
+      navigate('admin-table-editor');
+      return;
+    }
+
+    const tableColumnToggle = e.target.closest('input[data-action="admin-table-toggle-columns"][data-table-name]');
+    if (tableColumnToggle) {
+      setPersistedDataValue(`adminTableShowAll:${tableColumnToggle.dataset.tableName}`, tableColumnToggle.checked ? '1' : '0');
+      navigate('admin-table-editor');
+      return;
+    }
+
+    const membershipTableSearch = e.target.closest('input[data-table-search][data-admin-table-name="membership_dashboard"]');
+    if (membershipTableSearch) {
+      setAdminTableSearch('membership_dashboard', membershipTableSearch.value.trim());
       navigate('admin-table-editor');
       return;
     }
 
     const scrumEvent = e.target.closest('select[data-action="scrum-event-change"]');
     if (scrumEvent) {
+      setPersistedDataValue('scrumEventId', scrumEvent.value);
       state.data.scrumEventId = scrumEvent.value;
-      navigate('collab-tasks');
+      navigate(state.activeSection || 'collab-tasks');
       return;
     }
 
     const financeFilter = e.target.closest('select[data-action="finance-filter"]');
     if (financeFilter) {
-      state.data[financeFilter.dataset.filterKey] = financeFilter.value;
+      setPersistedDataValue(financeFilter.dataset.filterKey, financeFilter.value);
       if (financeFilter.dataset.filterKey === 'financeScope') {
-        if (financeFilter.value === 'studio' && !state.data.financeStudio) {
-          state.data.financeStudio = 'IXT';
+        if (financeFilter.value === 'studio' && !persistedDataValue('financeStudio', '')) {
+          setPersistedDataValue('financeStudio', 'IXT');
         }
       }
       navigate(state.activeSection);
@@ -5980,21 +12369,28 @@ function attachMainDelegation() {
 
     const collabFinanceEvent = e.target.closest('select[data-action="collab-finance-event"]');
     if (collabFinanceEvent) {
-      state.data.collabFinanceEventId = collabFinanceEvent.value;
+      setPersistedDataValue('collabFinanceEventId', collabFinanceEvent.value);
       navigate('collab-finance');
+      return;
+    }
+
+    const mergeDuplicateMode = e.target.closest('select[data-action="merge-duplicate-mode"]');
+    if (mergeDuplicateMode) {
+      setPersistedDataValue('mergeDuplicateMode', mergeDuplicateMode.value);
+      navigate('erp-ops');
       return;
     }
 
     const opsForm = e.target.closest('select[data-action="erp-ops-form"]');
     if (opsForm) {
-      state.data.erpOpsForm = opsForm.value;
+      setPersistedDataValue('erpOpsForm', opsForm.value);
       navigate('erp-ops');
       return;
     }
 
     const authAuditFilter = e.target.closest('select[data-action="auth-audit-filter"]');
     if (authAuditFilter) {
-      state.data.authAuditFilter = authAuditFilter.value;
+      setPersistedDataValue('authAuditFilter', authAuditFilter.value);
       applyAuthAuditFilter(authAuditFilter.value);
       return;
     }
@@ -6010,12 +12406,25 @@ function attachMainDelegation() {
       updateTransactionConceptFields(transactionField.closest('form'));
       return;
     }
+
+    const downloadReleaseMode = e.target.closest('[data-download-release-mode], [data-download-source-type]');
+    if (downloadReleaseMode) {
+      updateDownloadMembershipFields(downloadReleaseMode.closest('form'));
+      return;
+    }
   });
 
   main?.addEventListener('input', (e) => {
     const tableSearch = e.target.closest('[data-table-search]');
     if (tableSearch) {
-      filterTableRows(tableSearch);
+      const tableName = tableSearch.dataset.adminTableName;
+      if (tableName && state.activeSection === 'admin-table-editor') {
+        setAdminTableSearch(tableName, tableSearch.value.trim());
+        window.clearTimeout(filterTableRows.remoteTimer);
+        filterTableRows.remoteTimer = window.setTimeout(() => navigate('admin-table-editor'), 280);
+      } else {
+        filterTableRows(tableSearch);
+      }
       return;
     }
 
@@ -6033,6 +12442,13 @@ function attachMainDelegation() {
 
     const search = e.target.closest('[data-user-search]');
     if (!search) return;
+    const picker = search.closest('.db-user-picker');
+    if (picker?.dataset.membershipUserPicker === 'true') {
+      setAdminTableSearch('membership_dashboard', search.value.trim());
+      window.clearTimeout(filterTableRows.remoteUserTimer);
+      filterTableRows.remoteUserTimer = window.setTimeout(() => navigate('admin-table-editor'), 280);
+      return;
+    }
     filterUserPicker(search, { clearSelection: true });
   });
 
@@ -6061,13 +12477,21 @@ function attachMainDelegation() {
     if (!form) return;
 
     e.preventDefault();
+    form.dataset.operationAction = e.submitter?.dataset.operationAction || 'create';
 
     if (form.dataset.form === 'task-create') handleTaskCreate(form);
     if (form.dataset.form === 'task-update') handleTaskUpdate(form);
     if (form.dataset.form === 'account-update') handleAccountUpdate(form);
     if (form.dataset.form === 'permission-add') handlePermissionAdd(form);
     if (form.dataset.form === 'admin-table-update') handleAdminTableUpdate(form);
+    if (form.dataset.form === 'event-finance-table-update') handleEventFinanceTableUpdate(form);
     if (form.dataset.form === 'user-merge') handleErpForm(form);
+    if (form.dataset.form === 'membership-cancel') handleErpForm(form);
+    if (form.dataset.form === 'membership-delivery') handleErpForm(form);
+    if (form.dataset.form === 'membership-session-notes') handleErpForm(form);
+    if (form.dataset.form === 'ig-list-media') handleIgListMedia(form);
+    if (form.dataset.form === 'erp-ig-benefits-search') handleErpIgBenefitsSearch(form);
+    if (form.dataset.form === 'instagram-scrape') handleInstagramScraper(form);
     if (form.dataset.form?.endsWith('-create') && !form.dataset.form.startsWith('task-')) {
       handleErpForm(form);
     }
@@ -6301,11 +12725,13 @@ async function init() {
     permissions: session.permissions,
   });
 
+  renderPortalNavigation();
   hydrateTopbar();
   applyRoleGates();
   syncLocalStorageRecords();
 
   attachSidebarListeners();
+  attachPortalMobileListeners();
   attachNotificationListeners();
   attachUserMenuListeners();
   attachMainDelegation();
@@ -6330,6 +12756,12 @@ async function init() {
   navigate(initialSectionKey());
 }
 
+window.addEventListener('hiddenroom:ig-username-updated', (event) => {
+  const igUsername = event.detail?.ig_username;
+  if (!igUsername || !state.user) return;
+  state.user = { ...state.user, ig_username: igUsername };
+  hydrateTopbar();
+});
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {
@@ -6351,3 +12783,6 @@ export {
   hasPermission,
   hasAnyPermission,
 };
+
+
+

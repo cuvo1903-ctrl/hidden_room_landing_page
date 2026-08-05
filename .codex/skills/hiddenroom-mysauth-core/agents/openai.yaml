@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hidden Room MysAuth Core"
+  short_description: "Core project context and boundaries"
+  default_prompt: "Use $hiddenroom-mysauth-core to understand the Hidden Room and MysAuth project before acting."

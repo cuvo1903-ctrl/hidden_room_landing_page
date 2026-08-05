@@ -1,0 +1,7 @@
+interface:
+  display_name: "Hidden Room Performance"
+  short_description: "Speed, assets, queries, and runtime"
+  default_prompt: "Use $hiddenroom-performance to improve loading or runtime performance."
+
+policy:
+  allow_implicit_invocation: true

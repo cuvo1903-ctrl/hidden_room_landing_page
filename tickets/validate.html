@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Validador de tickets de Hidden Room">
+  <meta property="og:title" content="Validar ticket | Hidden Room">
+  <meta property="og:description" content="Validación de accesos y tickets de Hidden Room.">
+  <meta property="og:image" content="https://hiddenroom.mx/assets/img/social_preview.webp">
+  <meta property="og:url" content="https://hiddenroom.mx/tickets/validate.html">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Validar ticket | Hidden Room">
+  <meta name="twitter:description" content="Validación de accesos y tickets de Hidden Room.">
+  <meta name="twitter:image" content="https://hiddenroom.mx/assets/img/social_preview.webp">
+  <title>Validar ticket | Hidden Room</title>
+  <link rel="icon" type="image/webp" href="/assets/img/orange_logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles.css?v=20260718-wavesurfer-global">
+  <link rel="stylesheet" href="./tickets.css?v=20260718-hero-rhythm">
+</head>
+<body class="tickets-page tickets-page--validator hr-page" data-hr-chrome data-hr-context="tickets">
+  <div id="hr-global-nav"></div>
+  <main class="validator-shell hr-section hr-container hr-stack hr-stack-xl">
+    <section class="tickets-hero tickets-hero--compact hr-hero hr-stack">
+      <p class="tickets-kicker hr-kicker">Acceso de puerta</p>
+      <h1 class="hr-title-xl">Validar ticket</h1>
+      <p>Escanea el QR o captura el folio manualmente.</p>
+    </section>
+
+    <form id="validate-form" class="validator-search hr-card hr-panel">
+      <label class="ticket-field hr-field">
+        <span>Folio</span>
+        <div class="validator-search__row">
+          <input id="folio-input" class="hr-input" name="folio" type="text" maxlength="80" placeholder="HR001-0001"
+                 autocomplete="off" autocapitalize="characters" required>
+          <button id="search-button" class="ticket-btn ticket-btn--primary hr-btn hr-btn-primary" type="submit">Buscar</button>
+        </div>
+      </label>
+    </form>
+
+    <div id="page-message" class="ticket-alert hr-card" role="status" aria-live="polite" hidden></div>
+
+    <section id="ticket-result" class="validator-result validator-result--idle hr-card hr-panel" aria-live="polite">
+      <p class="validator-result__eyebrow">Esperando folio</p>
+      <h2>LISTO PARA VALIDAR</h2>
+      <p>El resultado aparecerá aquí.</p>
+    </section>
+  </main>
+
+  <script src="../site.js?v=20260729-mojibake-fix"></script>
+  <script type="module" src="./validate.js"></script>
+</body>
+</html>
+

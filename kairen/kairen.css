@@ -1,0 +1,91 @@
+.kairen-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 82% 8%, rgba(219, 1, 0, .13), transparent 30rem),
+    var(--hr-bg);
+  cursor: auto;
+}
+
+.kairen-shell {
+  min-height: auto;
+}
+
+.kairen-heading {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 28px;
+}
+
+.kairen-session {
+  --hr-cluster-gap: 16px;
+  max-width: 430px;
+  justify-content: flex-end;
+  font-size: 11px;
+  text-align: right;
+}
+
+.kairen-workspace {
+  grid-template-columns: minmax(250px, .65fr) minmax(0, 1.6fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.kairen-config {
+  position: sticky;
+  top: 18px;
+}
+
+.kairen-config fieldset {
+  border: 0;
+}
+
+.kairen-config legend {
+  margin-bottom: 24px;
+  font-size: 18px;
+}
+
+.kairen-help {
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.kairen-console {
+  min-height: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+#active-model {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--hr-border);
+  font-size: 10px;
+  letter-spacing: .12em;
+}
+
+.kairen-output {
+  min-height: 280px;
+  padding: 24px 0;
+  align-content: start;
+  gap: 14px;
+}
+
+.kairen-output p {
+  padding: 14px 16px;
+  border-left: 2px solid var(--hr-border-strong);
+  background: #0b0b0b;
+  color: var(--hr-muted);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.kairen-output strong { color: var(--hr-text); }
+.kairen-form { margin-top: auto; }
+.kairen-actions { --hr-cluster-gap: var(--hr-space-sm); }
+
+@media (max-width: 800px) {
+  .kairen-heading { grid-template-columns: 1fr; align-items: start; }
+  .kairen-session { align-items: flex-start; flex-direction: column; justify-content: flex-start; text-align: left; }
+  .kairen-workspace { grid-template-columns: 1fr; }
+  .kairen-config { position: static; }
+}

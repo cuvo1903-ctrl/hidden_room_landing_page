@@ -1,0 +1,4 @@
+.env
+cloud.log
+.tmp-root/
+.remote-*.sh

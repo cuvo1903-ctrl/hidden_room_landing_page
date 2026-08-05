@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Generación de tickets de Hidden Room">
+  <meta property="og:title" content="Generar tickets | Hidden Room">
+  <meta property="og:description" content="Generación de tickets y códigos QR de Hidden Room.">
+  <meta property="og:image" content="https://hiddenroom.mx/assets/img/social_preview.webp">
+  <meta property="og:url" content="https://hiddenroom.mx/tickets/generate.html">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Generar tickets | Hidden Room">
+  <meta name="twitter:description" content="Generación de tickets y códigos QR de Hidden Room.">
+  <meta name="twitter:image" content="https://hiddenroom.mx/assets/img/social_preview.webp">
+  <title>Generar tickets | Hidden Room</title>
+  <link rel="icon" type="image/webp" href="/assets/img/orange_logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles.css?v=20260718-wavesurfer-global">
+  <link rel="stylesheet" href="./tickets.css?v=20260718-hero-rhythm">
+</head>
+<body class="tickets-page hr-page" data-hr-chrome data-hr-context="tickets">
+  <div id="hr-global-nav"></div>
+  <main class="tickets-shell hr-section hr-container hr-stack hr-stack-xl">
+    <section class="tickets-hero hr-hero hr-stack">
+      <p class="tickets-kicker hr-kicker">Hidden Room · Beta</p>
+      <h1 class="hr-title-xl">Generar tickets</h1>
+      <p>Genera folios, entrega códigos QR y prepara una hoja imprimible para puerta.</p>
+    </section>
+
+    <div id="page-message" class="ticket-alert hr-card" role="status" aria-live="polite" hidden></div>
+
+    <section class="ticket-print-header" aria-hidden="true">
+      <div class="ticket-print-header__brand">
+        <img src="/assets/img/white_logo.webp" alt="">
+        <strong data-print-event>-</strong>
+      </div>
+      <div>
+        <span>EMISIÓN</span>
+        <strong data-print-user>-</strong>
+      </div>
+      <div>
+        <span>PAGARÉ POR</span>
+        <strong data-print-total>$0.00</strong>
+      </div>
+    </section>
+
+    <section class="ticket-print-pages" data-print-pages aria-hidden="true"></section>
+
+    <section id="admin-panel" class="tickets-admin-grid hr-grid" hidden>
+      <article class="ticket-panel hr-card hr-panel">
+        <div class="ticket-panel__heading">
+          <div>
+            <p class="tickets-kicker hr-kicker">Nuevo lote</p>
+            <h2>Generar tickets</h2>
+          </div>
+          <span class="ticket-chip hr-badge hr-badge-danger">Solo admin</span>
+        </div>
+
+        <form id="ticket-form" class="ticket-form hr-form-grid">
+          <label class="ticket-field ticket-field--wide hr-field">
+            <span>Evento</span>
+            <select id="event-key" class="hr-select" name="event_key" required disabled>
+              <option value="">Cargando eventos…</option>
+            </select>
+          </label>
+
+          <label class="ticket-field hr-field">
+            <span>Cantidad</span>
+            <input id="ticket-quantity" class="hr-input" name="quantity" type="number" min="1" max="100" value="1" required>
+          </label>
+
+          <label class="ticket-field hr-field">
+            <span>TICKET</span>
+            <select id="ticket-type" class="hr-select" name="ticket_type">
+              <option value="COVER" selected>COVER</option>
+              <option value="ESTÁNDAR">ESTÁNDAR</option>
+              <option value="VIP">VIP</option>
+              <option value="2x1">2x1</option>
+              <option value="3x2">3x2</option>
+              <option value="3x1">3x1</option>
+              <option value="ACREDITACIÓN">ACREDITACIÓN</option>
+            </select>
+          </label>
+
+          <label class="ticket-field hr-field">
+            <span>Precio</span>
+            <input id="ticket-price" class="hr-input" name="price" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" required>
+          </label>
+
+          <label class="ticket-field hr-field">
+            <span>Nombre del cliente <small>opcional</small></span>
+            <input id="customer-name" class="hr-input" name="customer_name" type="text" maxlength="160" autocomplete="name">
+          </label>
+
+          <label class="ticket-field hr-field">
+            <span>Email del cliente <small>opcional</small></span>
+            <input id="customer-email" class="hr-input" name="customer_email" type="email" maxlength="254" autocomplete="email">
+          </label>
+
+          <label class="ticket-field ticket-field--wide hr-field">
+            <span>Notas <small>opcional</small></span>
+            <textarea id="ticket-notes" class="hr-textarea" name="notes" rows="3" maxlength="1000"></textarea>
+          </label>
+
+          <button id="generate-button" class="ticket-btn ticket-btn--primary ticket-field--wide hr-btn hr-btn-primary hr-btn-block" type="submit">
+            Generar tickets
+          </button>
+        </form>
+      </article>
+
+      <aside class="ticket-panel ticket-panel--summary hr-card hr-panel hr-stack">
+        <p class="tickets-kicker hr-kicker">Lote actual</p>
+        <strong id="batch-count" class="tickets-big-number">0</strong>
+        <span>tickets listos</span>
+        <button id="print-batch-button" class="ticket-btn ticket-btn--light hr-btn hr-btn-secondary" type="button" disabled>
+          Imprimir lote
+        </button>
+        <button id="download-pdf-button" class="ticket-btn ticket-btn--ghost hr-btn hr-btn-outline" type="button" disabled>
+          Descargar PDF
+        </button>
+        <p class="ticket-help">Se abrir? el di?logo de impresi?n con la hoja lista para guardar como PDF.</p>
+      </aside>
+
+      <article class="ticket-panel ticket-panel--danger hr-card hr-panel">
+        <div class="ticket-panel__heading">
+          <div>
+            <p class="tickets-kicker hr-kicker">Zona admin</p>
+            <h2>Eliminar lote</h2>
+          </div>
+          <span class="ticket-chip hr-badge hr-badge-danger">Irreversible</span>
+        </div>
+
+        <form id="delete-batch-form" class="ticket-form hr-form-grid">
+          <label class="ticket-field ticket-field--wide hr-field">
+            <span>Evento</span>
+            <select id="delete-event-key" class="hr-select" name="event_key" required disabled>
+              <option value="">Cargando eventos...</option>
+            </select>
+          </label>
+
+          <label class="ticket-field hr-field">
+            <span>Folio inicial</span>
+            <select id="delete-folio-start" class="hr-select" name="start_number" required disabled>
+              <option value="">Selecciona evento</option>
+            </select>
+          </label>
+
+          <label class="ticket-field hr-field">
+            <span>Folio final</span>
+            <select id="delete-folio-end" class="hr-select" name="end_number" required disabled>
+              <option value="">Selecciona evento</option>
+            </select>
+          </label>
+
+          <button id="delete-batch-button" class="ticket-btn ticket-btn--danger ticket-field--wide hr-btn hr-btn-outline hr-btn-block" type="submit">
+            Eliminar lote
+          </button>
+        </form>
+      </article>
+    </section>
+
+    <section id="tickets-section" class="tickets-results hr-stack" hidden>
+      <div class="tickets-results__heading">
+        <div>
+          <p class="tickets-kicker hr-kicker">Tickets</p>
+          <h2 id="tickets-title">Lote generado</h2>
+        </div>
+        <button id="refresh-button" class="ticket-btn ticket-btn--ghost hr-btn hr-btn-outline" type="button">Actualizar lista</button>
+      </div>
+      <div id="tickets-list" class="tickets-list hr-card-grid" aria-live="polite"></div>
+      <p id="tickets-empty" class="tickets-empty" hidden>No hay tickets generados para este evento.</p>
+    </section>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="../site.js?v=20260729-mojibake-fix"></script>
+  <script type="module" src="./tickets.js"></script>
+</body>
+</html>
+

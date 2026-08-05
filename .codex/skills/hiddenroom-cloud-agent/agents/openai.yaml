@@ -1,0 +1,7 @@
+interface:
+  display_name: "Hidden Room Cloud Agent"
+  short_description: "Cloud jobs and Debian file agent"
+  default_prompt: "Use $hiddenroom-cloud-agent to change cloud file operations safely."
+
+policy:
+  allow_implicit_invocation: true

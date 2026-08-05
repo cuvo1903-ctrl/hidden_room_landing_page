@@ -1,9 +1,6 @@
-import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+import { getSupabaseClient } from "./supabase-config.js";
 
-const supabase = createClient(
-  "https://rpcunbkstadgngqrjafp.supabase.co",
-  "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
-);
+const supabase = await getSupabaseClient();
 
 const form = document.getElementById("recovery-form");
 const statusEl = document.getElementById("recovery-status");
@@ -28,6 +25,12 @@ function enhancePasswordToggles(root = document) {
 }
 
 document.addEventListener("click", (e) => {
+  const popupClose = e.target.closest('[data-action="close-recovery-popup"]');
+  if (popupClose) {
+    closeRecoveryPopup();
+    return;
+  }
+
   const button = e.target.closest('[data-action="toggle-password"]');
   if (!button) return;
 
@@ -41,8 +44,55 @@ document.addEventListener("click", (e) => {
   button.setAttribute("aria-label", visible ? "Ver contraseña" : "Ocultar contraseña");
 });
 
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeRecoveryPopup();
+});
+
 function setStatus(message) {
   if (statusEl) statusEl.textContent = message;
+}
+
+function ensureRecoveryPopup() {
+  let popup = document.getElementById("recovery-popup");
+  if (popup) return popup;
+
+  popup = document.createElement("div");
+  popup.id = "recovery-popup";
+  popup.className = "recovery-popup";
+  popup.hidden = true;
+  popup.innerHTML = `
+    <div class="recovery-popup__backdrop" data-action="close-recovery-popup"></div>
+    <section class="recovery-popup__dialog" role="alertdialog" aria-modal="true" aria-labelledby="recovery-popup-title" aria-describedby="recovery-popup-message" tabindex="-1">
+      <p class="recovery-popup__eyebrow">Error</p>
+      <h2 id="recovery-popup-title">No se pudo continuar</h2>
+      <p id="recovery-popup-message"></p>
+      <button class="login-submit hr-btn hr-btn-primary" type="button" data-action="close-recovery-popup">Entendido</button>
+    </section>
+  `;
+  document.body.appendChild(popup);
+  return popup;
+}
+
+function showRecoveryPopup(message) {
+  const popup = ensureRecoveryPopup();
+  const messageEl = popup.querySelector("#recovery-popup-message");
+  if (messageEl) messageEl.textContent = message || "Revisa los datos e intenta de nuevo.";
+  popup.hidden = false;
+  document.body.classList.add("recovery-popup-open");
+  window.setTimeout(() => popup.querySelector(".recovery-popup__dialog")?.focus(), 0);
+}
+
+function closeRecoveryPopup() {
+  const popup = document.getElementById("recovery-popup");
+  if (!popup) return;
+  popup.hidden = true;
+  document.body.classList.remove("recovery-popup-open");
+}
+
+function showRecoveryError(message) {
+  const safeMessage = message || "No se pudo actualizar la contrasena.";
+  setStatus(safeMessage);
+  showRecoveryPopup(safeMessage);
 }
 
 function getHashParams() {
@@ -86,12 +136,12 @@ form?.addEventListener("submit", async (e) => {
   const confirm = document.getElementById("password_confirm")?.value ?? "";
 
   if (password.length < 8) {
-    setStatus("La contraseña debe tener al menos 8 caracteres.");
+    showRecoveryError("La contrasena debe tener al menos 8 caracteres.");
     return;
   }
 
   if (password !== confirm) {
-    setStatus("Las contraseñas no coinciden.");
+    showRecoveryError("Las contrasenas no coinciden.");
     return;
   }
 
@@ -102,7 +152,7 @@ form?.addEventListener("submit", async (e) => {
 
   if (error) {
     console.error("[HR] recovery updateUser:", error);
-    setStatus(error.message || "No se pudo actualizar la contraseña.");
+    showRecoveryError(error.message || "No se pudo actualizar la contrasena.");
     if (submitButton) submitButton.disabled = false;
     return;
   }

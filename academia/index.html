@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Cursos y contenidos de Hidden Room Academia." />
+  <meta property="og:title" content="Hidden Room Academia" />
+  <meta property="og:description" content="Cursos, modulos y materiales para la comunidad Hidden Room." />
+  <meta property="og:image" content="https://hiddenroom.mx/assets/img/social_preview.webp" />
+  <meta property="og:url" content="https://hiddenroom.mx/academia/" />
+  <meta property="og:type" content="website" />
+  <title>Academia | Hidden Room</title>
+  <link rel="icon" type="image/webp" href="/assets/img/orange_logo.webp" />
+  <link rel="stylesheet" href="/styles.css?v=20260718-wavesurfer-global" />
+  <link rel="stylesheet" href="/academia/academia.css?v=20260729-academia-pdf-route" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet" />
+</head>
+<body class="hr-page academia-page" data-hr-chrome data-hr-context="academia">
+  <div id="hr-global-nav"></div>
+  <div id="cursor" class="cursor" aria-hidden="true"></div>
+  <div id="cursorRing" class="cursor-ring" aria-hidden="true"></div>
+
+  <main class="academia-shell hr-section">
+    <section class="academia-hero hr-container reveal">
+      <div class="academia-hero__copy">
+        <span class="hr-badge">Hidden Room Academia</span>
+        <h1>Academia</h1>
+        <p>Menu de cursos, modulos y contenidos para aprender dentro de la plataforma.</p>
+      </div>
+      <div class="academia-hero__panel" aria-live="polite">
+        <span data-academia-user>Sesion no iniciada</span>
+        <strong data-academia-count>0 cursos disponibles</strong>
+      </div>
+    </section>
+
+    <section class="academia-workspace hr-container" aria-label="Academia">
+      <div id="academy-status" class="academia-status" role="status">Cargando Academia...</div>
+      <div id="academy-app" class="academia-grid" hidden></div>
+      <section id="academy-detail" class="academia-detail" aria-label="Detalle del curso" hidden></section>
+      <section id="academy-admin" class="academia-admin" aria-label="Panel admin" hidden></section>
+    </section>
+  </main>
+
+  <script src="/site.js?v=20260729-mojibake-fix" defer></script>
+  <script src="/academia/academia.js?v=20260730-academia-upload-error-context" type="module"></script>
+</body>
+</html>

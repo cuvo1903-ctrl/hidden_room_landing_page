@@ -1,0 +1,5 @@
+-- Kien Gana is connected through the repo migration:
+-- ../../supabase/migrations/20260704153000_predictor_kien_gana.sql
+--
+-- Keep schema changes in supabase/migrations so the Supabase project,
+-- generated types, RLS policies, and deployment history stay in sync.

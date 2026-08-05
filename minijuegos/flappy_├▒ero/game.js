@@ -84,21 +84,21 @@ const CONFIG = {
 ---------------------------------------------------------------- */
 const ASSETS = {
   // PLAYER_SPRITE — replace null with loaded HTMLImageElement
-  PLAYER_SPRITE: (() => { const img = new Image(); img.src = '../assets/img/kairen.webp'; return img; })(),
+  PLAYER_SPRITE: (() => { const img = new Image(); img.src = '../../assets/img/kairen.webp'; return img; })(),
 
   // Obstacle sprites
-  DOG_OBSTACLE:     (() => { const img = new Image(); img.src = '../assets/sprites/tsuru.webp';    return img; })(),
-  POLICE_OBSTACLE:  (() => { const img = new Image(); img.src = '../assets/sprites/patrulla.webp'; return img; })(),
-  POTHOLE_OBSTACLE: (() => { const img = new Image(); img.src = '../assets/sprites/grava.webp';    return img; })(),
-  MARKET_OBSTACLE:  (() => { const img = new Image(); img.src = '../assets/sprites/bote.webp';     return img; })(),
-  CONE_OBSTACLE:    (() => { const img = new Image(); img.src = '../assets/sprites/poste.webp';    return img; })(),
+  DOG_OBSTACLE:     (() => { const img = new Image(); img.src = '../../assets/sprites/tsuru.webp';    return img; })(),
+  POLICE_OBSTACLE:  (() => { const img = new Image(); img.src = '../../assets/sprites/patrulla.webp'; return img; })(),
+  POTHOLE_OBSTACLE: (() => { const img = new Image(); img.src = '../../assets/sprites/grava.webp';    return img; })(),
+  MARKET_OBSTACLE:  (() => { const img = new Image(); img.src = '../../assets/sprites/bote.webp';     return img; })(),
+  CONE_OBSTACLE:    (() => { const img = new Image(); img.src = '../../assets/sprites/poste.webp';    return img; })(),
 
   // Collectibles
   COUPON_ITEM:        null,
-  COIN_ITEM: (() => { const img = new Image(); img.src = '../assets/sprites/mafia.webp'; return img; })(),
+  COIN_ITEM: (() => { const img = new Image(); img.src = '../../assets/sprites/mafia.webp'; return img; })(),
 
   // Background layers (far → near)
-  STREET_BG_FAR:  (() => { const img = new Image(); img.src = '../assets/img/background.webp'; return img; })(),
+  STREET_BG_FAR:  (() => { const img = new Image(); img.src = '../../assets/img/background.webp'; return img; })(),
   STREET_BG_MID:  null,
   STREET_BG_NEAR: null,
   STREET_BG_DECO: null,
@@ -109,13 +109,13 @@ const ASSETS = {
    All sounds are preloaded. SoundSystem.play() handles iOS unlock.
 ---------------------------------------------------------------- */
 const SOUNDS = {
-  awb:       '../assets/sounds/awb.mp3',       // coupon collected
-  game_over: '../assets/sounds/game_over.mp3', // player loses
-  intro:     '../assets/sounds/intro.mp3',     // page open
-  jump:      '../assets/sounds/touch_game.mp3',// jump
-  xeso:      '../assets/sounds/xeso.mp3',      // hit patrulla
-  hit:       '../assets/sounds/hit.mp3',       // hit any other obstacle
-  point:     '../assets/sounds/point.mp3',     // regular collectible picked up
+  awb:       '../../assets/sounds/awb.mp3',       // coupon collected
+  game_over: '../../assets/sounds/game_over.mp3', // player loses
+  intro:     '../../assets/sounds/intro.mp3',     // page open
+  jump:      '../../assets/sounds/touch_game.mp3',// jump
+  xeso:      '../../assets/sounds/xeso.mp3',      // hit patrulla
+  hit:       '../../assets/sounds/hit.mp3',       // hit any other obstacle
+  point:     '../../assets/sounds/point.mp3',     // regular collectible picked up
 };
 
 const SoundSystem = (() => {
@@ -125,8 +125,13 @@ const SoundSystem = (() => {
   const _pools   = {};   // key → Audio[]
   const _cursors = {};   // key → current pool index (round-robin)
   let _unlocked  = false;
+  let _introRequested = false;
+  let _introPlayed = false;
 
-  function _buildPool(key, src) {
+  function _buildPool(key) {
+    if (_pools[key]) return;
+    const src = SOUNDS[key];
+    if (!src) return;
     _pools[key]   = Array.from({ length: POOL_SIZE }, () => {
       const a = new Audio(src);
       a.preload = 'auto';
@@ -136,23 +141,27 @@ const SoundSystem = (() => {
   }
 
   return {
+    preload() {
+      Object.keys(SOUNDS).forEach(_buildPool);
+    },
+
     // iOS Safari requires a user gesture before playing audio.
     // Unlock on first touch/click by building the Audio pools.
     unlock() {
-      if (_unlocked) return;
-      _unlocked = true;
-      for (const [key, src] of Object.entries(SOUNDS)) {
-        _buildPool(key, src);
+      if (!_unlocked) {
+        _unlocked = true;
+        this.preload();
+      }
+      if (_introRequested && !_introPlayed) {
+        this.play('intro', 0.72);
       }
     },
 
     play(key, volume = 1) {
       if (!_pools[key]) {
-        // Not unlocked yet; build a single-node pool lazily
-        const src = SOUNDS[key];
-        if (!src) return;
-        _buildPool(key, src);
+        _buildPool(key);
       }
+      if (!_pools[key]) return false;
       try {
         const pool  = _pools[key];
         const idx   = _cursors[key];
@@ -161,8 +170,25 @@ const SoundSystem = (() => {
 
         audio.volume      = volume;
         audio.currentTime = 0;
-        audio.play().catch(() => {}); // silently ignore autoplay block
-      } catch(e) {}
+        const playback = audio.play();
+        if (key === 'intro' && playback && typeof playback.then === 'function') {
+          playback
+            .then(() => { _introPlayed = true; })
+            .catch(() => { if (_introRequested) _introPlayed = false; });
+        } else if (playback && typeof playback.catch === 'function') {
+          playback.catch(() => {});
+        } else if (key === 'intro') {
+          _introPlayed = true;
+        }
+        return true;
+      } catch(e) {
+        return false;
+      }
+    },
+
+    requestIntro() {
+      _introRequested = true;
+      if (!_introPlayed) this.play('intro', 0.72);
     },
 
     stop(key) {
@@ -221,7 +247,7 @@ window.addEventListener('resize', () => {
   if (_resizeTimer) clearTimeout(_resizeTimer);
   _resizeTimer = setTimeout(() => {
     resizeCanvas();
-    if (GS.running) Renderer.drawBackground();
+    if (!GS.running) Renderer.drawBackground();
   }, 100);
 });
 resizeCanvas();
@@ -383,8 +409,8 @@ async function saveBestToSupabase(amount = GS.best) {
 }
 
 function goToLoginForScore() {
-  sessionStorage.setItem(LOGIN_RETURN_KEY, '../minijuegos/');
-  window.location.href = '../portal/';
+  sessionStorage.setItem(LOGIN_RETURN_KEY, '../minijuegos/flappy_ñero/');
+  window.location.href = '../../portal/';
 }
 
 /* ----------------------------------------------------------------
@@ -831,9 +857,7 @@ const ObstaclePool = (() => {
     for (let i = 0; i < MAX_OBSTACLES; i++) {
       const o = _pool[i];
       if (!o.active) continue;
-      ctx.save();
       o.type.draw(ctx, o.x | 0, o.y | 0, o.w, o.h);
-      ctx.restore();
     }
   }
 
@@ -846,7 +870,7 @@ const ObstaclePool = (() => {
     return active;
   }
 
-  return { init, update, draw, getAll };
+  return { init, update, draw, getAll, pool: _pool };
 })();
 
 /* ----------------------------------------------------------------
@@ -967,7 +991,7 @@ const CollectiblePool = (() => {
     return active;
   }
 
-  return { init, update, draw, getAll };
+  return { init, update, draw, getAll, pool: _pool };
 })();
 
 /* ----------------------------------------------------------------
@@ -991,9 +1015,10 @@ const Collision = {
 
     // Obstacle collision
     if (!GS.invincible) {
-      const obs = ObstaclePool.getAll();
+      const obs = ObstaclePool.pool;
       for (let i = 0; i < obs.length; i++) {
         const o  = obs[i];
+        if (!o.active) continue;
         const ox = o.x + 4, oy = o.y + 4, ow = o.w - 8, oh = o.h - 8;
         if (this.aabb(px, py, pw, phh, ox, oy, ow, oh)) {
           SoundSystem.play(o.type.id === 'POLICE_OBSTACLE' ? 'xeso' : 'hit');
@@ -1004,9 +1029,10 @@ const Collision = {
     }
 
     // Collectible collision
-    const items = CollectiblePool.getAll();
+    const items = CollectiblePool.pool;
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
+      if (!it.active || it.collected) continue;
       if (this.aabb(px, py, pw, phh, it.x, it.y, it.w, it.h)) {
         it.collected = true;
         if (it.type === 'COUPON') {
@@ -1210,6 +1236,9 @@ const Screens = {
    GAME LIFECYCLE
 ---------------------------------------------------------------- */
 function startGame() {
+  if (GS.running) return;
+  stopStaticLoop();
+
   GS.running       = true;
   GS.over          = false;
   GS.score         = 0;
@@ -1315,10 +1344,10 @@ async function saveGameOverScore() {
    GAME LOOP
    - dt is capped at 50 ms to prevent physics tunnelling after
      tab-backgrounding / resumed frames.
-   - The static-frame loop for the start screen is unified here so
-     there is never more than one rAF loop running at a time.
+   - The static start screen is throttled so it does not burn a full
+     animation loop before the player starts.
 ---------------------------------------------------------------- */
-let _loopId = null; // tracks the rAF ID for the static start-screen loop
+let _loopId = null; // tracks the timeout ID for the static start-screen loop
 
 function loop(timestamp) {
   if (!GS.running) return;
@@ -1342,7 +1371,13 @@ function loop(timestamp) {
 function staticLoop() {
   if (GS.running) return; // hand off once the game starts
   Background.draw();
-  _loopId = requestAnimationFrame(staticLoop);
+  _loopId = window.setTimeout(staticLoop, 250);
+}
+
+function stopStaticLoop() {
+  if (_loopId === null) return;
+  window.clearTimeout(_loopId);
+  _loopId = null;
 }
 
 /* ----------------------------------------------------------------
@@ -1359,41 +1394,40 @@ const Input = {
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
         e.preventDefault();
+        SoundSystem.unlock();
         this.action();
       }
     });
 
     // iOS Safari audio unlock — run once on any user gesture
-    let introPlayed = false;
-    const playIntroOnce = () => {
-      if (introPlayed) return;
-      introPlayed = true;
+    const unlockSounds = () => {
       SoundSystem.unlock();
-      SoundSystem.play('intro');
     };
+    document.addEventListener('pointerdown', unlockSounds, { once: true, passive: true });
+    document.addEventListener('touchstart', unlockSounds, { once: true, passive: true });
 
     // Canvas touch — prevent default to stop scroll/zoom on mobile
     canvas.style.touchAction = 'none';
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      playIntroOnce();
+      unlockSounds();
       this.action();
     }, { passive: false });
 
     // Wrapper touch — passive, just for audio unlock
-    document.getElementById('wrapper').addEventListener('touchstart', playIntroOnce, { passive: true });
+    document.getElementById('wrapper').addEventListener('touchstart', unlockSounds, { passive: true });
 
     // Buttons — touchend fires once on mobile; click covers desktop
     const startBtn   = document.getElementById('startBtn');
     const restartBtn = document.getElementById('restartBtn');
     const saveScoreBtn = document.getElementById('saveScoreBtn');
 
-    const btnTouch = (e) => { e.preventDefault(); playIntroOnce(); startGame(); };
+    const btnTouch = (e) => { e.preventDefault(); unlockSounds(); startGame(); };
     startBtn.addEventListener('touchend',   btnTouch, { passive: false });
     restartBtn.addEventListener('touchend', btnTouch, { passive: false });
-    startBtn.addEventListener('click',   () => { SoundSystem.unlock(); startGame(); });
-    restartBtn.addEventListener('click', () => { SoundSystem.unlock(); startGame(); });
+    startBtn.addEventListener('click',   () => { unlockSounds(); startGame(); });
+    restartBtn.addEventListener('click', () => { unlockSounds(); startGame(); });
     saveScoreBtn?.addEventListener('click', goToLoginForScore);
   },
 
@@ -1406,8 +1440,8 @@ const Input = {
 /* ----------------------------------------------------------------
    BOOT
    - Input, Background and static draw loop initialised once.
-   - A single rAF drives the start-screen animation; the game loop
-     takes over when the player starts.
+   - The menu render is throttled; the game loop takes over when the
+     player starts.
 ---------------------------------------------------------------- */
 Input.init();
 Background.init();
@@ -1415,9 +1449,9 @@ syncBestWithAccount().catch((error) => {
   console.info('[HR game] score sync skipped:', error);
 });
 
-// Desktop: attempt autoplay immediately.
-// iOS: will silently fail; intro plays on first user gesture (Input.init).
-SoundSystem.play('intro');
+// Desktop: attempt autoplay immediately. iOS/Safari retries on first gesture.
+SoundSystem.preload();
+SoundSystem.requestIntro();
 
 Screens.showStart();
 staticLoop(); // begins the idle background animation

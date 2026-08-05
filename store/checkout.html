@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Checkout | Hidden Room</title>
+  <link rel="icon" type="image/webp" href="../assets/img/orange_logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles.css?v=20260718-wavesurfer-global">
+  <link rel="stylesheet" href="store.css?v=20260718-admin-store-subnav">
+</head>
+<body class="store-page hr-page" data-page="checkout" data-hr-chrome data-hr-context="store">
+  <div id="hr-global-nav"></div>
+  <main class="page-shell hr-section hr-container hr-stack hr-stack-xl">
+    <a class="back-link" href="cart.html">&larr; Volver al carrito</a>
+    <div class="page-title hr-stack">
+      <p class="eyebrow hr-eyebrow">Pago seguro con Mercado Pago</p>
+      <h1 class="hr-title-xl">Checkout</h1>
+    </div>
+
+    <div class="checkout-layout hr-grid">
+      <form id="checkout-form" class="checkout-form hr-card hr-panel hr-stack">
+        <p id="checkout-account-notice" class="account-notice"></p>
+        <div class="field hr-field">
+          <label class="hr-label" for="customer-name">Nombre completo</label>
+          <input id="customer-name" class="hr-input" name="name" autocomplete="name" required maxlength="120">
+        </div>
+        <div class="field hr-field">
+          <label class="hr-label" for="customer-email">Correo electrónico</label>
+          <input id="customer-email" class="hr-input" name="email" type="email" autocomplete="email" required maxlength="254">
+        </div>
+        <div class="field hr-field">
+          <label class="hr-label" for="customer-phone">Teléfono</label>
+          <input id="customer-phone" class="hr-input" name="phone" type="tel" autocomplete="tel" required maxlength="30">
+        </div>
+        <p id="checkout-error" class="form-error hr-error" role="alert" aria-live="assertive"></p>
+        <button id="checkout-button" class="primary-button hr-btn hr-btn-primary hr-btn-block" type="submit">Continuar al pago</button>
+        <p class="secure-note hr-help">Hidden Room no recibe ni almacena los datos de tu tarjeta. El formulario seguro lo procesa Mercado Pago.</p>
+      </form>
+      <aside id="checkout-summary" class="summary-card hr-card hr-panel"></aside>
+      <section id="payment-panel" class="payment-panel hr-card hr-panel hr-stack" hidden>
+        <div>
+          <p class="eyebrow hr-eyebrow">Tarjeta</p>
+          <h2>Pago con Card Payment Brick</h2>
+        </div>
+        <div id="cardPaymentBrick_container"></div>
+        <p id="payment-status" class="secure-note hr-help" aria-live="polite"></p>
+      </section>
+    </div>
+  </main>
+
+  <script src="../site.js?v=20260729-mojibake-fix"></script>
+  <script type="module" src="store.js?v=20260701-notifications"></script>
+</body>
+</html>
+
+
+

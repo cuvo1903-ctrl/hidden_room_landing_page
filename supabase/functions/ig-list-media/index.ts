@@ -1,0 +1,384 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+const META_API_VERSION = "v24.0";
+const MAX_LIMIT = 100;
+const MAX_PERMALINK_PAGES = 100;
+const MAX_META_RETRIES = 5;
+const BASE_RETRY_DELAY_MS = 800;
+const MAX_RETRY_DELAY_MS = 20_000;
+const API_MODES = new Set(["instagram_login", "facebook_graph"]);
+
+function json(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+async function readJson(req: Request) {
+  try {
+    return await req.json();
+  } catch {
+    return null;
+  }
+}
+
+function normalizeLimit(value: unknown) {
+  const parsed = Number.parseInt(String(value ?? "25"), 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return 25;
+  return Math.min(parsed, MAX_LIMIT);
+}
+
+function normalizeInstagramPermalink(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
+    const pathname = url.pathname.replace(/\/+$/, "");
+    if (hostname !== "instagram.com" || !/^\/(p|reel|reels|tv)\/[a-zA-Z0-9_-]+$/.test(pathname)) return null;
+    return "instagram.com" + pathname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function mediaMatchesPermalink(item: Record<string, unknown>, target: string) {
+  return normalizeInstagramPermalink(item?.permalink) === target;
+}
+
+async function readResponseBody(response: Response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryAfterMs(response: Response) {
+  const header = response.headers.get("retry-after");
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const dateMs = Date.parse(header);
+  if (Number.isFinite(dateMs)) return Math.max(0, dateMs - Date.now());
+  return null;
+}
+
+function isTemporaryMetaError(status: number, data: Record<string, unknown>) {
+  const error = data?.error as Record<string, unknown> | undefined;
+  const code = Number(error?.code || 0);
+  const message = String(error?.message || data?.raw || "").toLowerCase();
+  return (
+    status === 408 ||
+    status === 425 ||
+    status === 429 ||
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    code === 1 ||
+    code === 2 ||
+    code === 4 ||
+    code === 17 ||
+    code === 32 ||
+    message.includes("timeout") ||
+    message.includes("temporar") ||
+    message.includes("rate")
+  );
+}
+
+function backoffDelayMs(attempt: number, response?: Response) {
+  const retryAfter = response ? retryAfterMs(response) : null;
+  if (retryAfter !== null) return Math.min(retryAfter, MAX_RETRY_DELAY_MS);
+  const exponential = BASE_RETRY_DELAY_MS * 2 ** Math.max(0, attempt - 1);
+  const jitter = Math.floor(Math.random() * 300);
+  return Math.min(exponential + jitter, MAX_RETRY_DELAY_MS);
+}
+
+function friendlyMetaError(status: number, data: Record<string, unknown>, mode = "instagram_login") {
+  const error = data?.error as Record<string, unknown> | undefined;
+  const message = String(error?.message || data?.raw || "Meta no pudo responder.");
+  const lower = message.toLowerCase();
+  const code = Number(error?.code || 0);
+
+  if (code === 190 || (status === 400 && (lower.includes("access token") || lower.includes("token")))) {
+    return mode === "facebook_graph"
+      ? "Token de Facebook invalido o expirado. Genera un Facebook User/Page access token valido."
+      : "Token invalido o expirado. Genera un nuevo Access Token de Instagram.";
+  }
+  if (code === 10) {
+    return "Permisos insuficientes en Meta. Verifica permisos de Facebook/Instagram para leer paginas, cuenta de Instagram y comentarios.";
+  }
+  if (code === 100) {
+    return "Parametro invalido para Meta. Verifica que el ID pertenezca a la cuenta conectada y que el endpoint soporte esos campos.";
+  }
+  if (status === 401 || status === 403 || lower.includes("permission") || lower.includes("permissions")) {
+    return "Permisos insuficientes para leer publicaciones de esta cuenta.";
+  }
+  if (status === 429 || code === 4 || code === 17 || code === 32 || lower.includes("rate")) {
+    return "Meta limito la frecuencia de solicitudes. Espera unos minutos e intenta de nuevo.";
+  }
+
+  return message;
+}
+
+async function requireAdmin(req: Request) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+    return { response: json({ error: "Faltan variables de Supabase." }, 500) };
+  }
+
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const callerClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const adminClient = createClient(supabaseUrl, serviceRoleKey);
+
+  const { data: authData, error: authError } = await callerClient.auth.getUser();
+  if (authError || !authData.user) {
+    return { response: json({ error: "Unauthorized" }, 401) };
+  }
+
+  const { data: profile, error: profileError } = await adminClient
+    .from("users")
+    .select("roles")
+    .eq("id", authData.user.id)
+    .maybeSingle();
+
+  if (profileError) {
+    return { response: json({ error: profileError.message }, 500) };
+  }
+
+  const isAdmin = String(profile?.roles ?? "")
+    .split(",")
+    .map((role) => role.trim().toLowerCase())
+    .includes("admin");
+
+  if (!isAdmin) {
+    return { response: json({ error: "Forbidden: se requiere rol admin." }, 403) };
+  }
+
+  return { user: authData.user };
+}
+
+async function metaFetch(url: URL, mode: string) {
+  let lastStatus = 0;
+  let lastData: Record<string, unknown> = {};
+
+  for (let attempt = 1; ; attempt += 1) {
+    lastStatus = 0;
+    try {
+      const response = await fetch(url);
+      const data = await readResponseBody(response);
+      if (response.ok) return data;
+
+      lastStatus = response.status;
+      lastData = data;
+      if (!isTemporaryMetaError(response.status, data) || attempt > MAX_META_RETRIES) {
+        console.error("[ig-list-media] Meta error", {
+          mode,
+          endpoint: url.origin + url.pathname,
+          status: response.status,
+          meta_error: data?.error ?? data,
+        });
+        const error = new Error(friendlyMetaError(response.status, data, mode));
+        (error as Error & { status?: number; meta?: Record<string, unknown> }).status = response.status;
+        (error as Error & { status?: number; meta?: Record<string, unknown> }).meta = data;
+        throw error;
+      }
+
+      const waitMs = backoffDelayMs(attempt, response);
+      console.info("[ig-list-media] Reintentando Meta", {
+        mode,
+        endpoint: url.origin + url.pathname,
+        status: response.status,
+        attempt,
+        wait_ms: waitMs,
+      });
+      await sleep(waitMs);
+    } catch (error) {
+      if (error instanceof Error && lastStatus) throw error;
+      if (attempt > MAX_META_RETRIES) {
+        const wrapped = new Error(error instanceof Error ? error.message : "Meta no pudo responder.");
+        (wrapped as Error & { status?: number; meta?: Record<string, unknown> }).status = lastStatus || 0;
+        (wrapped as Error & { status?: number; meta?: Record<string, unknown> }).meta = lastData;
+        throw wrapped;
+      }
+
+      const waitMs = backoffDelayMs(attempt);
+      console.info("[ig-list-media] Reintentando red", {
+        mode,
+        endpoint: url.origin + url.pathname,
+        attempt,
+        wait_ms: waitMs,
+      });
+      await sleep(waitMs);
+    }
+  }
+}
+
+async function listInstagramLoginMedia(accessToken: string, limit: number, targetPermalink: string | null) {
+  const url = new URL("https://graph.instagram.com/" + META_API_VERSION + "/me/media");
+  url.searchParams.set("fields", "id,caption,permalink,media_type,timestamp,comments_count,thumbnail_url");
+  url.searchParams.set("limit", String(targetPermalink ? MAX_LIMIT : limit));
+  url.searchParams.set("access_token", accessToken);
+
+  const media: Record<string, unknown>[] = [];
+  let nextUrl: URL | null = url;
+  let page = 0;
+  while (nextUrl && page < (targetPermalink ? MAX_PERMALINK_PAGES : 1)) {
+    page += 1;
+    const data = await metaFetch(nextUrl, "instagram_login");
+    const rows = Array.isArray(data?.data) ? data.data : [];
+    const selected = targetPermalink ? rows.filter((item: Record<string, unknown>) => mediaMatchesPermalink(item, targetPermalink)) : rows;
+    media.push(...selected.map((item: Record<string, unknown>) => ({ ...item, api_mode: "instagram_login" })));
+    if (media.length || !targetPermalink || typeof data?.paging?.next !== "string") break;
+    nextUrl = new URL(data.paging.next);
+  }
+
+  return {
+    media,
+    pages: [],
+    ig_accounts: [],
+  };
+}
+
+async function listFacebookGraphMedia(accessToken: string, limit: number, targetPermalink: string | null) {
+  const accountsUrl = new URL("https://graph.facebook.com/" + META_API_VERSION + "/me/accounts");
+  accountsUrl.searchParams.set("fields", "id,name,access_token");
+  accountsUrl.searchParams.set("limit", "100");
+  accountsUrl.searchParams.set("access_token", accessToken);
+
+  let pages: Record<string, unknown>[] = [];
+  try {
+    const accountsData = await metaFetch(accountsUrl, "facebook_graph");
+    pages = Array.isArray(accountsData?.data) ? accountsData.data : [];
+  } catch (error) {
+    console.info("[ig-list-media] /me/accounts no disponible; probando token como Page token", {
+      mode: "facebook_graph",
+      status: (error as Error & { status?: number }).status ?? null,
+    });
+    const pageUrl = new URL("https://graph.facebook.com/" + META_API_VERSION + "/me");
+    pageUrl.searchParams.set("fields", "id,name,instagram_business_account");
+    pageUrl.searchParams.set("access_token", accessToken);
+    const pageData = await metaFetch(pageUrl, "facebook_graph");
+    if (pageData?.id) pages = [{ ...pageData, access_token: accessToken }];
+  }
+
+  const media: Record<string, unknown>[] = [];
+  const igAccounts: Record<string, unknown>[] = [];
+
+  for (const page of pages) {
+    const pageId = String(page?.id || "").trim();
+    if (!pageId) continue;
+
+    const pageToken = String(page?.access_token || accessToken).trim();
+    let pageData = page;
+    if (!pageData?.instagram_business_account) {
+      const pageUrl = new URL("https://graph.facebook.com/" + META_API_VERSION + "/" + encodeURIComponent(pageId));
+      pageUrl.searchParams.set("fields", "instagram_business_account");
+      pageUrl.searchParams.set("access_token", pageToken);
+      pageData = await metaFetch(pageUrl, "facebook_graph");
+    }
+    const igUserId = String(pageData?.instagram_business_account?.id || "").trim();
+    if (!igUserId) continue;
+
+    igAccounts.push({
+      page_id: pageId,
+      page_name: page?.name || null,
+      ig_user_id: igUserId,
+    });
+
+    const mediaUrl = new URL("https://graph.facebook.com/" + META_API_VERSION + "/" + encodeURIComponent(igUserId) + "/media");
+    mediaUrl.searchParams.set("fields", "id,caption,comments_count,permalink,timestamp,media_type,thumbnail_url");
+    mediaUrl.searchParams.set("limit", String(targetPermalink ? MAX_LIMIT : limit));
+    mediaUrl.searchParams.set("access_token", pageToken);
+
+    let nextUrl: URL | null = mediaUrl;
+    let mediaPage = 0;
+    while (nextUrl && mediaPage < (targetPermalink ? MAX_PERMALINK_PAGES : 1)) {
+      mediaPage += 1;
+      const mediaData = await metaFetch(nextUrl, "facebook_graph");
+      const rows = Array.isArray(mediaData?.data) ? mediaData.data : [];
+      const selected = targetPermalink ? rows.filter((item: Record<string, unknown>) => mediaMatchesPermalink(item, targetPermalink)) : rows;
+      media.push(...selected.map((item: Record<string, unknown>) => ({
+          ...item,
+          api_mode: "facebook_graph",
+          page_id: pageId,
+          page_name: page?.name || null,
+          ig_user_id: igUserId,
+        })));
+      if (media.length || !targetPermalink || typeof mediaData?.paging?.next !== "string") break;
+      nextUrl = new URL(mediaData.paging.next);
+    }
+    if (targetPermalink && media.length) break;
+  }
+
+  return {
+    media,
+    pages: pages.map((page: Record<string, unknown>) => ({ id: page.id, name: page.name || null })),
+    ig_accounts: igAccounts,
+  };
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+
+  const auth = await requireAdmin(req);
+  if ("response" in auth) return auth.response;
+
+  const body = await readJson(req);
+  if (!body || typeof body !== "object") return json({ error: "JSON invalido." }, 400);
+
+  const payload = body as Record<string, unknown>;
+  const rawMode = String(payload.api_mode || payload.mode || "instagram_login").trim();
+  const apiMode = API_MODES.has(rawMode) ? rawMode : "instagram_login";
+  const envTokenName = apiMode === "facebook_graph" ? "FB_ACCESS_TOKEN" : "IG_ACCESS_TOKEN";
+  const accessToken = String(payload.access_token || Deno.env.get(envTokenName) || Deno.env.get("IG_ACCESS_TOKEN") || "").trim();
+  if (!accessToken) {
+    return json({ error: "Falta access_token o secreto " + envTokenName + "." }, 400);
+  }
+
+  const limit = normalizeLimit(payload.limit);
+  const rawPermalink = String(payload.permalink || "").trim();
+  const targetPermalink = normalizeInstagramPermalink(rawPermalink);
+  if (rawPermalink && !targetPermalink) {
+    return json({ error: "Pega un enlace valido de una publicacion, reel o video de Instagram." }, 400);
+  }
+
+  try {
+    const result = apiMode === "facebook_graph"
+      ? await listFacebookGraphMedia(accessToken, limit, targetPermalink)
+      : await listInstagramLoginMedia(accessToken, limit, targetPermalink);
+
+    if (targetPermalink && !result.media.length) {
+      return json({ ok: false, error: "No se encontro ese enlace entre las publicaciones de la cuenta conectada." }, 404);
+    }
+
+    return json({
+      ok: true,
+      api_mode: apiMode,
+      ...result,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return json({ ok: false, error: "No se pudo conectar con Meta: " + message }, 502);
+  }
+});

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin de tienda | Hidden Room</title>
+  <link rel="icon" type="image/webp" href="../assets/img/orange_logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles.css?v=20260718-wavesurfer-global">
+  <link rel="stylesheet" href="store.css?v=20260718-admin-store-subnav">
+</head>
+<body class="store-page hr-page" data-hr-chrome data-hr-context="store">
+  <div id="hr-global-nav"></div>
+  <main id="admin-shell" class="page-shell hr-section hr-container hr-stack hr-stack-xl" hidden>
+    <div class="page-title hr-stack">
+      <p class="eyebrow hr-eyebrow">Administración</p>
+      <h1 class="hr-title-xl">Productos</h1>
+    </div>
+
+    <div class="admin-layout hr-grid">
+      <form id="product-form" class="checkout-form admin-form hr-card hr-panel hr-stack">
+        <input id="product-id" type="hidden">
+        <h2 id="product-form-title" class="hr-section-title">Nuevo producto</h2>
+        <div class="field hr-field"><label class="hr-label" for="product-name">Nombre</label><input class="hr-input" id="product-name" required maxlength="160"></div>
+        <div class="field hr-field"><label class="hr-label" for="product-slug">Slug</label><input class="hr-input" id="product-slug" required pattern="[a-z0-9-]+" maxlength="160"></div>
+        <div class="field hr-field"><label class="hr-label" for="product-description">Descripción</label><textarea class="hr-textarea" id="product-description" rows="4"></textarea></div>
+        <div class="field hr-field"><label class="hr-label" for="product-producer">Productor</label><input class="hr-input" id="product-producer" maxlength="160" placeholder="Opcional para beats"></div>
+        <div class="field hr-field">
+          <label class="hr-label" for="product-category">Categoría</label>
+          <select class="hr-select" id="product-category" required>
+            <option value="merch">Merch</option>
+            <option value="beats">Beats</option>
+            <option value="digital">Digital</option>
+            <option value="eventos">Eventos</option>
+          </select>
+        </div>
+        <div class="field hr-field"><label class="hr-label" for="product-price">Precio MXN</label><input class="hr-input" id="product-price" type="number" min="0" step="0.01" required></div>
+        <div class="field hr-field"><label class="hr-label" for="product-image-url">URL de imagen</label><input class="hr-input" id="product-image-url" type="url"></div>
+        <div class="field hr-field"><label class="hr-label" for="product-file-url">URL de archivo</label><input class="hr-input" id="product-file-url"></div>
+        <div class="field hr-field"><label class="hr-label" for="product-stock">Stock (vacío = ilimitado)</label><input class="hr-input" id="product-stock" type="number" min="0" step="1"></div>
+        <div class="check-grid hr-grid hr-grid-3">
+          <label class="hr-chip"><input id="product-is-digital" type="checkbox"> Digital</label>
+          <label class="hr-chip"><input id="product-featured" type="checkbox"> Featured</label>
+          <label class="hr-chip"><input id="product-is-active" type="checkbox" checked> Activo</label>
+        </div>
+        <p id="admin-form-error" class="form-error hr-error" role="alert"></p>
+        <div class="product-actions hr-cluster">
+          <button class="primary-button hr-btn hr-btn-primary" type="submit">Guardar producto</button>
+          <button id="cancel-edit" class="secondary-button hr-btn hr-btn-outline" type="button" hidden>Cancelar edición</button>
+        </div>
+      </form>
+
+      <section>
+        <p id="admin-status" class="account-notice">Cargando productos…</p>
+        <div id="admin-products" class="admin-products"></div>
+      </section>
+    </div>
+  </main>
+
+  <main id="admin-denied" class="success-page">
+    <p class="eyebrow hr-badge hr-badge-danger">Acceso restringido</p>
+    <h1 class="hr-title-xl">Validando acceso</h1>
+    <p id="admin-denied-message">Revisando tu sesión y rol.</p>
+  </main>
+
+  <script src="../site.js?v=20260729-mojibake-fix"></script>
+  <script type="module" src="admin.js?v=20260718-admin-store-subnav"></script>
+</body>
+</html>
+

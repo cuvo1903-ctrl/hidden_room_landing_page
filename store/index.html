@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Tienda oficial de Hidden Room.">
+  <title>Tienda | Hidden Room</title>
+  <link rel="icon" type="image/webp" href="../assets/img/orange_logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles.css?v=20260718-wavesurfer-global">
+  <link rel="stylesheet" href="store.css?v=20260718-admin-store-subnav">
+</head>
+<body class="store-page hr-page" data-page="catalog" data-hr-chrome data-hr-context="store">
+  <div id="hr-global-nav"></div>
+  <main>
+    <section class="store-hero hr-hero hr-section">
+      <div class="store-hero__content hr-container hr-stack">
+      <p class="eyebrow hr-eyebrow">Hidden Room Store</p>
+      <h1 class="hr-title-xl">ruido<br><span>mexa</span></h1>
+      <p class="hero-copy hr-subtitle">Drops, música y herramientas.</p>
+      </div>
+    </section>
+
+    <section class="catalog-section hr-section" aria-labelledby="catalog-title">
+      <div class="hr-container hr-stack hr-stack-xl">
+      <div class="section-heading hr-grid hr-grid-2">
+        <div>
+          <p class="eyebrow hr-eyebrow">Catálogo</p>
+          <h2 id="catalog-title" class="hr-section-title">Selección actual</h2>
+        </div>
+        <p>Precios en MXN. El precio final siempre se valida de forma segura antes del pago.</p>
+      </div>
+      <div class="catalog-tools hr-filterbar">
+        <label class="hr-search">
+          <span>Buscar</span>
+          <input id="product-search" class="hr-search-input" type="search" placeholder="Producto, categoría…">
+        </label>
+        <label class="hr-field">
+          <span>Categoría</span>
+          <select id="category-filter" class="hr-select">
+            <option value="">Todas las categorías</option>
+          </select>
+        </label>
+      </div>
+      <div id="product-grid" class="product-grid hr-card-grid"><p class="hr-table-loading">Cargando productos…</p></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="store-notice" class="notice" role="status" aria-live="polite"></div>
+
+  <footer class="store-footer">
+    <span>Hidden Room © 2026</span>
+    <a href="../">Volver a hiddenroom.mx</a>
+  </footer>
+
+  <script src="../site.js?v=20260729-mojibake-fix"></script>
+  <script type="module" src="store.js?v=20260701-notifications"></script>
+</body>
+</html>
+

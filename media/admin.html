@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow">
+  <title>MEDIA Admin — Hidden Room</title>
+  <link rel="icon" type="image/webp" href="/assets/img/orange_logo.webp">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles.css?v=20260718-wavesurfer-global">
+  <link rel="stylesheet" href="./admin.css?v=20260701-notifications">
+</head>
+<body class="media-admin hr-page" data-hr-chrome data-hr-context="media" data-hr-accent="media">
+  <div id="hr-global-nav"></div>
+  <div class="media-admin__layout">
+    <aside class="media-admin__sidebar">
+      <p>Contenido</p>
+      <nav class="hr-tabs" aria-label="Administración Media">
+        <a class="hr-tab" href="?view=posts" data-admin-view="posts">Publicaciones</a>
+        <a class="hr-tab" href="?view=editor" data-admin-view="editor">Crear publicación</a>
+        <a class="hr-tab" href="?view=drafts" data-admin-view="drafts">Borradores</a>
+      </nav>
+      <a class="media-admin__back" href="/portal/dashboard.html">← Dashboard</a>
+    </aside>
+
+    <main class="media-admin__main hr-stack-xl">
+      <div id="admin-status" class="admin-status hr-panel hr-muted" role="status">Validando acceso…</div>
+
+      <section id="list-view" class="admin-view hr-stack-lg" hidden>
+        <header class="admin-heading">
+          <div><span class="hr-kicker hr-color-pop">MEDIA</span><h1 id="list-title" class="hr-title">Publicaciones</h1></div>
+          <a class="admin-primary hr-btn hr-btn-cyan" href="?view=editor">Nueva publicación</a>
+        </header>
+        <div class="admin-list-toolbar hr-table-toolbar">
+          <input id="admin-search" class="hr-search-input" type="search" placeholder="Buscar por título, autor o categoría">
+          <select id="admin-status-filter" class="hr-select">
+            <option value="">Todos los estados</option>
+            <option value="published">Publicados</option>
+            <option value="draft">Borradores</option>
+            <option value="archived">Archivados</option>
+          </select>
+        </div>
+        <div class="admin-table-wrap hr-table-wrap">
+          <table class="admin-table hr-table hr-table-readable">
+            <thead><tr><th>Publicación</th><th>Estado</th><th>Fecha</th><th>Vistas</th><th>Acciones</th></tr></thead>
+            <tbody id="posts-table-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="editor-view" class="admin-view hr-stack-lg" hidden>
+        <header class="admin-heading">
+          <div><span class="hr-kicker hr-color-pop">EDITOR</span><h1 id="editor-title" class="hr-title">Crear publicación</h1></div>
+          <a class="admin-secondary hr-btn hr-btn-outline" href="?view=posts">Cancelar</a>
+        </header>
+
+        <form id="post-form" class="editor-form hr-stack-lg">
+          <input id="post-id" type="hidden">
+          <div class="editor-grid">
+            <div class="editor-main hr-stack-lg">
+              <label class="admin-field hr-field">
+                <span>Título</span>
+                <input id="post-title-input" class="hr-input" name="title" required maxlength="180" placeholder="Título de la publicación">
+              </label>
+              <label class="admin-field hr-field">
+                <span>Slug</span>
+                <div class="slug-field"><span>hiddenroom.mx/media/</span><input id="post-slug" class="hr-input" name="slug" required maxlength="120"></div>
+              </label>
+              <label class="admin-field hr-field">
+                <span>Extracto / Meta description</span>
+                <textarea id="post-excerpt-input" class="hr-textarea" name="excerpt" maxlength="280" rows="4" placeholder="Resumen breve para tarjetas, buscadores y redes"></textarea>
+                <small class="hr-help"><b id="excerpt-count">0</b>/280</small>
+              </label>
+
+              <div class="admin-field hr-field">
+                <span>Contenido</span>
+                <div class="editor-toolbar hr-filterbar" aria-label="Herramientas del editor">
+                  <button class="hr-btn hr-btn-ghost hr-btn-sm" type="button" data-command="formatBlock" data-value="h2">H2</button>
+                  <button class="hr-btn hr-btn-ghost hr-btn-sm" type="button" data-command="formatBlock" data-value="h3">H3</button>
+                  <button class="hr-btn hr-btn-ghost hr-btn-sm" type="button" data-command="bold"><strong>B</strong></button>
+                  <button class="hr-btn hr-btn-ghost hr-btn-sm" type="button" data-command="italic"><em>I</em></button>
+                  <button class="hr-btn hr-btn-ghost hr-btn-sm" type="button" data-command="insertUnorderedList">• Lista</button>
+                  <button class="hr-btn hr-btn-ghost hr-btn-sm" type="button" data-command="formatBlock" data-value="blockquote">Cita</button>
+                  <button class="hr-btn hr-btn-ghost hr-btn-sm" type="button" data-editor-action="link">Link</button>
+                  <button class="hr-btn hr-btn-ghost hr-btn-sm" type="button" data-command="removeFormat">Limpiar</button>
+                </div>
+                <div id="post-content-editor" class="content-editor" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Escribe la historia completa…"></div>
+              </div>
+            </div>
+
+            <aside class="editor-side hr-stack-lg">
+              <label class="admin-field hr-field">
+                <span>Categoría</span>
+                <select id="post-category-input" class="hr-select" name="category" required></select>
+              </label>
+              <label class="admin-field hr-field">
+                <span>Tags</span>
+                <input id="post-tags" class="hr-input" name="tags" placeholder="rap, cdmx, live session">
+                <small class="hr-help">Separados por comas.</small>
+              </label>
+              <label class="admin-field hr-field">
+                <span>Autor visible</span>
+                <input id="post-author-name" class="hr-input" name="author_name" maxlength="100">
+              </label>
+              <label class="admin-field hr-field">
+                <span>Imagen de portada</span>
+                <input id="post-cover-file" class="hr-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+                <input id="post-cover-url" class="hr-input" name="cover_image" type="url" placeholder="https://…">
+              </label>
+              <div id="cover-preview" class="cover-preview hr-card">Sin portada</div>
+              <label class="admin-check hr-checkbox"><input id="post-featured" name="featured" type="checkbox"><span>Destacar publicación</span></label>
+              <div class="editor-actions hr-form-actions">
+                <button class="admin-secondary hr-btn hr-btn-secondary hr-btn-block" type="submit" data-save-status="draft">Guardar borrador</button>
+                <button class="admin-primary hr-btn hr-btn-cyan hr-btn-block" type="submit" data-save-status="published">Publicar</button>
+                <button class="admin-ghost hr-btn hr-btn-ghost hr-btn-block" id="preview-button" type="button">Vista previa</button>
+              </div>
+            </aside>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="preview-dialog" class="preview-dialog hr-card">
+    <button id="preview-close" class="preview-close hr-btn hr-btn-cyan hr-btn-sm" type="button">Cerrar</button>
+    <article>
+      <p id="preview-category"></p>
+      <h1 id="preview-title"></h1>
+      <p id="preview-excerpt"></p>
+      <img id="preview-cover" alt="" hidden>
+      <div id="preview-content" class="post-content"></div>
+    </article>
+  </dialog>
+
+  <div id="admin-toast" class="admin-toast hr-toast hr-toast--info" role="status" hidden></div>
+  <script src="../site.js?v=20260729-mojibake-fix"></script>
+  <script type="module" src="./admin.js?v=20260701-notifications"></script>
+</body>
+</html>
+

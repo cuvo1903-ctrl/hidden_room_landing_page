@@ -1,0 +1,7 @@
+interface:
+  display_name: "Hidden Room Supabase"
+  short_description: "Migrations, RLS, and Edge Functions"
+  default_prompt: "Use $hiddenroom-supabase to change the Hidden Room database or Edge Functions."
+
+policy:
+  allow_implicit_invocation: true

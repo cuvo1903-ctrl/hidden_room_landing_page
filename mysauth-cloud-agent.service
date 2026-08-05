@@ -1,0 +1,19 @@
+[Unit]
+Description=MysAuth Cloud Agent
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/mysauth
+ExecStart=/usr/bin/node /opt/mysauth/mysauth-cloud-agent.js
+Restart=always
+RestartSec=5
+Environment=SUPABASE_URL=https://your-project.supabase.co
+Environment=SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+Environment=CLOUD_HIDDENROOM_ROOT=/home/prodxdack/hiddenroom
+Environment=CLOUD_HIDDENROOM_URL=https://cloud.hiddenroom.mx/files
+Environment=CLOUD_STAGING_BUCKET=cloud-staging
+Environment=CLOUD_JOBS_POLL_INTERVAL_MS=2000
+
+[Install]
+WantedBy=multi-user.target

@@ -1,11 +1,8 @@
-﻿import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+import { getSupabaseClient } from "./supabase-config.js";
 
-const supabase = createClient(
-  "https://rpcunbkstadgngqrjafp.supabase.co",
-  "sb_publishable_7v_FIgTjWjJgtT1YHIAYSw_bRBmQjZO"
-);
+const supabase = await getSupabaseClient();
 
-let registerMode = false;
+let registerMode = new URLSearchParams(window.location.search).get("mode") === "register";
 let passwordResetCooldownUntil = 0;
 let passwordResetCooldownTimer = null;
 let passwordResetBusy = false;
@@ -16,11 +13,12 @@ const getSafeRedirect = () => {
   if (!returnTo) return fallback;
 
   sessionStorage.removeItem("hr_return_after_login");
-  return returnTo.startsWith("../minijuegos/") ? returnTo : fallback;
+  const allowedReturnPaths = ["../minijuegos/", "../kairen/", "../store/", "../media/"];
+  return allowedReturnPaths.some((path) => returnTo.startsWith(path)) ? returnTo : fallback;
 };
 
-const { data: { session } } = await supabase.auth.getSession();
-if (session) {
+const { data: { user } } = await supabase.auth.getUser();
+if (user) {
   window.location.href = getSafeRedirect();
 }
 
@@ -95,14 +93,14 @@ function syncRegisterMode() {
   enhancePasswordToggles();
 }
 
-document.addEventListener("input", (e) => {
-  if (e.target?.id === "whatsapp") {
-    e.target.value = e.target.value.replace(/\D/g, "");
+document.addEventListener("input", (event) => {
+  if (event.target?.id === "whatsapp") {
+    event.target.value = event.target.value.replace(/\D/g, "");
   }
 });
 
-document.addEventListener("click", (e) => {
-  const button = e.target.closest('[data-action="toggle-password"]');
+document.addEventListener("click", (event) => {
+  const button = event.target.closest('[data-action="toggle-password"]');
   if (!button) return;
 
   const input = button.closest(".password-field")?.querySelector("input");
@@ -126,35 +124,12 @@ function isAlreadyRegisteredError(error) {
 }
 
 async function isRegisteredEmail(email) {
-  const rpc = await supabase.rpc("email_is_registered", { p_email: email });
-  if (!rpc.error) return Boolean(rpc.data);
-
-  console.info("[HR] recovery rpc email check skipped:", rpc.error.message);
-
-  const primary = await supabase
-    .from("users")
-    .select("id")
-    .ilike("email", email)
-    .limit(1);
-
-  if (primary.error) {
-    console.info("[HR] recovery user check users skipped:", primary.error.message);
+  const { data, error } = await supabase.rpc("email_is_registered", { p_email: email });
+  if (error) {
+    console.info("[HR] recovery email check skipped:", error.message);
+    return null;
   }
-
-  if (Array.isArray(primary.data) && primary.data.length > 0) return true;
-
-  const safe = await supabase
-    .from("users_safe")
-    .select("id")
-    .ilike("email", email)
-    .limit(1);
-
-  if (safe.error) {
-    console.info("[HR] recovery user check users_safe skipped:", safe.error.message);
-    return primary.error ? null : false;
-  }
-
-  return Array.isArray(safe.data) ? safe.data.length > 0 : Boolean(safe.data);
+  return Boolean(data);
 }
 
 function setPasswordResetCooldown(seconds = 60) {
@@ -195,8 +170,8 @@ function setPasswordResetBusy(isBusy) {
   }
 }
 
-passwordResetLink?.addEventListener("click", async (e) => {
-  e.preventDefault();
+passwordResetLink?.addEventListener("click", async (event) => {
+  event.preventDefault();
 
   if (passwordResetBusy || Date.now() < passwordResetCooldownUntil) return;
 
@@ -220,25 +195,25 @@ passwordResetLink?.addEventListener("click", async (e) => {
     });
 
     if (error) {
-      alert(error.message || "No se pudo enviar el email de recuperaci\u00f3n.");
+      alert(error.message || "No se pudo enviar el email de recuperación.");
       return;
     }
 
     setPasswordResetCooldown(60);
-    alert("Email de recuperaci\u00f3n enviado.");
+    alert("Email de recuperación enviado.");
   } finally {
     setPasswordResetBusy(false);
   }
 });
 
-registerLink?.addEventListener("click", (e) => {
-  e.preventDefault();
+registerLink?.addEventListener("click", (event) => {
+  event.preventDefault();
   registerMode = !registerMode;
   syncRegisterMode();
 });
 
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
 
   const email = document.getElementById("usuario").value.trim();
   const password = document.getElementById("password").value;
@@ -247,7 +222,17 @@ form.addEventListener("submit", async (e) => {
   const cleanWhatsapp = whatsapp.replace(/\D/g, "");
 
   if (registerMode) {
-    if (!displayName || !cleanWhatsapp) {
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    alert("Ingresa un correo válido.");
+    return;
+  }
+
+  if (password.length < 8) {
+    alert("La contraseña debe tener al menos 8 caracteres.");
+    return;
+  }
+
+    if (!displayName || cleanWhatsapp.length < 10) {
       alert("Ingresa nombre y WhatsApp para registrarte.");
       return;
     }
@@ -271,28 +256,16 @@ form.addEventListener("submit", async (e) => {
       return;
     }
 
-    if (signUpData?.session) {
-      localStorage.setItem("session", JSON.stringify(signUpData.session));
-      window.location.href = getSafeRedirect();
+    if (!signUpData?.session) {
+      alert("Registro creado. Revisa tu correo para confirmar la cuenta antes de iniciar sesión.");
       return;
     }
 
-    const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (loginError) {
-      alert("Registro creado, pero no se pudo iniciar sesion automaticamente.");
-      return;
-    }
-
-    localStorage.setItem("session", JSON.stringify(loginData.session));
     window.location.href = getSafeRedirect();
     return;
   }
 
-  const { data, error } = await supabase.auth.signInWithPassword({
+  const { error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
@@ -302,7 +275,6 @@ form.addEventListener("submit", async (e) => {
     return;
   }
 
-  localStorage.setItem("session", JSON.stringify(data.session));
   window.location.href = getSafeRedirect();
 });
 

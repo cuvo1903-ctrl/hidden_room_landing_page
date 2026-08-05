@@ -1,0 +1,7 @@
+interface:
+  display_name: "Hidden Room Debian Server"
+  short_description: "Debian host, Cloudflare, Docker, agents"
+  default_prompt: "Use $hiddenroom-debian-server to inspect MysAuth Debian services and cloud routing safely."
+
+policy:
+  allow_implicit_invocation: true

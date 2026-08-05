@@ -18,9 +18,9 @@
   <link rel="icon" type="image/webp" href="/assets/img/orange_logo.webp" />
 
   <!-- Global design system -->
-  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="../styles.css?v=20260718-wavesurfer-global" />
   <!-- Dashboard-specific layer (additive only, never overrides tokens) -->
-  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="dashboard.css?v=20260718-empty-upload-guard" />
 
   <!-- Typefaces (same stack as global) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -28,81 +28,34 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet" />
 </head>
 
-<body class="db-body">
+<body class="db-body hr-page" data-hr-chrome data-hr-context="portal" data-hr-footer="false">
+  <div id="hr-global-nav"></div>
 
-  <!-- ═══════════════════════════════════════════════════
+  <!-- ===================================================
        CUSTOM CURSOR  (inherited from global site.js)
-  ═══════════════════════════════════════════════════ -->
+  =================================================== -->
   <div id="cursor"     class="cursor"      aria-hidden="true"></div>
   <div id="cursorRing" class="cursor-ring" aria-hidden="true"></div>
 
-  <!-- ═══════════════════════════════════════════════════
+  <!-- ===================================================
        TOPBAR
        Role context + global actions
-  ═══════════════════════════════════════════════════ -->
-  <header class="db-topbar" role="banner">
-
-    <div class="db-topbar__brand">
-      <a href="/" class="db-topbar__logo" aria-label="Hidden Room — Home">
-        <img src="../assets/img/white_logo.webp" alt="Hidden Room" class="db-logo-img" />
-      </a>
-      <span class="db-topbar__divider" aria-hidden="true"></span>
-      <span class="db-topbar__context">EXPLORA</span>
-    </div>
-
-    <div class="db-topbar__center" aria-live="polite">
-      <!-- Populated by dashboard.js: current section title -->
-      <span class="db-topbar__section-title" id="js-topbar-section"></span>
-    </div>
-
-    <div class="db-topbar__actions">
-      <!-- Notification bell -->
-      <button
-        class="db-topbar__icon-btn"
-        id="js-notifications-toggle"
-        aria-label="Notificaciones"
-        aria-expanded="false"
-        aria-controls="js-notifications-panel"
-      >
-        <span class="db-icon db-icon--bell" aria-hidden="true"></span>
-        <span class="db-badge" id="js-notif-count" aria-label="notificaciones sin leer" hidden></span>
-      </button>
-
-      <!-- Unified navigation / user menu -->
-      <button class="db-user-chip" id="js-user-menu-toggle" aria-haspopup="true" aria-expanded="false" aria-controls="js-user-menu js-sidebar" aria-label="Abrir menú">
-        <span class="db-icon db-icon--menu" aria-hidden="true"></span>
-        <span class="db-user-chip__avatar" id="js-user-avatar" aria-hidden="true"></span>
-        <span class="db-user-chip__name"   id="js-user-display-name">—</span>
-      </button>
-
-      <!-- User dropdown (rendered by JS) -->
-      <nav class="db-user-menu" id="js-user-menu" aria-label="Menú de usuario" hidden>
-        <ul class="db-user-menu__list" role="list">
-          <li><button class="db-user-menu__item" data-action="profile">Perfil</button></li>
-          <li><button class="db-user-menu__item" data-action="settings">Ajustes</button></li>
-          <li><button class="db-user-menu__item db-user-menu__item--danger" data-action="logout">Cerrar sesión</button></li>
-        </ul>
-      </nav>
-    </div>
-
-  </header>
-
-
-  <!-- ═══════════════════════════════════════════════════
+  =================================================== -->
+  <!-- ===================================================
        LAYOUT SHELL
-  ═══════════════════════════════════════════════════ -->
+  =================================================== -->
   <div class="db-layout">
 
-    <!-- ─────────────────────────────────────────────
+    <!-- ---------------------------------------------
          SIDEBAR NAVIGATION
          Visibility of each nav item is toggled by JS
          based on the user's roles array.
-    ──────────────────────────────────────────────── -->
+    ------------------------------------------------ -->
     <aside class="db-sidebar" id="js-sidebar" aria-label="Navegación del portal">
 
       <nav class="db-sidebar__nav" aria-label="Módulos">
 
-        <!-- ── ALWAYS VISIBLE ─────────────────────── -->
+        <!-- -- ALWAYS VISIBLE ----------------------- -->
         <ul class="db-sidebar__group" role="list" data-group="core">
           <li class="db-sidebar__label" aria-hidden="true">Sistema</li>
 
@@ -118,7 +71,7 @@
           </li>
         </ul>
 
-        <!-- ── ROLE: client ───────────────────────── -->
+        <!-- -- ROLE: client ------------------------- -->
         <ul class="db-sidebar__group" role="list" data-role-gate="client" hidden>
           <li class="db-sidebar__label" aria-hidden="true">Cliente</li>
 
@@ -178,7 +131,7 @@
           </li>
         </ul>
 
-        <!-- ── ROLE: collaborator ─────────────────── -->
+        <!-- -- ROLE: collaborator ------------------- -->
         <ul class="db-sidebar__group" role="list" data-role-gate="collaborator" hidden>
           <li class="db-sidebar__label" aria-hidden="true">Colaborador</li>
 
@@ -206,9 +159,15 @@
               <span class="db-sidebar__item-text">Actividad</span>
             </button>
           </li>
+          <li>
+            <a class="db-sidebar__item" href="../tickets">
+              <span class="db-icon db-icon--check" aria-hidden="true"></span>
+              <span class="db-sidebar__item-text">Boletera</span>
+            </a>
+          </li>
         </ul>
 
-        <!-- ── ROLE: rrpp ─────────────────────────── -->
+        <!-- -- ROLE: rrpp --------------------------- -->
         <ul class="db-sidebar__group" role="list" data-role-gate="pr" hidden>
           <li class="db-sidebar__label" aria-hidden="true">Embajador</li>
 
@@ -242,35 +201,93 @@
               <span class="db-sidebar__item-text">Beneficios</span>
             </button>
           </li>
+          <li>
+            <button class="db-sidebar__item" data-section="rrpp-scrum">
+              <span class="db-icon db-icon--check" aria-hidden="true"></span>
+              <span class="db-sidebar__item-text">SCRUM / Tareas</span>
+            </button>
+          </li>
         </ul>
 
-        <!-- ── ROLE: admin (future) ───────────────── -->
-        <ul class="db-sidebar__group" role="list" data-role-gate="admin" hidden>
-          <li class="db-sidebar__label" aria-hidden="true">ERP — Operaciones</li>
-
+        <!-- -- ROLE: admin (future) ----------------- -->
+        <ul class="db-sidebar__group" role="list" data-permission-gate="media.posts" hidden>
+          <li class="db-sidebar__label" aria-hidden="true">Media</li>
           <li>
+            <a class="db-sidebar__item" href="../media/admin.html?view=posts">
+              <span class="db-icon db-icon--doc" aria-hidden="true"></span>
+              <span class="db-sidebar__item-text">Publicaciones</span>
+            </a>
+          </li>
+          <li>
+            <a class="db-sidebar__item" href="../media/admin.html?view=editor">
+              <span class="db-icon db-icon--activity" aria-hidden="true"></span>
+              <span class="db-sidebar__item-text">Crear publicación</span>
+            </a>
+          </li>
+          <li>
+            <a class="db-sidebar__item" href="../media/admin.html?view=drafts">
+              <span class="db-icon db-icon--folder" aria-hidden="true"></span>
+              <span class="db-sidebar__item-text">Borradores</span>
+            </a>
+          </li>
+        </ul>
+
+        <ul class="db-sidebar__group" role="list" data-permission-any-gate="erp.finance.input,erp.ops.input" hidden>
+          <li class="db-sidebar__label" aria-hidden="true">ERP - Operaciones</li>
+
+          <li data-role-gate="admin">
             <button class="db-sidebar__item" data-section="erp-finance">
               <span class="db-icon db-icon--chart" aria-hidden="true"></span>
               <span class="db-sidebar__item-text">Finanzas</span>
             </button>
           </li>
-          <li>
+          <li data-role-gate="admin">
             <button class="db-sidebar__item" data-section="erp-ops">
               <span class="db-icon db-icon--settings" aria-hidden="true"></span>
               <span class="db-sidebar__item-text">Operaciones</span>
             </button>
           </li>
           <li>
+            <button class="db-sidebar__item" data-section="erp-csv-upload">
+              <span class="db-icon db-icon--doc" aria-hidden="true"></span>
+              <span class="db-sidebar__item-text">Subir CSV</span>
+            </button>
+          </li>
+          <li data-role-gate="admin">
             <button class="db-sidebar__item" data-section="erp-permissions">
               <span class="db-icon db-icon--users" aria-hidden="true"></span>
               <span class="db-sidebar__item-text">Permisos</span>
             </button>
           </li>
-          <li>
+          <li data-role-gate="admin">
             <button class="db-sidebar__item" data-section="erp-auth-audit">
               <span class="db-icon db-icon--activity" aria-hidden="true"></span>
               <span class="db-sidebar__item-text">Auth / Registros</span>
             </button>
+          </li>
+          <li data-role-gate="admin">
+            <button class="db-sidebar__item" data-section="erp-ig-mention-rank">
+              <span class="db-icon db-icon--chart" aria-hidden="true"></span>
+              <span class="db-sidebar__item-text">Instagram Mention Rank</span>
+            </button>
+          </li>
+          <li data-role-gate="admin">
+            <button class="db-sidebar__item" data-section="erp-ig-benefits-audit">
+              <span class="db-icon db-icon--gift" aria-hidden="true"></span>
+              <span class="db-sidebar__item-text">IG Beneficios</span>
+            </button>
+          </li>
+          <li data-role-gate="admin">
+            <button class="db-sidebar__item" data-section="erp-instagram-scraper">
+              <span class="db-icon db-icon--activity" aria-hidden="true"></span>
+              <span class="db-sidebar__item-text">Instagram Comments Scraper</span>
+            </button>
+          </li>
+          <li data-role-gate="admin">
+            <a class="db-sidebar__item" href="../tickets/">
+              <span class="db-icon db-icon--gift" aria-hidden="true"></span>
+              <span class="db-sidebar__item-text">Boletera</span>
+            </a>
           </li>
           <li>
             <button class="db-sidebar__item" data-section="admin-table-editor">
@@ -312,22 +329,22 @@
     </aside>
 
 
-    <!-- ─────────────────────────────────────────────
+    <!-- ---------------------------------------------
          MAIN CONTENT AREA
          All sections are injected here by dashboard.js.
          Only one section is visible at a time.
-    ──────────────────────────────────────────────── -->
+    ------------------------------------------------ -->
     <main class="db-main" id="js-main" aria-live="polite" aria-label="Contenido del módulo activo">
 
-      <!-- ── SECTION CONTAINER ──
+      <!-- -- SECTION CONTAINER --
            Each section panel is rendered here.
            JS injects content; transitions handled by CSS classes.
       -->
-      <div class="db-section-wrap" id="js-section-wrap">
+      <div class="db-section-wrap hr-container" id="js-section-wrap">
         <!-- Content injected by dashboard.js -->
 
         <!-- Loading skeleton (shown before first render) -->
-        <div class="db-skeleton" id="js-skeleton" aria-label="Cargando módulo" role="status">
+        <div class="db-skeleton hr-panel" id="js-skeleton" aria-label="Cargando módulo" role="status">
           <span class="db-skeleton__line db-skeleton__line--wide"></span>
           <span class="db-skeleton__line db-skeleton__line--mid"></span>
           <span class="db-skeleton__line db-skeleton__line--narrow"></span>
@@ -336,7 +353,7 @@
 
     </main>
 
-    <!-- ── NOTIFICATIONS PANEL ──
+    <!-- -- NOTIFICATIONS PANEL --
          Flex sibling of main inside .db-layout.
          Width animates open/closed via CSS; JS toggles [hidden].
     -->
@@ -348,7 +365,7 @@
     >
       <header class="db-notifications__header">
         <span class="section-label">Notificaciones</span>
-        <button class="db-icon-btn" id="js-notif-close" aria-label="Cerrar panel">✕</button>
+        <button class="db-icon-btn hr-icon-btn" id="js-notif-close" aria-label="Cerrar panel">x</button>
       </header>
       <ul class="db-notifications__list" id="js-notif-list" role="list">
         <!-- Injected by JS -->
@@ -358,47 +375,32 @@
   </div><!-- /.db-layout -->
 
 
-  <!-- ═══════════════════════════════════════════════════
+  <!-- ===================================================
        TOAST SYSTEM  (global, fixed position)
-  ═══════════════════════════════════════════════════ -->
+  =================================================== -->
   <div class="db-toast-region" id="js-toast-region" aria-live="assertive" aria-atomic="true"></div>
 
 
-  <!-- ═══════════════════════════════════════════════════
+  <!-- ===================================================
        SCRIPTS
-       Load order matters — router last.
-  ═══════════════════════════════════════════════════ -->
+       Load order matters - router last.
+  =================================================== -->
   <!-- Global behavior (cursor, reveal, etc.) -->
-  <script src="../site.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="../site.js?v=20260729-mojibake-fix" defer></script>
 
   <!-- Dashboard controller / router -->
-  <script src="dashboard.js" type="module"></script>
+  <script src="dashboard.js?v=20260729-user-id-downloads" type="module"></script>
 
   <!--
-    Cursor hover patch — site.js binds mouseenter/mouseleave with querySelectorAll
+    Cursor hover patch - site.js binds mouseenter/mouseleave with querySelectorAll
     which only catches elements present at load time. The dashboard is a SPA so
     sections are replaced via innerHTML. This delegation re-implements the hover
     effect on document so it survives every re-render.
   -->
-  <script defer>
-    (function () {
-      const ring = document.getElementById('cursorRing');
-      if (!ring) return;
-
-      document.addEventListener('mouseenter', (e) => {
-        if (e.target?.closest?.('a, button, [role="button"], .event-row')) {
-          ring.style.scale       = '1.5';
-          ring.style.borderColor = 'rgba(219,1,0,0.8)';
-        }
-      }, true);
-
-      document.addEventListener('mouseleave', (e) => {
-        if (e.target?.closest?.('a, button, [role="button"], .event-row')) {
-          ring.style.scale       = '1';
-          ring.style.borderColor = 'rgba(219,1,0,0.5)';
-        }
-      }, true);
-    })();
-  </script>
 </body>
 </html>
+
+
+
+

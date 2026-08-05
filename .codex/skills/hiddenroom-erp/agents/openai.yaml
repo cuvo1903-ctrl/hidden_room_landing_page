@@ -1,0 +1,7 @@
+interface:
+  display_name: "Hidden Room ERP"
+  short_description: "Finance and operations workflows"
+  default_prompt: "Use $hiddenroom-erp to update ERP finance or operations behavior."
+
+policy:
+  allow_implicit_invocation: true
